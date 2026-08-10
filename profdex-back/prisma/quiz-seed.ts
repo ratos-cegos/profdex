@@ -2,6 +2,10 @@
 //
 //   npm run db:seed-quiz
 //
+// Também é chamado por `prisma/seed.ts` (o seed completo), por isso a lógica
+// mora numa função exportada em vez de solta no corpo do arquivo: importar
+// este módulo não pode disparar a escrita nem abrir um segundo PrismaClient.
+//
 // Idempotente: o enunciado é a chave única, então rodar de novo atualiza as
 // alternativas/dificuldade em vez de duplicar. Questões que saíram deste
 // arquivo NÃO são apagadas — são apenas desativadas (`active = false`), para
@@ -10,9 +14,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { QUIZ_QUESTIONS } from './quiz-questions';
 
-const prisma = new PrismaClient();
-
-async function main() {
+export async function seedQuiz(prisma: PrismaClient) {
   for (const q of QUIZ_QUESTIONS) {
     await prisma.quizQuestion.upsert({
       where: { prompt: q.prompt },
@@ -48,13 +50,20 @@ async function main() {
       `(${[...porTema].map(([t, n]) => `${t}=${n}`).join(', ')})`,
   );
   if (desativadas.count) {
-    console.log(`${desativadas.count} questão(ões) fora do arquivo desativadas`);
+    console.log(
+      `${desativadas.count} questão(ões) fora do arquivo desativadas`,
+    );
   }
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(() => prisma.$disconnect());
+// Só executa quando chamado direto (`npm run db:seed-quiz`); quando o seed
+// completo importa a função, este bloco fica quieto.
+if (require.main === module) {
+  const prisma = new PrismaClient();
+  seedQuiz(prisma)
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    })
+    .finally(() => prisma.$disconnect());
+}

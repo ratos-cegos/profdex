@@ -26,6 +26,7 @@
     "db:down": "docker compose down",
     "db:nuke": "docker compose down -v",
     "db:migrate": "prisma migrate dev",
+    "db:reset": "node scripts/db-reset.js",
     "db:seed": "ts-node prisma/seed.ts",
     "db:seed-quiz": "ts-node prisma/quiz-seed.ts",
     "db:studio": "prisma studio",

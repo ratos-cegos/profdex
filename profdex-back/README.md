@@ -15,9 +15,12 @@ por WebSocket).
 npm install
 cp .env.example .env    # preencha os valores
 npx prisma migrate deploy
-npm run db:seed         # professores iniciais
-npm run db:seed-quiz    # 90 questões do quiz de bancada
+npm run db:seed         # professores, 90 questões do quiz e a conta admin
 ```
+
+O seed cria a conta de administração **`admin` / `123456`** (senha
+sobrescrevível por `ADMIN_PASSWORD` no `.env`). Para jogar o banco fora e
+recomeçar do zero, `npm run db:reset` — ver [Manutenção do banco](#manutenção-do-banco).
 
 > **Cadastro é só pelo Google.** Não existe `POST /auth/register`: a conta nasce
 > em `/auth/google` e é concluída com matrícula, nome e senha — que passam a
@@ -36,6 +39,9 @@ npm run db:up                              # sobe e espera ficar saudável
 #   DIRECT_URL="postgresql://profdex:profdex@localhost:55432/profdex"
 npx prisma migrate deploy && npm run db:seed
 ```
+
+Com o banco local no ar, `npm run db:reset` apaga tudo e reconstrói (migrations
++ seed completo) num comando só.
 
 `npm run db:down` para o container preservando os dados; `npm run db:nuke`
 descarta o volume junto (útil para recomeçar do zero).
@@ -98,14 +104,23 @@ gargalos que ele investiga está em [`docs/CARGA-PVP.md`](../docs/CARGA-PVP.md).
 ```bash
 npm run db:migrate                                    # cria migration (dev)
 npm run db:studio                                     # inspeção visual
+npm run db:reset                                      # APAGA tudo e recria do zero
+npm run db:reset -- --yes                             # idem, contra banco não-local
 npm run db:reset-ranking                              # prévia (não altera nada)
 npm run db:reset-ranking -- --yes                     # zera ranking e batalhas
 npm run db:reset-ranking -- --yes --purge-test-users  # + remove contas de teste
 npm run db:set-admin                                  # lista administradores
 npm run db:set-admin -- 202312345                     # promove a admin
-npm run db:seed-quiz                                  # questões do quiz
+npm run db:seed                                       # professores, quiz e admin
+npm run db:seed-quiz                                  # só as questões do quiz
 npm run qr:generate                                   # QR codes de captura
 ```
+
+`db:reset` não tem dry-run nem volta: derruba as tabelas, reaplica as migrations
+e roda o seed completo, deixando o login `admin` / `123456` pronto. Ele recusa
+hosts que não sejam locais sem `--yes`, e os professores voltam sem token de
+captura — os QR Codes impressos precisam ser regerados. Detalhes em
+[`docs/BANCO.md`](../docs/BANCO.md#recomeçar-do-zero).
 
 `--purge-test-users` só apaga contas com prefixo de teste (`smoke`, `bat`,
 `inv`, `proxy`, `dbg`, `load`). Contas reais nunca são removidas — apenas têm a

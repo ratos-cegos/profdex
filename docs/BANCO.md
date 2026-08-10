@@ -74,10 +74,11 @@ SQL na mão porque conhecem as regras do domínio:
 
 | Comando | O que faz |
 |---|---|
-| `npm run db:seed` | Popula os 3 professores (idempotente) |
-| `npm run db:seed-quiz` | Popula o banco de questões do quiz (idempotente) |
+| `npm run db:seed` | Seed completo: professores, quiz e o admin (idempotente) |
+| `npm run db:seed-quiz` | Popula só o banco de questões do quiz (idempotente) |
 | `npm run db:set-admin` | Lista os admins; com matrícula, promove/rebaixa |
 | `npm run db:reset-ranking` | Zera o ranking PvP — ver abaixo |
+| `npm run db:reset` | **APAGA o banco inteiro** e recria do zero — ver abaixo |
 | `npm run db:migrate` | Aplica migrations pendentes |
 
 ## Mapa das tabelas
@@ -218,18 +219,47 @@ enunciado em vez de duplicar.
 ### Recomeçar do zero
 
 Quando o schema mudou muito ou o banco está num estado que não vale
-investigação:
+investigação, um comando só resolve:
+
+```bash
+npm run db:reset
+```
+
+Ele derruba todas as tabelas, reaplica todas as migrations e roda o seed
+completo (`prisma/seed.ts`): os 3 professores, as 90 questões do quiz e a conta
+de administração **`admin` / `123456`**.
+
+Não há dry-run nem volta — por isso o script se recusa a rodar contra um banco
+que não seja local (`localhost`, `127.0.0.1`), a não ser que você insista:
+
+```bash
+npm run db:reset -- --yes    # obrigatório quando o host não é local
+```
+
+Antes de apagar, ele imprime o host alvo e quanta coisa existe lá. Leia essa
+linha: é a diferença entre limpar sua máquina e limpar o banco do evento.
+
+No Windows, **pare o `npm run start:dev` antes**: o servidor segura o
+`query_engine-windows.dll.node` aberto e o `prisma generate` que roda no meio do
+reset falha com `EPERM`. O reset continua e termina, mas o Prisma Client fica na
+versão antiga — o que só machuca quando o motivo do reset foi mudança de schema.
+
+> A senha do admin vem de `ADMIN_PASSWORD` no `.env` quando essa variável
+> existe; sem ela, é `123456`. O seed **reescreve** a senha em toda execução —
+> a conta é a chave que não pode falhar no dia do evento.
+
+Se preferir destruir o volume do Docker junto (útil quando o próprio Postgres
+está estranho, não só os dados):
 
 ```bash
 npm run db:nuke      # destrói o volume
 npm run db:up        # sobe limpo
 npm run db:migrate   # recria todas as tabelas
-npm run db:seed      # professores
-npm run db:seed-quiz # questões
+npm run db:seed      # professores, quiz e admin
 ```
 
-Depois disso os professores voltam **sem token de captura** — os QRs antigos
-param de funcionar. Para regerar:
+Nos dois caminhos os professores voltam **sem token de captura** — os QRs
+antigos param de funcionar. Para regerar:
 
 ```bash
 CAPTURE_TOKEN_MARIO=<token> CAPTURE_TOKEN_ERON=<token> \
