@@ -52,6 +52,13 @@ export interface RoomEmitter {
 type Ack = { ok: true } | { ok: false; message: string };
 
 /**
+ * Ack do golpe. Carrega o turno em que o golpe foi ACEITO — que não é
+ * necessariamente `room.turn` quando o ack chega ao cliente, porque este mesmo
+ * golpe pode ter fechado a rodada e virado o turno. Ver `move()`.
+ */
+type MoveAck = { ok: true; turn: number } | { ok: false; message: string };
+
+/**
  * Salas de batalha PvP — estado em memória, timers no servidor, resultado no
  * banco. O motor (engine/) é quem resolve as rodadas; aqui ficam as regras de
  * SALA: seleção às cegas, turnos simultâneos com deadline, abandono, resync.
@@ -225,7 +232,7 @@ export class BattleRoomService implements OnModuleDestroy {
 
   // ── Turnos simultâneos ────────────────────────────────────────────────────
 
-  move(userId: string, moveId: string): Ack {
+  move(userId: string, moveId: string): MoveAck {
     const room = this.roomOf(userId);
     if (!room || room.phase !== 'active') {
       return { ok: false, message: 'Nenhuma batalha em andamento.' };
@@ -237,10 +244,20 @@ export class BattleRoomService implements OnModuleDestroy {
       return { ok: false, message: 'Esse golpe não está no seu conjunto.' };
     }
 
+    // Guardado ANTES de resolver: se este golpe fechar a rodada, `resolveRound`
+    // incrementa `room.turn` ainda dentro desta chamada, e o ack sairia
+    // carimbado com o turno seguinte — justamente o que o cliente usa para
+    // decidir se o ack ainda vale.
+    const turn = room.turn;
+
     room.pending[me.key] = moveId;
     this.emitToOther(room, me.key, 'battle:move:opponent', {});
 
     if (room.pending.player && room.pending.enemy) {
+      // Atenção: isto emite `battle:round` de forma SÍNCRONA, ou seja, antes
+      // de o ack abaixo ser enviado. Para quem move em segundo, o cliente
+      // recebe a rodada nova e só depois a confirmação do próprio golpe — por
+      // isso o ack precisa dizer a que turno pertence.
       this.resolveRound(room).catch((error: unknown) =>
         this.logger.error(
           `Falha resolvendo rodada de ${room.id}`,
@@ -248,7 +265,7 @@ export class BattleRoomService implements OnModuleDestroy {
         ),
       );
     }
-    return { ok: true };
+    return { ok: true, turn };
   }
 
   private onTurnTimeout(room: Room): void {

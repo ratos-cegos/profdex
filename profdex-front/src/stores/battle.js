@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { io } from 'socket.io-client'
 import router from '../router'
 import { useAuthStore } from './auth'
+import { applyMoveAck } from './battle-move'
 
 // Estado do PvP: conexão com o lobby de batalha via Socket.IO.
 //
@@ -333,9 +334,18 @@ export const useBattleStore = defineStore('battle', () => {
   }
 
   async function submitMove(moveId) {
+    if (!pvp.value) return { ok: false, message: 'Sem batalha em andamento.' }
+    const turnAtSend = pvp.value.turn
+
+    // Otimista: trava o botão já no clique, sem esperar o round-trip — isso
+    // também fecha a janela em que um duplo-toque mandava dois golpes. A volta
+    // do ack NUNCA escreve `youMoved` sem antes conferir o turno: quando o
+    // próprio golpe fecha a rodada, o `battle:round` do turno seguinte chega
+    // ANTES do ack. Ver battle-move.js e docs/BUG-BATALHA-TRAVANDO.md.
+    pvp.value.youMoved = true
     const ack = await command('battle:move', { moveId })
-    if (ack.ok && pvp.value) pvp.value.youMoved = true
-    else if (!ack.ok) lastError.value = ack.message
+    applyMoveAck(pvp.value, { ack, turnAtSend })
+    if (!ack.ok) lastError.value = ack.message
     return ack
   }
 

@@ -166,6 +166,34 @@ describe('BattleRoomService', () => {
     }
   });
 
+  // Regressão do travamento relatado no evento: quem move em SEGUNDO recebe
+  // `battle:round` antes do ack do próprio golpe (a resolução é síncrona dentro
+  // de `move()`). O cliente marcava "já joguei" ao receber o ack, carimbando um
+  // turno que já tinha começado — e os botões de golpe morriam até o F5.
+  // O ack carrega o turno em que o golpe foi aceito para o cliente descartá-lo
+  // quando chega atrasado. Ver docs/BUG-BATALHA-TRAVANDO.md.
+  it('ack do golpe carrega o turno em que foi aceito, não o já resolvido', async () => {
+    await startBattle();
+    const beginA = eventsFor(ana.userId, 'battle:begin')[0].payload;
+    const beginB = eventsFor(bia.userId, 'battle:begin')[0].payload;
+
+    const ackA = service.move(ana.userId, beginA.you.moves[0].id);
+    expect(ackA).toEqual({ ok: true, turn: 1 });
+
+    emitted = [];
+    const ackB = service.move(bia.userId, beginB.you.moves[0].id);
+
+    // A rodada já foi emitida quando o ack de Bia é produzido...
+    expect(eventsFor(bia.userId, 'battle:round')).toHaveLength(1);
+    expect(eventsFor(bia.userId, 'battle:round')[0].payload.turn).toBe(2);
+    // ...e mesmo assim o ack aponta para o turno 1, o que ela de fato jogou.
+    expect(ackB).toEqual({ ok: true, turn: 1 });
+
+    // O servidor não considera que ninguém jogou o turno novo.
+    expect((service.resync(bia.userId) as any).youMoved).toBe(false);
+    expect((service.resync(ana.userId) as any).youMoved).toBe(false);
+  });
+
   it('rejects a move outside your own deck', async () => {
     await startBattle();
 
