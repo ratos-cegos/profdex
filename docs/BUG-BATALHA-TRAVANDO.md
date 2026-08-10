@@ -9,6 +9,13 @@ São **dois problemas encadeados**: um que provoca o recarregamento e outro que
 impede o app de se recuperar dele. O primeiro já foi corrigido; o segundo está
 diagnosticado e ainda não.
 
+> **Leia a [Parte 3](#parte-3--a-causa-do-travamento-em-massa-corrigido) antes
+> das outras.** Nos testes com ~10 jogadores o travamento apareceu em muitas
+> batalhas **sem interrupção nenhuma de rede** — a rodada resolvia, o dano era
+> aplicado, e um dos dois não conseguia jogar o turno seguinte. Isso não é a
+> cadeia da Parte 2: é uma corrida entre o ack e o evento da rodada, e era
+> **essa** a causa da maioria absoluta dos casos.
+
 ---
 
 ## Parte 1 — por que a página recarrega sozinha (CORRIGIDO)
@@ -156,6 +163,90 @@ consertam a batalha e o aluno cai no login no meio dela.
 `BinaryTunnelScene` ainda carrega o três.js (716 kB) e mantém um canvas
 animado. Trocar por um fundo CSS em telas pequenas ou com
 `prefers-reduced-motion` tira o que sobrou de pressão de memória.
+
+---
+
+## Parte 3 — a causa do travamento em massa (CORRIGIDO)
+
+Relato do teste com ~10 jogadores: *"após selecionar o primeiro move, o dano é
+aplicado mas um dos caras não pode selecionar o movimento pro próximo turno, só
+atualizando a página"*. Dispositivos e navegadores diferentes, sem padrão
+aparente, **sem interrupção de rede**.
+
+Não é a Parte 2 — aquela exige 3 minutos de silêncio e termina com a batalha já
+encerrada. Aqui a rodada resolve normalmente e o travamento aparece no turno
+**seguinte**.
+
+### A corrida
+
+No servidor, `move()` resolve a rodada **dentro da própria chamada**, e
+`resolveRound` não tem nenhum `await` antes de emitir `battle:round`. Tudo é
+síncrono:
+
+```
+pending[me] = moveId → emit battle:move:opponent → emit battle:round (aos dois) → return { ok: true }
+```
+
+Ou seja, **quem move em segundo recebe `battle:round` ANTES do ack do próprio
+golpe**. E o cliente fazia:
+
+```js
+const ack = await command('battle:move', { moveId })
+if (ack.ok && pvp.value) pvp.value.youMoved = true   // ← escreve DEPOIS do round
+```
+
+1. `battle:round` chega → o turno novo nasce com `youMoved: false`
+2. o ack chega logo depois → `youMoved = true`, **no turno novo**
+3. `canAct` exige `!youMoved` → botões mortos
+
+O travado ainda via *"Aguardando \<rival\>…"*, porque o texto também depende de
+`youMoved`. Os dois ficavam esperando um ao outro até o timer de 60s estourar.
+Passado o timeout a rodada resolvia, `youMoved` voltava a `false` e ele jogava de
+novo — tendo perdido o turno. Caindo em segundo outra vez, travava outra vez;
+três turnos perdidos = abandono.
+
+Por que só "um dos caras": quem move em **primeiro** nunca é afetado — o
+`battle:move:opponent` dele chega antes da rodada e é o próprio round que
+normaliza tudo. Quem é o segundo muda a cada turno, o que fazia o padrão parecer
+aleatório. E por que o F5 resolvia: `resync()` devolve `youMoved` lido do
+servidor, que é `false`.
+
+Detalhe que explica "após o **primeiro** move": quando a rodada **mata**,
+`finish()` faz `await prisma.battle.update(...)` antes de emitir `battle:end` —
+o ack sai antes, e a tela vai para o resultado de qualquer jeito. Só rodadas que
+continuam travam.
+
+### Correções aplicadas
+
+**1. O ack do golpe carrega o turno em que foi aceito**
+(`battle-room.service.ts`). Guardado *antes* de resolver, porque a resolução
+incrementa `room.turn` ainda dentro da chamada.
+
+**2. O cliente marca `youMoved` no clique, não na volta do ack**
+(`stores/battle.js` + `stores/battle-move.js`). O ack só é aplicado se o turno
+dele ainda for o turno corrente; caso contrário é descartado, porque o turno
+novo já veio da autoridade com o valor certo. De quebra, o botão desabilita no
+clique e a janela de duplo-toque fecha.
+
+**3. Rede de segurança na arena** (`PvpArenaView.vue`). Passando 5s do deadline
+sem nada chegar, a tela pede `battle:resync` (handler que **já existia** no
+gateway e que o front nunca chamava), no máximo a cada 10s. Cobre este bug,
+cobre a cadeia da Parte 2 e cobre divergência que a gente ainda não conhece.
+
+Regressão travada por teste nos dois lados:
+`battle-room.service.spec.ts` ("ack do golpe carrega o turno em que foi aceito")
+e `profdex-front/test/battle-move.test.js`.
+
+### O que isto significa para a Parte 2
+
+As correções P1–P6 continuam **válidas e não implementadas** — são falhas reais.
+Mas nenhuma delas teria corrigido o travamento relatado no teste: a Parte 2
+descreve um caminho de falha que exige perda de rede prolongada, e o que
+derrubava as batalhas era o caminho feliz. Vale a mesma leitura para a análise
+de viabilidade do Nakama, que adotou a Parte 2 como tese central: a plataforma
+não tem relação com este bug.
+
+---
 
 ## O que ficou provado e o que é hipótese
 
