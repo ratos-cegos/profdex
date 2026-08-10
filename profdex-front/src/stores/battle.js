@@ -207,7 +207,11 @@ export const useBattleStore = defineStore('battle', () => {
     })
 
     // Reconexão no meio da batalha: o servidor manda o snapshot e a UI se
-    // reconstrói na tela certa.
+    // reconstrói na tela certa. Também chega a pedido (requestResync), com o
+    // jogador já na tela — daí o `goTo` em vez de um push direto.
+    //
+    // `syncedAt` marca cada snapshot: como ele não traz fila de eventos para
+    // animar, é o sinal que a arena usa para realinhar as barras de HP.
     socket.on('battle:resync', (snap) => {
       if (snap.phase === 'picking') {
         pvp.value = {
@@ -219,8 +223,9 @@ export const useBattleStore = defineStore('battle', () => {
           foePicked: snap.foePicked,
           pendingEvents: [],
           result: null,
+          syncedAt: Date.now(),
         }
-        router.push({ name: 'pvp-pick' })
+        goTo('pvp-pick')
       } else if (snap.phase === 'active') {
         pvp.value = {
           battleId: snap.battleId,
@@ -234,10 +239,16 @@ export const useBattleStore = defineStore('battle', () => {
           foeMoved: snap.foeMoved,
           pendingEvents: [],
           result: null,
+          syncedAt: Date.now(),
         }
-        router.push({ name: 'pvp-arena' })
+        goTo('pvp-arena')
       }
     })
+  }
+
+  /** Navega só se já não estivermos lá — o resync a pedido chega na tela certa. */
+  function goTo(name) {
+    if (router.currentRoute.value.name !== name) router.push({ name })
   }
 
   function disconnect() {
@@ -349,6 +360,16 @@ export const useBattleStore = defineStore('battle', () => {
     return ack
   }
 
+  /**
+   * Pede o snapshot da batalha ao servidor (handler `battle:resync` do gateway).
+   * É a rede de segurança da arena: se o prazo do turno passou e nada chegou,
+   * o estado é reconstruído a partir da autoridade em vez de deixar o jogador
+   * olhando botões mortos.
+   */
+  function requestResync() {
+    if (socket?.connected) socket.emit('battle:resync')
+  }
+
   /** A arena chama após animar a fila da rodada. */
   function consumeEvents() {
     if (pvp.value) pvp.value.pendingEvents = []
@@ -388,6 +409,7 @@ export const useBattleStore = defineStore('battle', () => {
     declineInvite,
     pickProfessor,
     submitMove,
+    requestResync,
     consumeEvents,
     leaveBattle,
     clearError,

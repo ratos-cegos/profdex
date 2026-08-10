@@ -28,6 +28,24 @@ let clock = null
 
 const pvp = computed(() => battle.pvp)
 
+// Rede de segurança. O servidor resolve o turno no deadline, então ficar muito
+// além disso sem receber rodada nenhuma significa que as duas pontas
+// divergiram — por perda de pacote, socket morto sem o cliente perceber, ou um
+// bug futuro nosso. Em vez de deixar o jogador olhando botões mortos até o F5,
+// pedimos o estado de volta a quem tem autoridade.
+const RESYNC_GRACE_MS = 5000
+const RESYNC_COOLDOWN_MS = 10000
+let lastResyncAt = 0
+
+function resyncIfStuck() {
+  const p = pvp.value
+  if (!p || p.phase !== 'active' || animating.value) return
+  if (now.value < p.deadline + RESYNC_GRACE_MS) return
+  if (now.value - lastResyncAt < RESYNC_COOLDOWN_MS) return
+  lastResyncAt = now.value
+  battle.requestResync()
+}
+
 const secondsLeft = computed(() => {
   if (!pvp.value?.deadline || pvp.value.phase !== 'active') return 0
   return Math.max(0, Math.ceil((pvp.value.deadline - now.value) / 1000))
@@ -146,6 +164,19 @@ watch(
   { immediate: true },
 )
 
+// Snapshot do servidor (reconexão ou rede de segurança acima): não vem com fila
+// de eventos, então as barras de HP precisam ser realinhadas na mão — senão
+// ficariam paradas no valor de antes da divergência.
+watch(
+  () => pvp.value?.syncedAt,
+  (syncedAt) => {
+    if (!syncedAt || animating.value) return
+    syncFromServer()
+    if (pvp.value?.phase !== 'active') return
+    message.value = pvp.value.youMoved ? 'Aguardando o rival…' : 'Escolha seu golpe!'
+  },
+)
+
 // Caso battle:end chegue sem eventos (ex.: abandono antes de qualquer rodada).
 watch(
   () => pvp.value?.phase,
@@ -167,6 +198,7 @@ onMounted(() => {
   message.value = `${pvp.value.foe.professor?.name ?? pvp.value.opponent.name} entrou na arena!`
   clock = setInterval(() => {
     now.value = Date.now()
+    resyncIfStuck()
   }, 500)
 })
 
