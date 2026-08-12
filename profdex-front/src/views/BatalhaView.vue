@@ -270,7 +270,9 @@ function goBack() {
           type="button"
           @click="goToArena"
         >
-          <span class="option-icon">⚔️</span>
+          <span class="option-icon option-icon--arte">
+            <img class="option-icon__img" src="/icons/batalha.png" alt="" aria-hidden="true" />
+          </span>
           <span class="pixel option-label">Batalha</span>
         </button>
 
@@ -771,9 +773,9 @@ function goBack() {
 
 .battle-option {
   width: 100%;
-  min-height: 72px;
+  min-height: 76px;
   display: grid;
-  grid-template-columns: 52px 1fr;
+  grid-template-columns: var(--option-icon) 1fr;
   align-items: center;
   gap: 14px;
   padding: 12px 16px;
@@ -802,8 +804,8 @@ function goBack() {
 }
 
 .option-icon {
-  width: 52px;
-  height: 52px;
+  width: var(--option-icon);
+  height: var(--option-icon);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -811,8 +813,25 @@ function goBack() {
   background: var(--bg-surface);
   color: var(--yellow);
   border: 2px solid var(--border);
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 900;
+}
+
+/* Disco que abriga pixel art: o disco vira só a moldura e a arte ocupa quase
+   todo o diâmetro, em vez de ficar um emoji pequeno perdido no meio. */
+.option-icon--arte {
+  padding: 4px;
+  background: var(--surface);
+}
+
+.option-icon__img {
+  width: 100%;
+  height: 100%;
+  /* No disco redondo a arte larga é limitada pelo diâmetro; `contain` garante
+     que ela caiba inteira em vez de vazar pela borda. */
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 
 .option-label {
@@ -820,45 +839,4 @@ function goBack() {
   text-align: left;
 }
 
-/* Navegação */
-.batalha__nav {
-  background: var(--bg-card);
-  border-top: 1px solid var(--border);
-  display: flex;
-  padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
-  flex-shrink: 0;
-}
-
-.nav-btn {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  padding: 8px 4px;
-  border-radius: var(--radius);
-}
-
-.nav-btn--active {
-  color: var(--yellow);
-}
-
-.nav-btn--primary {
-  color: var(--red-light);
-}
-
-.nav-icon {
-  font-size: 22px;
-}
-
-.nav-icon--text {
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.nav-label {
-  font-size: 7px;
-}
 </style>
