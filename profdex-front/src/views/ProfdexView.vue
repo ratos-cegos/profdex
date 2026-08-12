@@ -190,10 +190,10 @@ function goDetails(prof) {
   transition: width 0.5s ease;
 }
 
+/* O scroll vem da classe utilitária `.page`; repetir flex/overflow aqui só
+   duplicava a regra. */
 .profdex__main {
-  flex: 1;
   padding: 20px 16px;
-  overflow-y: auto;
 }
 
 .loading-state {
@@ -213,9 +213,11 @@ function goDetails(prof) {
   animation: spin 0.8s linear infinite;
 }
 
+/* `auto-fill` + `minmax` mantém 3 colunas na largura típica do app e cai para 2
+   em telas de 320px, onde `repeat(3, 1fr)` espremia os cards. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 12px;
 }
 

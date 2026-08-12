@@ -437,15 +437,14 @@ function goBack() {
   text-overflow: ellipsis;
 }
 
+/* `flex: 1` e `overflow-y` já vêm da classe utilitária `.page`. */
 .batalha__main {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
   padding: 20px 16px;
   gap: 20px;
-  overflow-y: auto;
 }
 
 /* Lobby de jogadores online */

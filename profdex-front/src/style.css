@@ -68,7 +68,11 @@ body {
 }
 
 #app {
-  height: 100%;
+  /* `dvh` acompanha a barra de endereço do navegador móvel, que aparece e some
+     durante a rolagem; com `vh` puro a barra inferior fica abaixo da dobra no
+     iOS. O `100vh` fica de reserva para navegadores sem suporte. */
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   max-width: 480px;
@@ -147,8 +151,13 @@ button {
   pointer-events: none;
 }
 
+/* Área rolável padrão das telas. `min-height: 0` é o que permite o item flex
+   encolher abaixo do próprio conteúdo — sem ele o container cresce, estoura o
+   `#app` (que tem `overflow: hidden`) e o conteúdo aparece cortado em vez de
+   rolar. */
 .page {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;

@@ -240,9 +240,8 @@ async function choose(exemplar) {
   }
 }
 
+/* `flex: 1` e `overflow-y` já vêm da classe utilitária `.page`. */
 .pick__main {
-  flex: 1;
-  overflow-y: auto;
   padding: 20px 16px;
   display: flex;
   flex-direction: column;
