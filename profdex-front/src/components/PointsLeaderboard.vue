@@ -487,21 +487,28 @@ const formatPoints = (points) => pointsFormatter.format(points)
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  /* Entrada escalonada: as colunas caem da esquerda para a direita e a lista
+     entra logo atrás. O índice vem do template, então a ordem não depende de
+     quantos cards existem. */
   .podium-card {
-    animation: leaderboard-reveal 0.55s both;
-  }
-
-  .podium-card:nth-child(2) {
-    animation-delay: 90ms;
-  }
-
-  .podium-card:nth-child(3) {
-    animation-delay: 180ms;
+    animation: podium-drop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+    animation-delay: calc(var(--slot-index, 0) * 110ms);
   }
 
   .ranking-row {
     animation: leaderboard-reveal 0.45s both;
-    animation-delay: calc(var(--row-index, 0) * 40ms + 180ms);
+    animation-delay: calc(var(--row-index, 0) * 40ms + 330ms);
+  }
+}
+
+@keyframes podium-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
