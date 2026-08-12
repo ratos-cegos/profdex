@@ -337,8 +337,10 @@ export const useBattleStore = defineStore('battle', () => {
     incomingInvites.value = incomingInvites.value.filter((i) => i.inviteId !== inviteId)
   }
 
-  async function pickProfessor(professorId) {
-    const ack = await command('battle:pick', { professorId })
+  // Manda o EXEMPLAR, não o professor: é ele que carrega a combinação de tipos
+  // e o deck sorteados na captura.
+  async function pickCapture(captureId) {
+    const ack = await command('battle:pick', { captureId })
     if (ack.ok && pvp.value) pvp.value.youPicked = true
     else if (!ack.ok) lastError.value = ack.message
     return ack
@@ -407,7 +409,7 @@ export const useBattleStore = defineStore('battle', () => {
     sendInvite,
     acceptInvite,
     declineInvite,
-    pickProfessor,
+    pickCapture,
     submitMove,
     requestResync,
     consumeEvents,

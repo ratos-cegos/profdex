@@ -2,22 +2,30 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBattleStore } from '../stores/battle'
+import { useCapturesStore } from '../stores/captures'
 import { useProfessorsStore } from '../stores/professors'
-import { typesForProfessor, typeInfos } from '../data/professorTypes'
+import { typeInfos } from '../data/professorTypes'
 
-// Seleção às cegas: cada jogador escolhe um professor CAPTURADO em até 60s.
-// O oponente vê que você escolheu, mas não qual — o servidor só revela os dois
+// Seleção às cegas em duas etapas, dentro dos mesmos 60s: primeiro QUEM, depois
+// QUAL EXEMPLAR — o mesmo professor pode estar na coleção em combinações de
+// tipos diferentes, cada uma com o seu deck.
+// O oponente vê que você escolheu, mas não o quê: o servidor só revela os dois
 // picks juntos, no battle:begin.
 const router = useRouter()
 const battle = useBattleStore()
 const professors = useProfessorsStore()
+const captures = useCapturesStore()
 
 const now = ref(Date.now())
 let clock = null
 
+// Etapa 2: professor aberto para escolher entre os exemplares dele.
+const aberto = ref(null)
+
 onMounted(() => {
   battle.connect() // idempotente; cobre refresh no meio da seleção (resync)
   if (!professors.professors.length) professors.fetch().catch(() => {})
+  captures.ensureLoaded().catch(() => {})
   clock = setInterval(() => {
     now.value = Date.now()
   }, 500)
@@ -27,7 +35,17 @@ onMounted(() => {
 
 onUnmounted(() => clock && clearInterval(clock))
 
-const captured = computed(() => professors.professors.filter((p) => p.captured))
+// Só professores com pelo menos um exemplar — a lista sai das capturas, não da
+// dex, porque é o exemplar que entra na arena.
+const capturados = computed(() =>
+  professors.professors
+    .map((p) => ({ ...p, exemplares: captures.byProfessorId(p.id) }))
+    .filter((p) => p.exemplares.length > 0),
+)
+
+const grupos = computed(() =>
+  aberto.value ? captures.groupedByVariant(aberto.value.id) : [],
+)
 
 const secondsLeft = computed(() => {
   const deadline = battle.pvp?.pickDeadline
@@ -35,13 +53,24 @@ const secondsLeft = computed(() => {
   return Math.max(0, Math.ceil((deadline - now.value) / 1000))
 })
 
+// Os tipos de cada exemplar, não os do professor: um Eron de IA/ML e um de
+// Arquitetura + IA/ML aparecem com badges diferentes.
 function typesOf(professor) {
-  return typeInfos(typesForProfessor(professor))
+  const combinacoes = new Set()
+  for (const exemplar of professor.exemplares) {
+    for (const type of exemplar.types) combinacoes.add(type)
+  }
+  return typeInfos([...combinacoes])
 }
 
-async function choose(professor) {
+function abrir(professor) {
   if (battle.pvp?.youPicked) return
-  await battle.pickProfessor(professor.id)
+  aberto.value = professor
+}
+
+async function choose(exemplar) {
+  if (battle.pvp?.youPicked) return
+  await battle.pickCapture(exemplar.id)
 }
 </script>
 
@@ -58,44 +87,94 @@ async function choose(professor) {
     </header>
 
     <main class="pick__main page">
-      <p class="pick__hint">
-        Escolha seu professor. O rival não vê sua escolha até a batalha começar.
-      </p>
+      <!-- Etapa 1: qual professor -->
+      <template v-if="!aberto">
+        <p class="pick__hint">
+          Escolha seu professor. O rival não vê sua escolha até a batalha começar.
+        </p>
 
-      <p v-if="!captured.length" class="pick__empty">
-        Você ainda não capturou nenhum professor — capture um pela tela de
-        Scanear para poder batalhar.
-      </p>
+        <p v-if="!capturados.length" class="pick__empty">
+          Você ainda não capturou nenhum professor — capture um pela tela de
+          Scanear para poder batalhar.
+        </p>
 
-      <ul v-else class="pick__grid">
-        <li v-for="professor in captured" :key="professor.id">
+        <ul v-else class="pick__grid">
+          <li v-for="professor in capturados" :key="professor.id">
+            <button
+              class="pick-card"
+              type="button"
+              :disabled="battle.pvp.youPicked"
+              @click="abrir(professor)"
+            >
+              <span class="pick-card__avatar">
+                <img
+                  :src="`/professors/${professor.slug}-face.png`"
+                  :alt="professor.name"
+                  @error="(e) => (e.currentTarget.style.visibility = 'hidden')"
+                />
+                <span v-if="professor.exemplares.length > 1" class="pick-card__count pixel">
+                  ×{{ professor.exemplares.length }}
+                </span>
+              </span>
+              <span class="pixel pick-card__name">{{ professor.name }}</span>
+              <span class="pick-card__types">
+                <span
+                  v-for="t in typesOf(professor)"
+                  :key="t.id"
+                  class="pick-card__type"
+                  :style="{ background: t.color }"
+                >
+                  {{ t.icon }} {{ t.label }}
+                </span>
+              </span>
+            </button>
+          </li>
+        </ul>
+      </template>
+
+      <!-- Etapa 2: qual exemplar daquele professor (tipos + deck) -->
+      <template v-else>
+        <div class="pick__subhead">
+          <button class="pick__back pixel" type="button" @click="aberto = null">← Trocar</button>
+          <span class="pixel pick__subtitle">{{ aberto.name }}</span>
+        </div>
+
+        <p class="pick__hint">
+          Cada exemplar tem tipos e golpes próprios, sorteados quando você o capturou.
+        </p>
+
+        <div v-for="grupo in grupos" :key="grupo.typeKey" class="exemplares">
+          <div class="pick-card__types exemplares__types">
+            <span
+              v-for="t in typeInfos(grupo.types)"
+              :key="t.id"
+              class="pick-card__type"
+              :style="{ background: t.color }"
+            >
+              {{ t.icon }} {{ t.label }}
+            </span>
+          </div>
+
           <button
-            class="pick-card"
+            v-for="(exemplar, i) in grupo.items"
+            :key="exemplar.id"
+            class="exemplar-card"
             type="button"
             :disabled="battle.pvp.youPicked"
-            @click="choose(professor)"
+            @click="choose(exemplar)"
           >
-            <span class="pick-card__avatar">
-              <img
-                :src="`/professors/${professor.slug}-face.png`"
-                :alt="professor.name"
-                @error="(e) => (e.currentTarget.style.visibility = 'hidden')"
-              />
+            <span class="exemplar-card__head">
+              <span class="pixel exemplar-card__idx">{{ i + 1 }}</span>
+              <span class="exemplar-card__hint">Levar para a arena</span>
             </span>
-            <span class="pixel pick-card__name">{{ professor.name }}</span>
-            <span class="pick-card__types">
-              <span
-                v-for="t in typesOf(professor)"
-                :key="t.id"
-                class="pick-card__type"
-                :style="{ background: t.color }"
-              >
-                {{ t.icon }} {{ t.label }}
+            <span class="exemplar-card__moves">
+              <span v-for="m in exemplar.moves" :key="m.id" class="exemplar-card__move">
+                {{ m.name }}<template v-if="m.power"> · {{ m.power }}</template>
               </span>
             </span>
           </button>
-        </li>
-      </ul>
+        </div>
+      </template>
 
       <div class="pick__status">
         <p v-if="battle.pvp.youPicked" class="pixel pick__waiting">
@@ -212,12 +291,28 @@ async function choose(professor) {
 }
 
 .pick-card__avatar {
+  position: relative;
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  overflow: hidden;
   border: 2px solid var(--yellow);
   background: var(--bg-surface);
+}
+
+.pick-card__avatar img {
+  border-radius: 50%;
+}
+
+.pick-card__count {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 8px;
+  color: var(--text-primary);
+  background: var(--yellow);
+  border: 1px solid var(--bg-deep);
 }
 
 .pick-card__avatar img {
@@ -242,6 +337,106 @@ async function choose(professor) {
   color: white;
   border-radius: 999px;
   padding: 2px 8px;
+}
+
+/* ── Etapa 2: exemplares ──────────────────────────────────────────────────── */
+.pick__subhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pick__back {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 7px 12px;
+  font-size: 8px;
+}
+
+.pick__back:active {
+  transform: translateY(1px);
+}
+
+.pick__subtitle {
+  font-size: 12px;
+  color: var(--yellow);
+}
+
+.exemplares {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.exemplares__types {
+  justify-content: flex-start;
+}
+
+.exemplar-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  text-align: left;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.exemplar-card:not(:disabled):active {
+  transform: scale(0.99);
+  border-color: var(--yellow);
+}
+
+.exemplar-card:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.exemplar-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exemplar-card__idx {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--yellow);
+  font-size: 8px;
+}
+
+.exemplar-card__hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.exemplar-card__moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.exemplar-card__move {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
 }
 
 .pick__status {
