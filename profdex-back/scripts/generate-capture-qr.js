@@ -1,15 +1,28 @@
 /**
- * Recria os QR Codes de captura: gera tokens novos, salva apenas o hash no
- * banco e escreve os PNG/SVG prontos para impressão em `qr-out/`.
+ * Gera as fichas de QR de captura.
+ *
+ * Uma ficha vale UMA captura: quem escanear primeiro leva o exemplar e o papel
+ * morre. Por isso a tiragem tem quantidade — `--copies=3` imprime três fichas
+ * de cada combinação de tipos.
+ *
+ * O professor não tem um QR só: tem um por combinação dos tipos dele. Eron
+ * (Arquitetura + IA/ML) rende três — só Arquitetura, só IA/ML, e as duas — de
+ * modo que existe "o Eron de IA/ML" como exemplar distinto na coleção.
+ * As combinações vêm da tabela `professor_variants`, populada pelo seed a
+ * partir de PROFESSOR_TYPES (ver src/battle/engine/professor-types.ts).
  *
  * Uso:
- *   node scripts/generate-capture-qr.js --yes                  # todos os professores
- *   node scripts/generate-capture-qr.js --yes --only=gustavo   # apenas um
- *   node scripts/generate-capture-qr.js                        # simulação (não grava)
+ *   node scripts/generate-capture-qr.js                          # simulação: só mostra o plano
+ *   node scripts/generate-capture-qr.js --copies=3 --yes         # 3 fichas de cada combinação
+ *   node scripts/generate-capture-qr.js --only=eron --yes        # só um professor
+ *   node scripts/generate-capture-qr.js --revoke-unredeemed --yes
  *
- * O token vai em texto puro só para dentro do QR e do `qr-out/tokens.txt`.
+ * Cada execução é uma TIRAGEM NOVA e não invalida as fichas anteriores que
+ * ainda não foram resgatadas — imprimir mais não pode inutilizar o que já está
+ * na mão dos alunos. Use --revoke-unredeemed quando quiser mesmo recomeçar.
+ *
+ * O token em texto puro só existe dentro do QR e do `tokens.txt` da tiragem.
  * No banco fica apenas `sha256(token)` — ver src/captures/capture-token.ts.
- * Gerar de novo invalida o QR anterior daquele professor.
  */
 
 const fs = require('node:fs')
@@ -23,11 +36,40 @@ const db = new PrismaClient({
   datasources: { db: { url: requireDatabaseUrl() } },
 })
 
-const OUT_DIR = path.resolve(__dirname, '..', 'qr-out')
 const args = process.argv.slice(2)
 const commit = args.includes('--yes')
-const onlyArg = args.find((a) => a.startsWith('--only='))
-const only = onlyArg ? onlyArg.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean) : null
+const revoke = args.includes('--revoke-unredeemed')
+
+function flag(name, fallback = null) {
+  const hit = args.find((a) => a.startsWith(`--${name}=`))
+  return hit ? hit.slice(name.length + 3) : fallback
+}
+
+const ROOT_DIR = path.resolve(__dirname, '..', flag('out', 'qr-out'))
+const onlyArg = flag('only')
+const only = onlyArg ? onlyArg.split(',').map((s) => s.trim()).filter(Boolean) : null
+
+const copies = Number(flag('copies', '1'))
+if (!Number.isInteger(copies) || copies < 1 || copies > 200) {
+  console.error('✗ --copies precisa ser um inteiro entre 1 e 200')
+  process.exit(1)
+}
+
+// Rótulo só para a folha impressa. Os ids canônicos (e a roda de vantagens)
+// estão em src/battle/engine/types.ts; aqui é apresentação.
+const TYPE_LABEL = {
+  logica: 'Lógica',
+  calculo: 'Cálculo',
+  'ia-ml': 'IA/ML',
+  robotica: 'Robótica',
+  arquitetura: 'Arquitetura',
+  npi: 'NPI',
+  redes: 'Redes',
+  banco: 'Banco',
+  algoritmos: 'Algoritmos',
+}
+
+const labelFor = (types) => types.map((t) => TYPE_LABEL[t] ?? t).join(' + ')
 
 // 32 bytes em base64url = 43 caracteres [A-Za-z0-9_-], dentro das regras de
 // CaptureByTokenDto (mín. 32, máx. 256, sem caracteres fora do conjunto).
@@ -49,14 +91,15 @@ function describeDatabase() {
   }
 }
 
-function printSheet(entries) {
+function printSheet(entries, batch) {
   const cards = entries
     .map(
-      ({ name, slug }) => `    <figure class="card">
-      <img src="${slug}.png" alt="QR Code de captura do professor ${name}" />
+      (e) => `    <figure class="card">
+      <img src="${e.file}.png" alt="QR Code de captura: ${e.professorName} de ${labelFor(e.types)}" />
       <figcaption>
-        <strong>Prof. ${name}</strong>
-        <span>Aponte o scanner do ProfDex para capturar</span>
+        <strong>Prof. ${e.professorName}</strong>
+        <span class="types">${labelFor(e.types)}</span>
+        <span class="hint">Ficha ${e.copy}/${copies} — vale uma captura</span>
       </figcaption>
     </figure>`,
     )
@@ -66,7 +109,7 @@ function printSheet(entries) {
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <title>ProfDex — QR Codes de captura</title>
+  <title>ProfDex — fichas de captura (${batch})</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; padding: 24px; font-family: system-ui, sans-serif; background: #fff; color: #111; }
@@ -77,13 +120,14 @@ function printSheet(entries) {
     .card img { width: 100%; height: auto; display: block; }
     figcaption { margin-top: 12px; display: flex; flex-direction: column; gap: 4px; }
     figcaption strong { font-size: 18px; }
-    figcaption span { font-size: 12px; color: #555; }
+    .types { font-size: 14px; font-weight: 600; color: #111; }
+    .hint { font-size: 12px; color: #555; }
     @media print { body { padding: 0; } p.sub, h1 { display: none; } }
   </style>
 </head>
 <body>
-  <h1>ProfDex — QR Codes de captura</h1>
-  <p class="sub">Gerado em ${new Date().toLocaleString('pt-BR')}. Imprima e distribua.</p>
+  <h1>ProfDex — fichas de captura</h1>
+  <p class="sub">Tiragem ${batch} — ${entries.length} fichas, ${copies} por combinação de tipos. Cada ficha vale uma única captura.</p>
   <div class="grid">
 ${cards}
   </div>
@@ -93,24 +137,49 @@ ${cards}
 }
 
 async function main() {
-  const where = only ? { slug: { in: only } } : {}
-  const professors = await db.professor.findMany({
-    where,
-    select: { id: true, name: true, slug: true },
-    orderBy: { slug: 'asc' },
+  const variants = await db.professorVariant.findMany({
+    where: only ? { professor: { slug: { in: only } } } : {},
+    select: {
+      id: true,
+      typeKey: true,
+      types: true,
+      professor: { select: { name: true, slug: true } },
+    },
+    orderBy: [{ professor: { slug: 'asc' } }, { typeKey: 'asc' }],
   })
 
-  if (professors.length === 0) {
-    throw new Error(only ? `Nenhum professor com slug: ${only.join(', ')}` : 'Nenhum professor no banco')
+  if (variants.length === 0) {
+    throw new Error(
+      only
+        ? `Nenhuma variante para: ${only.join(', ')}`
+        : 'Nenhuma variante no banco — rode `npm run db:seed` primeiro',
+    )
   }
 
   if (only) {
-    const missing = only.filter((slug) => !professors.some((p) => p.slug === slug))
-    if (missing.length) throw new Error(`Slug inexistente: ${missing.join(', ')}`)
+    const achados = new Set(variants.map((v) => v.professor.slug))
+    const faltando = only.filter((slug) => !achados.has(slug))
+    if (faltando.length) throw new Error(`Slug sem variante: ${faltando.join(', ')}`)
   }
 
-  console.log(`Banco     : ${describeDatabase()}`)
-  console.log(`Professores: ${professors.map((p) => p.slug).join(', ')}`)
+  console.log(`Banco : ${describeDatabase()}`)
+  console.log(`Plano : ${copies} ficha(s) por combinação\n`)
+
+  let slugAtual = null
+  for (const v of variants) {
+    if (v.professor.slug !== slugAtual) {
+      slugAtual = v.professor.slug
+      console.log(`  ${v.professor.name} (${slugAtual})`)
+    }
+    console.log(`    ${labelFor(v.types).padEnd(28)} ×${copies}`)
+  }
+  console.log(`\nTotal : ${variants.length * copies} QR Codes`)
+
+  if (revoke) {
+    const alvo = { variantId: { in: variants.map((v) => v.id) }, redeemedAt: null }
+    const pendentes = await db.captureToken.count({ where: alvo })
+    console.log(`Revoga: ${pendentes} ficha(s) ainda não resgatada(s)`)
+  }
 
   if (!commit) {
     console.log('\nSimulação — nada foi gravado e nenhum arquivo foi criado.')
@@ -118,21 +187,37 @@ async function main() {
     return
   }
 
-  const entries = professors.map((p) => {
-    const token = generateToken()
-    return { ...p, token, tokenHash: hash(token), payload: `capture:${token}` }
-  })
+  const batch = new Date().toISOString().replace(/[:.]/g, '-')
+  const outDir = path.join(ROOT_DIR, batch)
+
+  const entries = []
+  for (const v of variants) {
+    for (let copy = 1; copy <= copies; copy++) {
+      const token = generateToken()
+      entries.push({
+        variantId: v.id,
+        professorName: v.professor.name,
+        professorSlug: v.professor.slug,
+        types: v.types,
+        copy,
+        file: `${v.professor.slug}--${v.typeKey}--${copy}`,
+        token,
+        tokenHash: hash(token),
+        payload: `capture:${token}`,
+      })
+    }
+  }
 
   // Arquivos primeiro: se o banco falhar, ninguém fica com QR impresso sem par.
-  fs.mkdirSync(OUT_DIR, { recursive: true })
+  fs.mkdirSync(outDir, { recursive: true })
 
   for (const entry of entries) {
-    await QRCode.toFile(path.join(OUT_DIR, `${entry.slug}.png`), entry.payload, {
+    await QRCode.toFile(path.join(outDir, `${entry.file}.png`), entry.payload, {
       errorCorrectionLevel: 'M',
       margin: 2,
       width: 800,
     })
-    await QRCode.toFile(path.join(OUT_DIR, `${entry.slug}.svg`), entry.payload, {
+    await QRCode.toFile(path.join(outDir, `${entry.file}.svg`), entry.payload, {
       errorCorrectionLevel: 'M',
       margin: 2,
       type: 'svg',
@@ -140,33 +225,40 @@ async function main() {
   }
 
   fs.writeFileSync(
-    path.join(OUT_DIR, 'tokens.txt'),
+    path.join(outDir, 'tokens.txt'),
     [
       '# SEGREDO — não versionar, não compartilhar.',
-      `# Gerado em ${new Date().toISOString()}`,
+      `# Tiragem ${batch}`,
       '',
-      ...entries.map((e) => `${e.slug}\t${e.token}`),
+      ...entries.map((e) => `${e.file}\t${e.token}`),
       '',
     ].join('\n'),
     'utf8',
   )
 
-  fs.writeFileSync(path.join(OUT_DIR, 'index.html'), printSheet(entries), 'utf8')
+  fs.writeFileSync(path.join(outDir, 'index.html'), printSheet(entries, batch), 'utf8')
 
-  // Atualização atômica: ou todos os professores recebem o hash novo, ou nenhum.
-  await db.$transaction(
-    entries.map((e) =>
-      db.professor.update({ where: { id: e.id }, data: { captureTokenHash: e.tokenHash } }),
-    ),
-  )
+  // Ou a tiragem inteira entra no banco, ou nenhuma ficha dela vale — senão
+  // sobra papel impresso que o app não reconhece.
+  await db.$transaction(async (tx) => {
+    if (revoke) {
+      await tx.captureToken.deleteMany({
+        where: { variantId: { in: variants.map((v) => v.id) }, redeemedAt: null },
+      })
+    }
+    await tx.captureToken.createMany({
+      data: entries.map((e) => ({
+        variantId: e.variantId,
+        tokenHash: e.tokenHash,
+        batch,
+      })),
+    })
+  })
 
-  console.log('')
-  for (const e of entries) {
-    console.log(`✓ ${e.name.padEnd(12)} ${e.slug}.png / ${e.slug}.svg   hash ${e.tokenHash.slice(0, 12)}…`)
-  }
-  console.log(`\nArquivos em: ${OUT_DIR}`)
-  console.log('Folha de impressão: qr-out/index.html')
-  console.log('Tokens em texto puro: qr-out/tokens.txt (guarde em local seguro e apague daqui)')
+  console.log(`\n✓ ${entries.length} fichas gravadas`)
+  console.log(`Arquivos em: ${outDir}`)
+  console.log('Folha de impressão: index.html')
+  console.log('Tokens em texto puro: tokens.txt (guarde em local seguro e apague daqui)')
 }
 
 main()

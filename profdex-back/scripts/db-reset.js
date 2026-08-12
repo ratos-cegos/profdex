@@ -12,9 +12,9 @@
  *   npm run db:reset            # banco local: apaga e recria
  *   npm run db:reset -- --yes   # obrigatório quando o banco NÃO é local
  *
- * NÃO tem dry-run nem volta: o que estava no banco acabou. Os tokens de captura
- * dos professores também somem — os QR Codes impressos param de valer até
- * `scripts/set-capture-tokens.js` rodar de novo.
+ * NÃO tem dry-run nem volta: o que estava no banco acabou. As fichas de captura
+ * também somem — os QR Codes impressos param de valer até `npm run qr:generate`
+ * tirar uma tiragem nova.
  *
  * No Windows, pare o `npm run start:dev` antes: o servidor mantém o
  * `query_engine-windows.dll.node` aberto e o `prisma generate` do meio do reset
@@ -109,11 +109,10 @@ async function main() {
   console.log(
     '\n✅ Banco recriado do zero.\n' +
       `   Login de administração: matrícula "admin", senha ${senha}.\n\n` +
-      'ℹ️  Os professores voltaram SEM token de captura: os QR Codes antigos não\n' +
-      '   funcionam mais. Para regerar:\n' +
-      '     CAPTURE_TOKEN_MARIO=<token> CAPTURE_TOKEN_ERON=<token> \\\n' +
-      '     CAPTURE_TOKEN_GUSTAVO=<token> node scripts/set-capture-tokens.js\n' +
-      '     npm run qr:generate',
+      'ℹ️  Os professores voltaram SEM nenhuma ficha de captura: os QR Codes\n' +
+      '   antigos não funcionam mais. Para tirar uma tiragem nova:\n' +
+      '     npm run qr:generate -- --copies=3        # simulação\n' +
+      '     npm run qr:generate -- --copies=3 --yes  # gera de verdade',
   );
 }
 

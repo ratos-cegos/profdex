@@ -8,9 +8,10 @@
  * Uso (na pasta profdex-back, com o backend no ar):
  *   npm run pvp:smoke
  *
- * Cria usuários descartáveis (smoke-*) e capturas para eles no banco local.
+ * Cria usuários descartáveis (smoke-*) e resgata fichas de QR para eles.
  */
 const { io } = require('socket.io-client')
+const { createHash, randomBytes } = require('node:crypto')
 const { PrismaClient } = require('@prisma/client')
 const bcrypt = require('@node-rs/bcrypt')
 const { requireDatabaseUrl } = require('./db-url')
@@ -70,19 +71,66 @@ const command = (socket, event, payload) =>
 
 const attackOf = (moves) => moves.find((m) => m.category === 'ataque' && m.power) ?? moves[0]
 
+/**
+ * Imprime uma ficha de QR só para esta conta e a resgata pela rota real. Vale
+ * mais do que inserir a captura direto no banco: passa pelo resgate de uso
+ * único e recebe de volta o exemplar com o deck que o servidor sorteou.
+ */
+async function capturar(conta, variant) {
+  const token = randomBytes(32).toString('base64url')
+  await prisma.captureToken.create({
+    data: {
+      variantId: variant.id,
+      tokenHash: createHash('sha256').update(token, 'utf8').digest('hex'),
+      batch: 'pvp-smoke',
+    },
+  })
+
+  const res = await fetch(`${API}/captures/by-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', cookie: conta.cookie },
+    body: JSON.stringify({ token }),
+  })
+  if (res.status !== 201 && res.status !== 200) {
+    fail(`captura ${conta.user.name}: HTTP ${res.status}`)
+  }
+  const capture = await res.json()
+  if (!capture.moves || capture.moves.length !== 4) {
+    fail(`captura ${conta.user.name}: deck com ${capture.moves?.length} golpes`)
+  }
+
+  // A ficha vale uma vez só: o segundo resgate tem que bater em 409.
+  const repetido = await fetch(`${API}/captures/by-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', cookie: conta.cookie },
+    body: JSON.stringify({ token }),
+  })
+  if (repetido.status !== 409) {
+    fail(`ficha reutilizável: segundo resgate devolveu HTTP ${repetido.status}`)
+  }
+
+  return capture
+}
+
 async function main() {
-  const professors = await prisma.professor.findMany({ take: 2, orderBy: { slug: 'asc' } })
-  if (professors.length < 2) fail('banco sem professores — rode o seed antes')
+  const variants = await prisma.professorVariant.findMany({
+    orderBy: [{ professor: { slug: 'asc' } }, { typeKey: 'asc' }],
+    include: { professor: { select: { slug: true } } },
+  })
+  if (variants.length < 2) fail('banco sem variantes — rode o seed antes')
+  // Variantes de professores diferentes, para a batalha não ser espelhada.
+  const varA = variants[0]
+  const varB = variants.find((v) => v.professor.slug !== varA.professor.slug)
+  if (!varB) fail('banco com um professor só — rode o seed antes')
 
   const a = await criarConta('Smoke Ana')
   const b = await criarConta('Smoke Bia')
-  await prisma.capture.createMany({
-    data: [
-      { userId: a.user.id, professorId: professors[0].id },
-      { userId: b.user.id, professorId: professors[1].id },
-    ],
-  })
-  ok(`capturas: Ana→${professors[0].slug}, Bia→${professors[1].slug}`)
+  const capA = await capturar(a, varA)
+  const capB = await capturar(b, varB)
+  ok(
+    `capturas: Ana→${varA.professor.slug} (${varA.typeKey}), ` +
+      `Bia→${varB.professor.slug} (${varB.typeKey}); ficha única confirmada`,
+  )
 
   const sockA = connect(a.cookie)
   const sockB = connect(b.cookie)
@@ -103,13 +151,23 @@ async function main() {
 
   const beginA = waitEvent(sockA, 'battle:begin')
   const beginB = waitEvent(sockB, 'battle:begin')
-  ack = await command(sockA, 'battle:pick', { professorId: professors[0].id })
+  ack = await command(sockA, 'battle:pick', { captureId: capA.id })
   if (!ack.ok) fail('pick A: ' + ack.message)
-  ack = await command(sockB, 'battle:pick', { professorId: professors[1].id })
+  ack = await command(sockB, 'battle:pick', { captureId: capB.id })
   if (!ack.ok) fail('pick B: ' + ack.message)
   let stateA = await beginA
   let stateB = await beginB
-  ok(`batalha: ${stateA.you.professor.name} vs ${stateA.foe.professor.name}`)
+
+  // A arena tem que receber o deck e os tipos gravados no exemplar, não um
+  // sorteio novo — é essa a diferença que o resgate por ficha introduziu.
+  const idsA = stateA.you.moves.map((m) => m.id).join(',')
+  if (idsA !== capA.moves.map((m) => m.id).join(',')) {
+    fail('deck da arena diferente do gravado na captura')
+  }
+  if (stateA.you.types.join(',') !== varA.types.join(',')) {
+    fail('tipos da arena diferentes dos da variante capturada')
+  }
+  ok(`batalha: ${stateA.you.professor.name} vs ${stateA.foe.professor.name} (deck e tipos do exemplar)`)
 
   let finished = null
   for (let round = 1; round <= 60 && !finished; round++) {

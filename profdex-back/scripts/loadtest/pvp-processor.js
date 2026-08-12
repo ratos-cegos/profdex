@@ -58,16 +58,16 @@ const prisma = new PrismaClient();
 
 let ready = null;
 
-/** Professores disponíveis + um hash de senha reaproveitado por todas as contas. */
+/** Variantes disponíveis + um hash de senha reaproveitado por todas as contas. */
 function prepare() {
   if (!ready) {
     ready = (async () => {
-      const professors = await prisma.professor.findMany({
-        select: { id: true, slug: true },
-        orderBy: { slug: 'asc' },
+      const professors = await prisma.professorVariant.findMany({
+        select: { id: true, professorId: true, typeKey: true },
+        orderBy: { typeKey: 'asc' },
       });
       if (professors.length < 2) {
-        throw new Error('Banco sem professores — rode o seed antes (npm run db:seed).');
+        throw new Error('Banco sem variantes — rode o seed antes (npm run db:seed).');
       }
       // Um único hash para todas as contas de teste: elas nunca fazem login
       // (o JWT é assinado aqui), então o valor só precisa existir na coluna.
@@ -78,10 +78,16 @@ function prepare() {
   return ready;
 }
 
-/** Cria uma conta descartável com uma captura — pronta para `battle:pick`. */
+/**
+ * Cria uma conta descartável com um exemplar — pronta para `battle:pick`.
+ *
+ * O exemplar nasce sem deck: o servidor sorteia um no pick para exemplares sem
+ * moveset gravado. Aqui interessa a vazão do PvP, não o resgate do QR (esse
+ * caminho é o do pvp-smoke), e evita ter que traduzir moves.ts para JS.
+ */
 async function makeUser(label) {
   const { professors, passwordHash } = await prepare();
-  const professor = professors[Math.floor(Math.random() * professors.length)];
+  const variant = professors[Math.floor(Math.random() * professors.length)];
   const suffix = `${Date.now().toString(36)}${crypto.randomBytes(4).toString('hex')}`;
 
   const user = await prisma.user.create({
@@ -89,9 +95,11 @@ async function makeUser(label) {
       matricula: `load${suffix}`,
       name: `Carga ${label} ${suffix.slice(-4)}`,
       password: passwordHash,
-      captures: { create: { professorId: professor.id } },
+      captures: {
+        create: { professorId: variant.professorId, variantId: variant.id },
+      },
     },
-    select: { id: true, matricula: true, name: true },
+    select: { id: true, matricula: true, name: true, captures: { select: { id: true } } },
   });
 
   const token = jwt.sign(
@@ -99,7 +107,7 @@ async function makeUser(label) {
     JWT_SECRET,
     { expiresIn: '15m' },
   );
-  return { ...user, professorId: professor.id, cookie: `${SESSION_COOKIE}=${token}` };
+  return { ...user, captureId: user.captures[0].id, cookie: `${SESSION_COOKIE}=${token}` };
 }
 
 // ── Utilidades de socket ────────────────────────────────────────────────────
@@ -236,8 +244,8 @@ async function runBattle(context, events, done) {
     const beginA = waitEvent(sockA, 'battle:begin');
     const beginB = waitEvent(sockB, 'battle:begin');
     const [pickAckA, pickAckB] = await Promise.all([
-      command(sockA, 'battle:pick', { professorId: a.professorId }),
-      command(sockB, 'battle:pick', { professorId: b.professorId }),
+      command(sockA, 'battle:pick', { captureId: a.captureId }),
+      command(sockB, 'battle:pick', { captureId: b.captureId }),
     ]);
     if (!pickAckA.ok) throw new Error(`battle:pick A — ${pickAckA.message}`);
     if (!pickAckB.ok) throw new Error(`battle:pick B — ${pickAckB.message}`);
