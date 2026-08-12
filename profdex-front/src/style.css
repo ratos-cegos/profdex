@@ -37,6 +37,16 @@
   --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --radius: 8px;
   --radius-lg: 16px;
+
+  /* Medidas da navegação — ficam aqui, e não nas views, para que a barra
+     inferior e as abas superiores não possam divergir de rota para rota.
+     A altura acompanha o ícone: ícone + gap + rótulo + padding vertical. */
+  --nav-height: 64px;
+  --nav-pad: 10px;
+  --nav-icon: 34px;
+  --tab-icon: 30px;
+  /* Disco de ícone dos botões grandes da lista de batalha. */
+  --option-icon: 56px;
 }
 
 *, *::before, *::after {
