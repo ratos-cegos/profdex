@@ -55,9 +55,8 @@ Entregue (tudo já commitado):
   de SQLite para **PostgreSQL**. O `.env` local ainda tem `DATABASE_URL="file:./dev.db"`,
   então o Prisma quebra no boot com `P1012` ("URL must start with postgresql://").
   O código **compila** (verificado com `nest build`); é só configuração de banco.
-  Decisão pendente do usuário — ver seção "⚠️ Banco de dados" em [BATALHA.md](BATALHA.md):
-  seguir no Postgres (preencher `.env` + `db:migrate`/`db:seed`) ou reverter para SQLite
-  para dev offline.
+  **Resolvido:** ficou o Postgres. Para dev local há um `docker-compose.yml` em
+  `profdex-back/` (`npm run db:up`) — o `dev.db` foi removido do repositório.
 - Front (Vite) roda normalmente.
 
 ## Trabalho paralelo do time (fora desta conversa, já commitado)

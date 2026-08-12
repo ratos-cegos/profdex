@@ -1,98 +1,139 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# ProfDex — backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API NestJS + Prisma que atende o app de WebAR: autenticação, catálogo de
+professores, captura por QR e o **PvP ranqueado** (lobby, convites e batalhas
+por WebSocket).
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Requisitos
 
-## Description
+- Node.js 20+
+- Um banco **PostgreSQL** — Supabase (usado no deploy) ou local via Docker
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## Configuração
 
 ```bash
-$ npm install
+npm install
+cp .env.example .env    # preencha os valores
+npx prisma migrate deploy
+npm run db:seed         # professores, 90 questões do quiz e a conta admin
 ```
 
-## Compile and run the project
+O seed cria a conta de administração **`admin` / `123456`** (senha
+sobrescrevível por `ADMIN_PASSWORD` no `.env`). Para jogar o banco fora e
+recomeçar do zero, `npm run db:reset` — ver [Manutenção do banco](#manutenção-do-banco).
+
+> **Cadastro é só pelo Google.** Não existe `POST /auth/register`: a conta nasce
+> em `/auth/google` e é concluída com matrícula, nome e senha — que passam a
+> valer para o login normal. Ver [`docs/AUTENTICACAO.md`](../docs/AUTENTICACAO.md).
+
+### Banco local via Docker
+
+Não é preciso Supabase para desenvolver. O [`docker-compose.yml`](docker-compose.yml)
+sobe um Postgres 16 em `localhost:55432` (porta escolhida para não conflitar com
+um Postgres já instalado na máquina):
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm run db:up                              # sobe e espera ficar saudável
+# no .env, use as duas linhas comentadas em "Postgres local via Docker":
+#   DATABASE_URL="postgresql://profdex:profdex@localhost:55432/profdex"
+#   DIRECT_URL="postgresql://profdex:profdex@localhost:55432/profdex"
+npx prisma migrate deploy && npm run db:seed
 ```
 
-## Run tests
+Com o banco local no ar, `npm run db:reset` apaga tudo e reconstrói (migrations
++ seed completo) num comando só.
+
+`npm run db:down` para o container preservando os dados; `npm run db:nuke`
+descarta o volume junto (útil para recomeçar do zero).
+
+Como não há pgbouncer aqui, `DATABASE_URL` e `DIRECT_URL` são iguais e sem
+`?pgbouncer=true` — o resto do app não muda, o `schema.prisma` já é PostgreSQL.
+
+### Variáveis de ambiente
+
+| Variável | Obrigatória | Para que serve |
+|---|---|---|
+| `DATABASE_URL` | ✅ | Conexão usada em runtime (no Supabase, via pgbouncer na porta 6543). |
+| `DIRECT_URL` | ✅ | Conexão direta (porta 5432), usada **só** pelo Prisma Migrate. Sem ela, `prisma validate` falha com `P1012`. Com Postgres local é igual à `DATABASE_URL`. |
+| `JWT_SECRET` | ✅ | Assina o cookie de sessão **e** valida o handshake do WebSocket de batalha. |
+| `CORS_ORIGINS` | ✅ | Origens liberadas no HTTP e no WebSocket, separadas por vírgula. |
+| `PORT` | — | Padrão `3000`. |
+| `LOAD_*` | — | Só para o teste de carga. Ver [`scripts/loadtest/`](scripts/loadtest/README.md). |
+
+> **Atenção:** o schema exige PostgreSQL (`provider = "postgresql"` em
+> `schema.prisma` e em `migrations/migration_lock.toml`). Um `.env` antigo
+> apontando para `file:./dev.db` (SQLite) **não funciona** — é uma pegadinha
+> comum em máquinas que acompanharam a migração.
+
+## Rodando
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run start:dev     # watch
+npm run start:prod    # a partir de dist/
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Testes
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm test              # unitários
+npm run test:e2e      # end-to-end
+npm run test:cov      # cobertura
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### PvP
 
-## Resources
+```bash
+npm run pvp:smoke     # fluxo completo de batalha contra um servidor no ar
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+Percorre registro → lobby → convite → aceite → pick às cegas → turnos → Elo →
+ranking → cooldown, tudo pela rede. Exige o servidor rodando e o seed aplicado.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### Teste de carga
 
-## Support
+```bash
+npx artillery run scripts/loadtest/pvp-load.yml
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+Centenas de conexões simultâneas no lobby e em batalha. Documentação em
+[`scripts/loadtest/README.md`](scripts/loadtest/README.md); a análise dos
+gargalos que ele investiga está em [`docs/CARGA-PVP.md`](../docs/CARGA-PVP.md).
 
-## Stay in touch
+## Manutenção do banco
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```bash
+npm run db:migrate                                    # cria migration (dev)
+npm run db:studio                                     # inspeção visual
+npm run db:reset                                      # APAGA tudo e recria do zero
+npm run db:reset -- --yes                             # idem, contra banco não-local
+npm run db:reset-ranking                              # prévia (não altera nada)
+npm run db:reset-ranking -- --yes                     # zera ranking e batalhas
+npm run db:reset-ranking -- --yes --purge-test-users  # + remove contas de teste
+npm run db:set-admin                                  # lista administradores
+npm run db:set-admin -- 202312345                     # promove a admin
+npm run db:seed                                       # professores, quiz e admin
+npm run db:seed-quiz                                  # só as questões do quiz
+npm run qr:generate -- --copies=3                     # simula a tiragem de fichas
+npm run qr:generate -- --copies=3 --yes               # gera os QR Codes
+```
 
-## License
+`db:reset` não tem dry-run nem volta: derruba as tabelas, reaplica as migrations
+e roda o seed completo, deixando o login `admin` / `123456` pronto. Ele recusa
+hosts que não sejam locais sem `--yes`, e os professores voltam sem nenhuma
+ficha de captura — os QR Codes impressos precisam ser regerados. Detalhes em
+[`docs/BANCO.md`](../docs/BANCO.md#recomeçar-do-zero).
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+`--purge-test-users` só apaga contas com prefixo de teste (`smoke`, `bat`,
+`inv`, `proxy`, `dbg`, `load`). Contas reais nunca são removidas — apenas têm a
+pontuação zerada.
+
+## Documentação
+
+- [`docs/BATALHA-PVP.md`](../docs/BATALHA-PVP.md) — regras do PvP, Elo, tiers
+- [`docs/CARGA-PVP.md`](../docs/CARGA-PVP.md) — análise de carga do multiplayer
+- [`docs/METRICAS.md`](../docs/METRICAS.md) — métricas de uso e painel admin
+- [`docs/QUIZ.md`](../docs/QUIZ.md) — quiz de bancada do evento
+- [`docs/AUTENTICACAO.md`](../docs/AUTENTICACAO.md) — login Google, papéis e reset de senha
+- [`docs/BUG-BATALHA-TRAVANDO.md`](../docs/BUG-BATALHA-TRAVANDO.md) — travamento da arena no iOS
+- [`docs/GUIA-TIPOS.md`](../docs/GUIA-TIPOS.md) — tipos e efetividade
+- [`docs/HANDOFF-DEPLOY-RAILWAY-VERCEL.md`](../docs/HANDOFF-DEPLOY-RAILWAY-VERCEL.md) — deploy

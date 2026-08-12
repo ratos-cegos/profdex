@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
@@ -35,6 +35,30 @@ type Ack =
   | { ok: true; [key: string]: unknown }
   | { ok: false; message: string };
 
+/**
+ * Sala de quem está COM A LISTA DE JOGADORES ABERTA.
+ *
+ * Antes, todo evento de presença ia para o namespace inteiro: com N online, uma
+ * entrada custava N mensagens e uma rodada de batalha custava 4N (dois status no
+ * início, dois no fim). O custo crescia com o quadrado da população — e o pior
+ * caso era a reconexão em massa depois de um blip de Wi-Fi.
+ *
+ * Como a UI só mostra a lista dentro de um modal, quem está com ele fechado não
+ * precisa de nada disso. Entra na sala no `lobby:subscribe` e sai no
+ * `lobby:unsubscribe`; fora dela o cliente recebe apenas o total, e ainda
+ * assim com throttle. Ver docs/CARGA-PVP.md.
+ */
+const LOBBY_ROOM = 'lobby';
+
+/** Teto de linhas por resposta de lista/busca — o resto se acha pela busca. */
+const LOBBY_PAGE_SIZE = 50;
+
+/** Janela mínima entre dois broadcasts de contagem para o namespace inteiro. */
+const COUNT_THROTTLE_MS = 2000;
+
+/** Sala privada de um usuário — cobre todas as abas dele com um emit só. */
+const userRoom = (userId: string) => `user:${userId}`;
+
 // `path` fica sob /api porque o cookie de sessão é emitido com `path: '/api'`
 // — no path padrão (/socket.io) o navegador nem enviaria o cookie e todo
 // handshake cairia como anônimo. De quebra, em dev o proxy `/api` do Vite já
@@ -60,11 +84,16 @@ type Ack =
     credentials: true,
   },
 })
-export class BattleGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class BattleGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
+{
   @WebSocketServer()
   server!: Server;
 
   private readonly logger = new Logger(BattleGateway.name);
+
+  /** Agrupa os broadcasts de contagem — ver scheduleCountBroadcast. */
+  private countTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly jwt: JwtService,
@@ -83,6 +112,12 @@ export class BattleGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
+  /** Sem isso o timer pendente segura o processo no desligamento. */
+  onModuleDestroy(): void {
+    if (this.countTimer) clearTimeout(this.countTimer);
+    this.countTimer = null;
+  }
+
   // ── Conexão / presença ────────────────────────────────────────────────────
 
   handleConnection(client: Socket) {
@@ -98,14 +133,20 @@ export class BattleGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     (client.data as { user?: SocketUser }).user = user;
+    // Sala própria: emitToUser vira um emit só, mesmo com várias abas abertas.
+    void client.join(userRoom(user.id));
     const { firstSocket } = this.presence.join(client.id, user);
 
-    client.emit('lobby:snapshot', { users: this.presence.snapshot() });
+    // Só o total. A lista completa custa O(N) por conexão e é o que fazia a
+    // reconexão em massa derrubar o servidor — ela agora só vai para quem
+    // pedir explicitamente (lobby:subscribe).
+    client.emit('lobby:count', { total: this.presence.count() });
     if (firstSocket) {
-      client.broadcast.emit('lobby:update', {
+      this.server.to(LOBBY_ROOM).emit('lobby:update', {
         type: 'join',
         user: this.presence.getUser(user.id),
       });
+      this.scheduleCountBroadcast();
     }
 
     // Reconexão no meio de uma batalha: restaura o status (o join acima entrou
@@ -126,7 +167,11 @@ export class BattleGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const { lastSocket } = this.presence.leave(client.id, user.id);
     if (!lastSocket) return;
 
-    client.broadcast.emit('lobby:update', { type: 'leave', userId: user.id });
+    this.server.to(LOBBY_ROOM).emit('lobby:update', {
+      type: 'leave',
+      userId: user.id,
+    });
+    this.scheduleCountBroadcast();
 
     // Quem saiu não pode segurar convites: avisa a outra ponta de cada um.
     for (const invite of this.invites.cancelAllFor(user.id)) {
@@ -137,6 +182,45 @@ export class BattleGateway implements OnGatewayConnection, OnGatewayDisconnect {
         reason: 'offline',
       });
     }
+  }
+
+  // ── Lista de jogadores (só para quem abriu o modal) ───────────────────────
+
+  /** Abriu a lista: entra na sala e já recebe a primeira página. */
+  @SubscribeMessage('lobby:subscribe')
+  onLobbySubscribe(@ConnectedSocket() client: Socket): Ack {
+    const me = this.userOf(client);
+    void client.join(LOBBY_ROOM);
+    return {
+      ok: true,
+      users: this.presence.page(LOBBY_PAGE_SIZE, me.id),
+      total: this.presence.count(),
+    };
+  }
+
+  /** Fechou a lista: para de receber os eventos de presença. */
+  @SubscribeMessage('lobby:unsubscribe')
+  onLobbyUnsubscribe(@ConnectedSocket() client: Socket): Ack {
+    void client.leave(LOBBY_ROOM);
+    return { ok: true };
+  }
+
+  /**
+   * Busca por nome no servidor. Antes o cliente filtrava a lista inteira que já
+   * tinha em mãos — o que só era possível porque recebia todo mundo.
+   */
+  @SubscribeMessage('lobby:search')
+  onLobbySearch(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: unknown,
+  ): Ack {
+    const me = this.userOf(client);
+    const term = this.readString(body, 'term') ?? '';
+    return {
+      ok: true,
+      users: this.presence.search(term, LOBBY_PAGE_SIZE, me.id),
+      total: this.presence.count(),
+    };
   }
 
   // ── Convites ──────────────────────────────────────────────────────────────
@@ -240,9 +324,10 @@ export class BattleGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() body: unknown,
   ): Promise<Ack> {
     const me = this.userOf(client);
-    const professorId = this.readString(body, 'professorId');
-    if (!professorId) return { ok: false, message: 'Escolha inválida.' };
-    return this.rooms.pick(me.id, professorId);
+    // O exemplar, não o professor: é ele que carrega tipos e deck.
+    const captureId = this.readString(body, 'captureId');
+    if (!captureId) return { ok: false, message: 'Escolha inválida.' };
+    return this.rooms.pick(me.id, captureId);
   }
 
   @SubscribeMessage('battle:move')
@@ -293,16 +378,37 @@ export class BattleGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // ── Auxiliares ────────────────────────────────────────────────────────────
 
-  /** Emite para TODOS os sockets (abas) de um usuário. */
+  /**
+   * Emite para TODOS os sockets (abas) de um usuário — um emit só, via sala
+   * privada. Antes era um `.to(socketId).emit()` por aba, e cada chamada
+   * re-serializava o payload do zero.
+   */
   private emitToUser(userId: string, event: string, payload: unknown): void {
-    for (const socketId of this.presence.socketsOf(userId)) {
-      this.server.to(socketId).emit(event, payload);
-    }
+    this.server.to(userRoom(userId)).emit(event, payload);
   }
 
   private setStatus(userId: string, status: PresenceStatus): void {
     if (!this.presence.setStatus(userId, status)) return;
-    this.server.emit('lobby:update', { type: 'status', userId, status });
+    // Só quem está de olho na lista precisa saber que alguém entrou em batalha.
+    this.server.to(LOBBY_ROOM).emit('lobby:update', {
+      type: 'status',
+      userId,
+      status,
+    });
+  }
+
+  /**
+   * O total vai para todo mundo (a tela de batalha mostra "N jogadores" sem
+   * abrir a lista), mas agrupado numa janela: numa rampa de entrada são
+   * centenas de mudanças por segundo, e o número na tela não precisa desse
+   * tanto de precisão.
+   */
+  private scheduleCountBroadcast(): void {
+    if (this.countTimer) return;
+    this.countTimer = setTimeout(() => {
+      this.countTimer = null;
+      this.server.emit('lobby:count', { total: this.presence.count() });
+    }, COUNT_THROTTLE_MS);
   }
 
   /**

@@ -1,0 +1,32 @@
+# Postgres local para desenvolvimento — alternativa ao Supabase.
+#
+#   npm run db:up      # sobe e espera ficar saudável
+#   npm run db:down    # para (os dados ficam no volume)
+#   npm run db:nuke    # para e APAGA os dados
+#
+# A porta é 55432 (e não 5432) de propósito: não conflita com um Postgres já
+# instalado na máquina. As strings de conexão correspondentes estão no
+# .env.example, na seção "Alternativa: Postgres local via Docker".
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: profdex-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: profdex
+      POSTGRES_PASSWORD: profdex
+      POSTGRES_DB: profdex
+    ports:
+      - '55432:5432'
+    volumes:
+      - profdex-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `npm run db:up` usa --wait, que depende deste healthcheck para saber
+      # quando o banco aceita conexões — sem ele o migrate roda cedo demais.
+      test: ['CMD-SHELL', 'pg_isready -U profdex -d profdex']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  profdex-pgdata:

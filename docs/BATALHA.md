@@ -35,15 +35,15 @@ npm run dev:back
 O commit `e0ddd82 (chore(back): configure Prisma PostgreSQL for Railway)` trocou o
 Prisma de SQLite para **PostgreSQL**. Consequências para rodar local:
 - O `profdex-back/.env` precisa de `DATABASE_URL` e `DIRECT_URL` no formato
-  `postgresql://...` (ver `profdex-back/.env.example` — modelo Supabase pooler).
+  `postgresql://...` (ver `profdex-back/.env.example`).
   Um `DATABASE_URL="file:./dev.db"` (SQLite antigo) faz o backend quebrar no boot
   com `PrismaClientInitializationError P1012` ("URL must start with postgresql://").
 - O antigo `dev.db` (SQLite) e o usuário de teste `teste123/senha123` **não valem
   mais** — o banco agora é Postgres e precisa ser migrado/semeado:
   `npm run db:migrate` e `npm run db:seed` (em `profdex-back/`) apontando para o Postgres.
-- Alternativa p/ dev offline: reverter o datasource de `schema.prisma` para
-  `provider = "sqlite"` + `DATABASE_URL="file:./dev.db"` — mas isso desfaz a config
-  de deploy do Railway; combine com o time antes.
+- Para dev offline **não reverta o schema para SQLite**: use o Postgres local do
+  `profdex-back/docker-compose.yml` (`npm run db:up`), que roda o mesmo provider
+  do deploy. Ver "Banco local via Docker" no `profdex-back/README.md`.
 
 ## Arquivos da batalha
 

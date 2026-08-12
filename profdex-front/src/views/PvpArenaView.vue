@@ -1,11 +1,10 @@
 <script setup>
-import '@google/model-viewer'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import BattleHpBar from '../components/BattleHpBar.vue'
 import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
 import { useBattleStore } from '../stores/battle'
-import { modelUrlForProfessor } from '../data/professorModels'
+import { spriteUrlForProfessor } from '../data/professorSprites'
 import { getType } from '../data/types'
 
 // Arena PvP: o servidor resolve tudo; esta tela só envia a intenção de golpe
@@ -29,6 +28,24 @@ let clock = null
 
 const pvp = computed(() => battle.pvp)
 
+// Rede de segurança. O servidor resolve o turno no deadline, então ficar muito
+// além disso sem receber rodada nenhuma significa que as duas pontas
+// divergiram — por perda de pacote, socket morto sem o cliente perceber, ou um
+// bug futuro nosso. Em vez de deixar o jogador olhando botões mortos até o F5,
+// pedimos o estado de volta a quem tem autoridade.
+const RESYNC_GRACE_MS = 5000
+const RESYNC_COOLDOWN_MS = 10000
+let lastResyncAt = 0
+
+function resyncIfStuck() {
+  const p = pvp.value
+  if (!p || p.phase !== 'active' || animating.value) return
+  if (now.value < p.deadline + RESYNC_GRACE_MS) return
+  if (now.value - lastResyncAt < RESYNC_COOLDOWN_MS) return
+  lastResyncAt = now.value
+  battle.requestResync()
+}
+
 const secondsLeft = computed(() => {
   if (!pvp.value?.deadline || pvp.value.phase !== 'active') return 0
   return Math.max(0, Math.ceil((pvp.value.deadline - now.value) / 1000))
@@ -42,8 +59,11 @@ const canAct = computed(
     !showResult.value,
 )
 
-const youModel = computed(() => modelUrlForProfessor(pvp.value?.you?.professor))
-const foeModel = computed(() => modelUrlForProfessor(pvp.value?.foe?.professor))
+// Sprites 2D, não .glb: dois modelos de dezenas de MB por partida faziam o
+// Safari do iPhone descartar a aba no meio da batalha.
+// Ver docs/BUG-BATALHA-TRAVANDO.md.
+const youSprite = computed(() => spriteUrlForProfessor(pvp.value?.you?.professor))
+const foeSprite = computed(() => spriteUrlForProfessor(pvp.value?.foe?.professor))
 
 const resultText = computed(() => {
   const r = pvp.value?.result
@@ -144,6 +164,19 @@ watch(
   { immediate: true },
 )
 
+// Snapshot do servidor (reconexão ou rede de segurança acima): não vem com fila
+// de eventos, então as barras de HP precisam ser realinhadas na mão — senão
+// ficariam paradas no valor de antes da divergência.
+watch(
+  () => pvp.value?.syncedAt,
+  (syncedAt) => {
+    if (!syncedAt || animating.value) return
+    syncFromServer()
+    if (pvp.value?.phase !== 'active') return
+    message.value = pvp.value.youMoved ? 'Aguardando o rival…' : 'Escolha seu golpe!'
+  },
+)
+
 // Caso battle:end chegue sem eventos (ex.: abandono antes de qualquer rodada).
 watch(
   () => pvp.value?.phase,
@@ -165,6 +198,7 @@ onMounted(() => {
   message.value = `${pvp.value.foe.professor?.name ?? pvp.value.opponent.name} entrou na arena!`
   clock = setInterval(() => {
     now.value = Date.now()
+    resyncIfStuck()
   }, 500)
 })
 
@@ -184,28 +218,24 @@ onUnmounted(() => clock && clearInterval(clock))
         :hp="foeHp"
         :max-hp="pvp.foe.maxHp"
       />
-      <model-viewer
+      <img
         class="pvp-arena__model pvp-arena__model--foe"
         :class="{ 'pvp-arena__model--hit': foeHit }"
-        :src="foeModel"
-        camera-controls
-        disable-zoom
-        interaction-prompt="none"
-        shadow-intensity="1"
-      ></model-viewer>
+        :src="foeSprite"
+        :alt="`Prof. ${pvp.foe.professor?.name ?? pvp.opponent.name}`"
+        decoding="async"
+      />
     </div>
 
     <!-- Você (base) -->
     <div class="pvp-arena__you">
-      <model-viewer
+      <img
         class="pvp-arena__model"
         :class="{ 'pvp-arena__model--hit': youHit }"
-        :src="youModel"
-        camera-controls
-        disable-zoom
-        interaction-prompt="none"
-        shadow-intensity="1"
-      ></model-viewer>
+        :src="youSprite"
+        :alt="pvp.you.professor?.name ?? 'Seu professor'"
+        decoding="async"
+      />
       <BattleHpBar :name="pvp.you.professor?.name ?? 'Você'" :hp="youHp" :max-hp="pvp.you.maxHp" />
     </div>
 
@@ -305,12 +335,18 @@ onUnmounted(() => clock && clearInterval(clock))
   max-width: 240px;
   flex: 1;
   min-height: 0;
+  /* `contain` mantém o sprite inteiro no quadro que antes era do model-viewer,
+     sem esticar a arte quando a tela é estreita. */
+  object-fit: contain;
+  object-position: bottom center;
   background: transparent;
-  --poster-color: transparent;
+  /* Sombra no lugar da que o model-viewer projetava. */
+  filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.45));
 }
 
 .pvp-arena__model--foe {
   align-self: flex-start;
+  object-position: top center;
 }
 
 .pvp-arena__model--hit {

@@ -1,6 +1,7 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useCapturesStore } from '../stores/captures'
 import { useProfessorsStore } from '../stores/professors'
 import { typesForProfessor, typeInfos } from '../data/professorTypes.js'
 import { movesForTypes } from '../data/moves.js'
@@ -8,6 +9,9 @@ import { movesForTypes } from '../data/moves.js'
 const route = useRoute()
 const router = useRouter()
 const store = useProfessorsStore()
+const capturesStore = useCapturesStore()
+
+onMounted(() => capturesStore.ensureLoaded().catch(() => {}))
 
 // O professor vem do parâmetro da rota (/professor/:id), aceitando UUID, slug ou
 // nome (findByKey). Fallbacks: o state da navegação (clique no ProfDex) e, por
@@ -64,9 +68,21 @@ const stats = computed(() => {
   ]
 })
 
-// ── Skills ──────────────────────────────────────────────────────────────────
-// 4 golpes do movepool dos tipos do professor, em ordem estável (ataques
-// primeiro), para a ficha não embaralhar a cada visita.
+// ── Exemplares ──────────────────────────────────────────────────────────────
+// Cada ficha de QR resgatada virou um exemplar com combinação de tipos e deck
+// próprios. Aqui eles aparecem agrupados por combinação: "o Eron de IA/ML" com
+// os seus, "o Eron de Arquitetura + IA/ML" com os dele.
+const grupos = computed(() => capturesStore.groupedByVariant(professor.value.id))
+
+const totalExemplares = computed(() =>
+  grupos.value.reduce((soma, g) => soma + g.items.length, 0),
+)
+
+const dataCurta = (iso) =>
+  new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+
+// Movepool genérico dos tipos do professor: só entra quando não há exemplar
+// para mostrar (deep link em professor ainda não capturado).
 const skills = computed(() => movesForTypes(typesForProfessor(professor.value)).slice(0, 4))
 
 function skillTag(move) {
@@ -157,8 +173,53 @@ function goAR() {
         <p class="desc-text">{{ description }}</p>
       </section>
 
-      <!-- Skills -->
-      <section class="skills">
+      <!-- Exemplares capturados, agrupados por combinação de tipos -->
+      <section v-if="grupos.length" class="skills">
+        <h2 class="pixel skills__title">
+          MEUS EXEMPLARES <span class="skills__count">({{ totalExemplares }})</span>
+        </h2>
+
+        <div v-for="grupo in grupos" :key="grupo.typeKey" class="variant">
+          <div class="variant__head">
+            <div class="type-badges">
+              <span
+                v-for="t in typeInfos(grupo.types)"
+                :key="t.id"
+                class="type-badge"
+                :style="{ '--type-color': t.color }"
+              >
+                <span class="type-badge__icon" aria-hidden="true">{{ t.icon }}</span>
+                {{ t.label }}
+              </span>
+            </div>
+            <span class="pixel variant__count">×{{ grupo.items.length }}</span>
+          </div>
+
+          <article v-for="(exemplar, i) in grupo.items" :key="exemplar.id" class="exemplar card">
+            <header class="exemplar__head">
+              <span class="pixel exemplar__idx">{{ i + 1 }}</span>
+              <span class="exemplar__date">capturado em {{ dataCurta(exemplar.capturedAt) }}</span>
+            </header>
+            <ul class="skill-list">
+              <li v-for="s in exemplar.moves" :key="s.id" class="skill skill--inset">
+                <div class="skill__head">
+                  <span class="skill__name">{{ s.name }}</span>
+                  <span
+                    class="pixel skill__tag"
+                    :class="`skill__tag--${skillTag(s) === 'Dano' ? 'dano' : skillTag(s) === 'Suporte' ? 'suporte' : 'misto'}`"
+                  >
+                    {{ skillTag(s) }}
+                  </span>
+                </div>
+                <p class="skill__desc">{{ s.description }}</p>
+              </li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <!-- Sem exemplar: mostra o movepool dos tipos, só para dar o sabor -->
+      <section v-else class="skills">
         <h2 class="pixel skills__title">SKILLS</h2>
         <ul class="skill-list">
           <li v-for="(s, i) in skills" :key="s.id" class="skill card">
@@ -442,6 +503,72 @@ function goAR() {
   color: var(--text);
   text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
   letter-spacing: 1px;
+}
+
+.skills__count {
+  color: var(--yellow);
+}
+
+/* ── Exemplares ────────────────────────────────────────────────────────────── */
+.variant {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.variant__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.variant__count {
+  flex-shrink: 0;
+  font-size: 8px;
+  color: var(--yellow);
+}
+
+.exemplar {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exemplar__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exemplar__idx {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--yellow);
+  font-size: 8px;
+}
+
+.exemplar__date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Dentro do exemplar o golpe não é mais um card: vira linha da lista. */
+.skill--inset {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--yellow);
+  border-radius: var(--radius);
+  box-shadow: none;
+  padding: 8px 10px;
 }
 
 .skill-list {

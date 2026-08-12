@@ -1,0 +1,53 @@
+# Teste de carga do PvP — ver README.md nesta pasta.
+#
+#   npx artillery run scripts/loadtest/pvp-load.yml
+#
+# O `target` só existe porque o Artillery exige um; o tráfego de verdade é
+# websocket, aberto pelo processor. Use LOAD_WS_URL para apontar o servidor.
+config:
+  target: "http://localhost:3000"
+  processor: "./pvp-processor.js"
+
+  # Fases pensadas para chegar a ~500 conexões simultâneas no platô.
+  # Concorrência de lobby ≈ arrivalRate * peso_lobby * LOAD_LOBBY_HOLD_S.
+  # Com 10/s * 0,8 * 60s ≈ 480 sockets parados + ~60 em batalha.
+  # Para outro alvo, sobrescreva sem editar o arquivo:
+  #   npx artillery run scripts/loadtest/pvp-load.yml \
+  #     --overrides '{"config":{"phases":[{"duration":300,"arrivalRate":20}]}}'
+  phases:
+    - name: aquecimento
+      duration: 30
+      arrivalRate: 2
+    - name: rampa
+      duration: 120
+      arrivalRate: 2
+      rampTo: 10
+    - name: plato
+      duration: 300
+      arrivalRate: 10
+    - name: desaquecimento
+      duration: 30
+      arrivalRate: 10
+      rampTo: 1
+
+  # Portões de qualidade: o run sai com código != 0 se o PvP degradar além
+  # disso, então serve em CI. Ajuste conforme o hardware do servidor sob teste.
+  ensure:
+    thresholds:
+      - "pvp.move_to_round_ms.p95": 1500
+      - "pvp.invite_to_start_ms.p95": 1000
+      - "pvp.connect_ms.p95": 2000
+
+scenarios:
+  # A massa: alunos com a tela de batalha aberta, esperando alguém chamar.
+  # É esta população que faz o custo do broadcast de lobby aparecer.
+  - name: lobby-parado
+    weight: 80
+    flow:
+      - function: "idleInLobby"
+
+  # A minoria ativa: convite → pick → turnos → Elo. 2 sockets por VU.
+  - name: batalha-completa
+    weight: 20
+    flow:
+      - function: "runBattle"

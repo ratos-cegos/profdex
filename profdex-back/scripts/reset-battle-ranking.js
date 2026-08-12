@@ -16,24 +16,18 @@
  * (matrículas com os prefixos abaixo), junto das capturas e descobertas delas.
  * Contas de gente de verdade nunca são apagadas — só têm os pontos zerados.
  */
-const path = require('node:path');
 const { PrismaClient } = require('@prisma/client');
+const { requireDatabaseUrl } = require('./db-url');
 
 // Prefixos gerados pelos scripts de smoke/dev — nenhuma matrícula real começa
 // assim (as reais são numéricas).
-const TEST_MATRICULA_PREFIXES = ['smoke', 'bat', 'inv', 'proxy', 'dbg'];
+const TEST_MATRICULA_PREFIXES = ['smoke', 'bat', 'inv', 'proxy', 'dbg', 'load'];
 
 const apply = process.argv.includes('--yes');
 const purge = process.argv.includes('--purge-test-users');
 
 const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url:
-        process.env.DATABASE_URL ||
-        `file:${path.resolve(__dirname, '../prisma/dev.db')}`,
-    },
-  },
+  datasources: { db: { url: requireDatabaseUrl() } },
 });
 
 async function main() {
@@ -71,6 +65,11 @@ async function main() {
     if (purge && ids.length) {
       await tx.capture.deleteMany({ where: { userId: { in: ids } } });
       await tx.discovery.deleteMany({ where: { userId: { in: ids } } });
+      // Métricas antes das sessões, e ambas antes dos usuários: app_events
+      // referencia as duas, e as FKs são RESTRICT.
+      await tx.appEvent.deleteMany({ where: { userId: { in: ids } } });
+      await tx.userSession.deleteMany({ where: { userId: { in: ids } } });
+      await tx.passwordResetToken.deleteMany({ where: { userId: { in: ids } } });
       await tx.user.deleteMany({ where: { id: { in: ids } } });
     }
 
@@ -80,6 +79,9 @@ async function main() {
         battleWins: 0,
         battleLosses: 0,
         battleDraws: 0,
+        // O placar de engajamento vem das batalhas e capturas; zerar o ranking
+        // sem zerar ele deixaria os dois contando histórias diferentes.
+        engagementScore: 0,
       },
     });
   });

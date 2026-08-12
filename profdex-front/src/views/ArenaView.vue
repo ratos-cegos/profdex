@@ -1,5 +1,4 @@
 <script setup>
-import '@google/model-viewer'
 import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BattleHpBar from '../components/BattleHpBar.vue'
@@ -14,7 +13,10 @@ import {
   PROFESSOR_TYPES,
   PLAYER_KEY,
 } from '../data/professorTypes.js'
-import { modelUrlForProfessor, PLAYER_MODEL_URL } from '../data/professorModels.js'
+import {
+  PLAYER_SPRITE_URL,
+  spriteUrlForProfessor,
+} from '../data/professorSprites.js'
 
 const MAX_HP = 120
 
@@ -119,10 +121,14 @@ const {
 
 onMounted(start)
 
-// Cada lado usa o modelo do seu dono: o inimigo é o professor vindo da rota
+// Cada lado usa a arte do seu dono: o inimigo é o professor vindo da rota
 // (Eron, Mário, ...) e o jogador é sempre o Gustavo.
-const enemyModelSrc = modelUrlForProfessor(enemyProfessor)
-const playerModelSrc = PLAYER_MODEL_URL
+//
+// Sprite 2D e não .glb — os modelos passam de 25 MB cada (o do Gustavo, 74 MB)
+// e dois deles na mesma tela estouravam a memória da aba no celular.
+// Ver docs/BUG-BATALHA-TRAVANDO.md.
+const enemySpriteSrc = spriteUrlForProfessor(enemyProfessor)
+const playerSpriteSrc = PLAYER_SPRITE_URL
 
 // AR ancorado (WebXR) e AR Quick Look (iOS) DESATIVADOS por enquanto — a arena
 // roda só no cenário 3D. O código foi removido; ver histórico do git para
@@ -148,33 +154,19 @@ function goBack() {
       />
       <BinaryTunnelScene v-if="!arEnabled" class="arena__scenario" :speed="4" />
 
-      <model-viewer
+      <img
         class="arena__model arena__model--enemy"
         :class="{ 'arena__model--hit': enemyHit }"
-        :src="enemyModelSrc"
+        :src="enemySpriteSrc"
         :alt="`Prof. ${enemyProfessor.name} em batalha`"
-        camera-orbit="-10deg 86deg 95%"
-        interaction-prompt="none"
-        disable-zoom
-        disable-tap
-        disable-pan
-        shadow-intensity="1"
-        shadow-softness="1"
-        exposure="1"
+        decoding="async"
       />
-      <model-viewer
+      <img
         class="arena__model arena__model--player"
         :class="{ 'arena__model--hit': playerHit }"
-        :src="playerModelSrc"
-        alt="Seu personagem, de costas"
-        camera-orbit="165deg 88deg 105%"
-        interaction-prompt="none"
-        disable-zoom
-        disable-tap
-        disable-pan
-        shadow-intensity="1"
-        shadow-softness="0.8"
-        exposure="1"
+        :src="playerSpriteSrc"
+        alt="Seu personagem"
+        decoding="async"
       />
     </div>
 
@@ -288,16 +280,13 @@ function goBack() {
   z-index: 0;
 }
 
-/* Modelos 3D estáticos: sem rotação nem zoom (câmera travada) */
+/* Sprites 2D dos combatentes. Ocupam o mesmo lugar dos antigos <model-viewer>;
+   `contain` preserva a proporção da arte dentro daquela caixa. */
 .arena__model {
   position: absolute;
   z-index: 1;
   pointer-events: none;
-  --poster-color: transparent;
-  --progress-bar-color: var(--unifil-gold);
-  /* O botão nativo de AR do model-viewer não cabe no HUD da arena: quem
-     dispara o Quick Look é o botão "Ver em AR" acima. */
-  --ar-button-display: none;
+  object-fit: contain;
 }
 
 /* Inimigo: mais ao centro e menor -> parece mais fundo no túnel (perspectiva) */
@@ -306,8 +295,8 @@ function goBack() {
   left: 10%;
   width: 50%;
   height: 34%;
-  /* Contorno vermelho discreto: drop-shadow segue a silhueta do modelo
-     (o canvas é transparente), diferente de um border/outline retangular.
+  /* Contorno vermelho discreto: drop-shadow segue a silhueta do sprite
+     (o PNG é transparente), diferente de um border/outline retangular.
      --error é o vermelho real da paleta (--red do tema é marrom). */
   filter:
     drop-shadow(0 0 1px var(--error))

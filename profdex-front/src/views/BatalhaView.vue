@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '../services/api'
+import { useAuthStore } from '../stores/auth'
 import { useProfessorsStore } from '../stores/professors'
 import { useBattleStore } from '../stores/battle'
 
@@ -9,6 +10,7 @@ const router = useRouter()
 const route = useRoute()
 const store = useProfessorsStore()
 const battle = useBattleStore()
+const auth = useAuthStore()
 
 // Relógio para as contagens regressivas dos convites (1 tick/segundo).
 const now = ref(Date.now())
@@ -26,43 +28,82 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (clock) clearInterval(clock)
+  if (searchDebounce) clearTimeout(searchDebounce)
+  // A conexão continua (é do app), mas sair da tela com a lista aberta deixaria
+  // o servidor mandando eventos de presença para ninguém.
+  if (lobbyOpen.value) battle.unsubscribeLobby()
 })
 
 function secondsLeft(expiresAt) {
   return Math.max(0, Math.ceil((expiresAt - now.value) / 1000))
 }
 
-// ── Modal de jogadores online ─────────────────────────────────────────────
-// Num evento com 1000+ alunos a lista não cabe na tela principal: fica atrás
-// de um botão, com busca por nome. A renderização é limitada a LOBBY_RENDER_CAP
-// linhas — sem isso, um lobby cheio montaria milhares de nós de DOM no celular
-// e travaria a rolagem. Quem procura alguém específico usa a busca.
-const LOBBY_RENDER_CAP = 50
+// ── Convites recebidos ────────────────────────────────────────────────────
+// Cada convite vive 60s e qualquer um do lobby pode mandar o seu, então numa
+// sala cheia eles chegam vários de uma vez. Empilhados como banners, empurram
+// o resto da tela para fora — viram uma lista rolável de altura fixa: quem
+// expira primeiro fica no topo, e o resto rola sem mexer no layout.
+const INVITE_RENDER_CAP = 20
 
+const sortedInvites = computed(() =>
+  [...battle.incomingInvites].sort((a, b) => a.expiresAt - b.expiresAt),
+)
+
+const visibleInvites = computed(() => sortedInvites.value.slice(0, INVITE_RENDER_CAP))
+
+const hiddenInviteCount = computed(() => sortedInvites.value.length - visibleInvites.value.length)
+
+// Com a caixa cheia, recusar um a um é pior que o problema original.
+function declineAll() {
+  for (const invite of [...battle.incomingInvites]) battle.declineInvite(invite.inviteId)
+}
+
+// ── Modal de jogadores online ─────────────────────────────────────────────
+// A lista fica atrás de um botão e é o SERVIDOR quem pagina (50 por resposta) e
+// busca: enquanto o modal está fechado o servidor não manda nada de presença.
+// Antes ele empurrava o lobby inteiro para todo mundo o tempo todo — ver
+// docs/CARGA-PVP.md.
 const lobbyOpen = ref(false)
 const lobbySearch = ref('')
+const lobbyLoading = ref(false)
+let searchDebounce = null
 
-const filteredOpponents = computed(() => {
-  const term = lobbySearch.value.trim().toLowerCase()
-  if (!term) return battle.opponents
-  return battle.opponents.filter((p) => p.name.toLowerCase().includes(term))
-})
+const visibleOpponents = computed(() => battle.opponents)
 
-const visibleOpponents = computed(() => filteredOpponents.value.slice(0, LOBBY_RENDER_CAP))
+// Quantos ficaram de fora da página atual — só faz sentido sem busca ativa.
+const hiddenCount = computed(() =>
+  lobbySearch.value.trim()
+    ? 0
+    : Math.max(0, battle.opponentCount - battle.opponents.length),
+)
 
-const hiddenCount = computed(() => filteredOpponents.value.length - visibleOpponents.value.length)
-
-function openLobby() {
+async function openLobby() {
   lobbySearch.value = ''
   lobbyOpen.value = true
+  lobbyLoading.value = true
+  await battle.subscribeLobby()
+  lobbyLoading.value = false
 }
+
+function closeLobby() {
+  lobbyOpen.value = false
+  if (searchDebounce) clearTimeout(searchDebounce)
+  battle.unsubscribeLobby()
+}
+
+// Busca no servidor, com folga para não disparar uma consulta por tecla.
+watch(lobbySearch, (term) => {
+  if (!lobbyOpen.value) return
+  if (searchDebounce) clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(() => battle.searchLobby(term.trim()), 300)
+})
 
 function challenge(player) {
   battle.clearError()
   battle.sendInvite(player.id)
   // Fecha o modal: o estado do convite (contagem regressiva, resposta) aparece
   // na tela principal, então manter a lista aberta só esconderia o retorno.
-  lobbyOpen.value = false
+  closeLobby()
 }
 
 // ── Aba Ranking (batalha) ─────────────────────────────────────────────────
@@ -194,35 +235,63 @@ function goBack() {
         </button>
       </div>
 
-      <!-- Convites recebidos: banner com contagem regressiva (em qualquer aba) -->
+      <!-- Convites recebidos: lista rolável com contagem regressiva (em qualquer aba) -->
       <section
-        v-for="invite in battle.incomingInvites"
-        :key="invite.inviteId"
-        class="invite-banner"
+        v-if="battle.incomingInvites.length"
+        class="invites"
         aria-live="polite"
       >
-        <div class="invite-banner__info">
-          <span class="pixel invite-banner__title">DESAFIO!</span>
-          <span class="invite-banner__text">
-            {{ invite.from.name }} te desafiou · {{ secondsLeft(invite.expiresAt) }}s
+        <header class="invites__header">
+          <span class="pixel invites__title">
+            {{ battle.incomingInvites.length === 1 ? 'DESAFIO!' : 'DESAFIOS' }}
+            <template v-if="battle.incomingInvites.length > 1">
+              ({{ battle.incomingInvites.length }})
+            </template>
           </span>
-        </div>
-        <div class="invite-banner__actions">
           <button
-            class="invite-banner__btn invite-banner__btn--accept"
+            v-if="battle.incomingInvites.length > 1"
+            class="invites__decline-all"
             type="button"
-            @click="battle.acceptInvite(invite.inviteId)"
+            @click="declineAll"
           >
-            Aceitar
+            Recusar todos
           </button>
-          <button
-            class="invite-banner__btn"
-            type="button"
-            @click="battle.declineInvite(invite.inviteId)"
-          >
-            Recusar
-          </button>
-        </div>
+        </header>
+
+        <ul class="invites__list">
+          <li v-for="invite in visibleInvites" :key="invite.inviteId" class="invite-row">
+            <span class="invite-row__info">
+              <span class="invite-row__name">{{ invite.from.name }}</span>
+              <span
+                class="pixel invite-row__timer"
+                :class="{ 'invite-row__timer--urgent': secondsLeft(invite.expiresAt) <= 10 }"
+              >
+                {{ secondsLeft(invite.expiresAt) }}s
+              </span>
+            </span>
+            <span class="invite-row__actions">
+              <button
+                class="invite-row__btn invite-row__btn--accept"
+                type="button"
+                @click="battle.acceptInvite(invite.inviteId)"
+              >
+                Aceitar
+              </button>
+              <button
+                class="invite-row__btn"
+                type="button"
+                :aria-label="`Recusar desafio de ${invite.from.name}`"
+                @click="battle.declineInvite(invite.inviteId)"
+              >
+                ✕
+              </button>
+            </span>
+          </li>
+        </ul>
+
+        <p v-if="hiddenInviteCount > 0" class="invites__more">
+          +{{ hiddenInviteCount }} aguardando na fila
+        </p>
       </section>
 
       <!-- Erros de comando (cooldown, jogador ocupado…) -->
@@ -303,10 +372,10 @@ function goBack() {
             <span class="option-sub">
               <template v-if="battle.unauthorized">Sessão expirada — refaça o login</template>
               <template v-else-if="!battle.connected">Conectando…</template>
-              <template v-else-if="!battle.opponents.length">Ninguém online agora</template>
+              <template v-else-if="!battle.opponentCount">Ninguém online agora</template>
               <template v-else>
-                {{ battle.opponents.length }}
-                {{ battle.opponents.length === 1 ? 'jogador disponível' : 'jogadores disponíveis' }}
+                {{ battle.opponentCount }}
+                {{ battle.opponentCount === 1 ? 'jogador disponível' : 'jogadores disponíveis' }}
               </template>
             </span>
           </span>
@@ -343,6 +412,18 @@ function goBack() {
           <span class="option-icon">📖</span>
           <span class="pixel option-label">Instruções de Batalha</span>
         </button>
+
+        <!-- Só para contas administrativas (@unifil.br): métricas (leitura) e
+             a bancada do quiz do evento. -->
+        <button
+          v-if="auth.user?.role === 'admin'"
+          class="battle-option battle-option--admin"
+          type="button"
+          @click="router.push({ name: 'admin-metricas' })"
+        >
+          <span class="option-icon">📊</span>
+          <span class="pixel option-label">Painel Administrativo</span>
+        </button>
       </section>
     </main>
 
@@ -368,14 +449,14 @@ function goBack() {
       role="dialog"
       aria-modal="true"
       aria-label="Jogadores online"
-      @click.self="lobbyOpen = false"
+      @click.self="closeLobby"
     >
       <div class="modal__panel">
         <header class="modal__header">
           <span class="pixel modal__title">
-            JOGADORES ONLINE ({{ battle.opponents.length }})
+            JOGADORES ONLINE ({{ battle.opponentCount }})
           </span>
-          <button class="modal__close" type="button" aria-label="Fechar" @click="lobbyOpen = false">
+          <button class="modal__close" type="button" aria-label="Fechar" @click="closeLobby">
             ✕
           </button>
         </header>
@@ -388,11 +469,12 @@ function goBack() {
           autocomplete="off"
         />
 
-        <p v-if="!battle.opponents.length" class="modal__empty">
-          Ninguém mais online agora. Chame a galera!
-        </p>
-        <p v-else-if="!filteredOpponents.length" class="modal__empty">
+        <p v-if="lobbyLoading" class="modal__empty">Carregando…</p>
+        <p v-else-if="!battle.opponents.length && lobbySearch.trim()" class="modal__empty">
           Nenhum jogador com esse nome.
+        </p>
+        <p v-else-if="!battle.opponents.length" class="modal__empty">
+          Ninguém mais online agora. Chame a galera!
         </p>
 
         <ul v-else class="modal__list">
@@ -680,60 +762,119 @@ function goBack() {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Convite recebido / batalha encontrada */
-.invite-banner {
+/* Convites recebidos */
+.invites {
   width: 100%;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 12px 14px;
   border-radius: var(--radius-lg);
   background: var(--bg-card);
   border: 2px solid var(--yellow);
 }
 
-.invite-banner--start {
-  border-color: var(--ds-green);
-}
-
-.invite-banner__info {
+.invites__header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-.invite-banner__title {
+.invites__title {
   font-size: 9px;
   color: var(--yellow);
 }
 
-.invite-banner__text {
-  font-size: 13px;
-}
-
-.invite-banner__actions {
-  display: flex;
-  gap: 8px;
+.invites__decline-all {
   flex-shrink: 0;
-}
-
-.invite-banner__btn {
-  min-height: 38px;
-  padding: 0 12px;
+  min-height: 32px;
+  padding: 0 10px;
   border-radius: var(--radius);
-  background: var(--bg-surface);
-  color: var(--text);
+  background: transparent;
+  color: var(--text-muted);
   border: 1px solid var(--border);
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
 }
 
-.invite-banner__btn--accept {
+/* Altura fixa: a lista rola por dentro em vez de empurrar a tela. O limite
+   equivale a ~3 linhas — o bastante para a próxima aparecer meio cortada e
+   sinalizar que há mais. */
+.invites__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 172px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.invite-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+}
+
+.invite-row__info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.invite-row__name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invite-row__timer {
+  flex-shrink: 0;
+  font-size: 7px;
+  color: var(--text-muted);
+}
+
+.invite-row__timer--urgent {
+  color: var(--red-light);
+}
+
+.invite-row__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.invite-row__btn {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.invite-row__btn--accept {
   background: var(--red-dark);
   border-color: var(--red-light);
   color: white;
+}
+
+.invites__more {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 /* Erro de comando */
@@ -917,6 +1058,10 @@ function goBack() {
 
 .battle-option--guide {
   border-color: var(--ds-green);
+}
+
+.battle-option--admin {
+  border-color: var(--text-muted);
 }
 
 .option-icon {

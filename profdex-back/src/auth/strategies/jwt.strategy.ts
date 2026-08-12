@@ -14,11 +14,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  validate(payload: { sub: string; matricula: string; name: string }) {
+  validate(payload: {
+    sub: string;
+    matricula: string;
+    name: string;
+    role?: string;
+  }) {
     return {
       id: payload.sub,
       matricula: payload.matricula,
       name: payload.name,
+      // Sessões emitidas antes de o papel existir seguem valendo como aluno.
+      role: payload.role ?? 'aluno',
     };
   }
 }

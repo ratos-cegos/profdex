@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useMetricsStore } from '../stores/metrics'
 import { useProfessorsStore } from '../stores/professors'
 
 // Teto para a espera do preload. O `api` não define timeout (axios usa 0 =
@@ -39,10 +40,22 @@ const router = createRouter({
       meta: { guest: true },
     },
     {
+      // Em produção o cadastro é só pelo Google: quem não tem conta entra por
+      // /auth/google e cai em /completar-cadastro. A rota continua existindo
+      // como redirect porque links e atalhos antigos para /register circulam.
+      //
+      // Em desenvolvimento ela volta a ser a tela de cadastro, para testar o
+      // app fora de `localhost` (onde o OAuth do Google não roda) sem depender
+      // de túnel. `import.meta.env.DEV` é resolvido em tempo de build: no bundle
+      // de produção a RegisterView nem entra no chunk.
       path: '/register',
-      name: 'register',
-      component: () => import('../views/RegisterView.vue'),
-      meta: { guest: true },
+      ...(import.meta.env.DEV
+        ? {
+            name: 'register',
+            component: () => import('../views/RegisterView.vue'),
+            meta: { guest: true },
+          }
+        : { redirect: { name: 'login' } }),
     },
     {
       path: '/profdex',
@@ -95,6 +108,59 @@ const router = createRouter({
       meta: { auth: true },
     },
     {
+      // Retorno do login com Google para quem ainda não tem conta: o backend
+      // redireciona para cá com o ticket na query. `guest` porque quem chega
+      // aqui ainda não tem sessão.
+      path: '/completar-cadastro',
+      name: 'completar-cadastro',
+      component: () => import('../views/CompletarCadastroView.vue'),
+      meta: { guest: true },
+    },
+    {
+      path: '/esqueci-senha',
+      name: 'esqueci-senha',
+      component: () => import('../views/EsqueciSenhaView.vue'),
+      meta: { guest: true },
+    },
+    {
+      // Destino do link enviado por e-mail (token na query).
+      path: '/redefinir-senha',
+      name: 'redefinir-senha',
+      component: () => import('../views/RedefinirSenhaView.vue'),
+      meta: { guest: true },
+    },
+    {
+      // Bancada do quiz — quiosque para o tablet do estande. Fica FORA do
+      // layout do painel de propósito: a tela é virada para o aluno e não
+      // pode ter navegação administrativa por perto.
+      // Declarada antes de /admin para o caminho mais específico vencer.
+      path: '/admin/quiz/bancada',
+      name: 'admin-quiz-bancada',
+      component: () => import('../views/AdminQuizBoothView.vue'),
+      meta: { auth: true, admin: true },
+    },
+    {
+      // Área administrativa — só para contas @unifil.br. O `meta.admin` apenas
+      // esconde as telas; quem manda de verdade é o AdminGuard do servidor,
+      // que confere o papel no banco a cada request.
+      path: '/admin',
+      component: () => import('../views/AdminLayout.vue'),
+      meta: { auth: true, admin: true },
+      children: [
+        { path: '', redirect: { name: 'admin-metricas' } },
+        {
+          path: 'metricas',
+          name: 'admin-metricas',
+          component: () => import('../views/AdminMetricsView.vue'),
+        },
+        {
+          path: 'quiz',
+          name: 'admin-quiz',
+          component: () => import('../views/AdminQuizAttemptsView.vue'),
+        },
+      ],
+    },
+    {
       // Exemplo/laboratório do TresJS — sem guarda de auth para facilitar testar
       path: '/tres-demo',
       name: 'tres-demo',
@@ -144,6 +210,38 @@ router.beforeEach(async (to) => {
 
   if (to.meta.guest && auth.isAuthenticated) {
     return { name: 'profdex' }
+  }
+
+  // Conveniência de navegação, não segurança: o backend recusa a rota de
+  // qualquer jeito para quem não é admin.
+  if (to.meta.admin && auth.user?.role !== 'admin') {
+    return { name: 'profdex' }
+  }
+})
+
+// ── Métricas de navegação ───────────────────────────────────────────────────
+// Um `screen_view` por tela, com o tempo que o aluno ficou nela. Medir aqui, no
+// router, cobre o app inteiro sem espalhar instrumentação por cada view.
+let telaAtual = null
+let telaDesde = 0
+
+router.afterEach((to) => {
+  const metrics = useMetricsStore()
+  const auth = useAuthStore()
+
+  // A sessão de uso nasce no primeiro acesso autenticado.
+  if (auth.isAuthenticated) void metrics.start()
+
+  const agora = Date.now()
+  if (telaAtual && telaAtual !== to.name) {
+    metrics.track('screen_view', {
+      durationMs: agora - telaDesde,
+      metadata: { screen: telaAtual },
+    })
+  }
+  if (telaAtual !== to.name) {
+    telaAtual = to.name
+    telaDesde = agora
   }
 })
 

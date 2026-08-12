@@ -46,7 +46,7 @@ Lobby (BatalhaView)                    Batalha (ArenaView modo PvP)
 
 1. **Presença**: usuário logado conecta no WebSocket e aparece no lobby com status `disponivel` ou `em_batalha`.
 2. **Convite**: A convida B. O convite expira em **60s** (timer no servidor; some dos dois lados). B aceita → nasce a batalha. Recusa/expiração apaga o convite.
-3. **Seleção**: cada jogador escolhe **um professor já capturado** (validado no servidor contra a tabela `captures`). Escolha às cegas — um não vê o pick do outro até os dois confirmarem (evita counter-pick e dodge).
+3. **Seleção**: em duas etapas — primeiro o professor, depois **qual exemplar** dele (o mesmo professor pode estar na coleção em combinações de tipos diferentes, cada uma com o seu deck). Validado no servidor contra a tabela `captures`, pelo id da captura. Escolha às cegas — um não vê o pick do outro até os dois confirmarem (evita counter-pick e dodge).
 4. **Turnos (estilo Showdown)**: os dois escolhem golpe simultaneamente; quando ambos submetem (ou estoura o timer de **60s**), o servidor resolve a rodada com o motor e emite a lista de eventos para os dois clientes animarem. Quem não escolheu não age no turno — só sofre o golpe.
 5. **Fim**: HP zerou (ou abandono) → servidor calcula Elo, persiste `Battle`, atualiza ratings e notifica os dois.
 
@@ -140,7 +140,7 @@ Com K acima, um jogador ativo alcança Ouro/Platina numa semana; Mestre fica rar
 | `invite:accept` / `invite:decline` | C→S | `{ inviteId }` |
 | `invite:expired` / `invite:cancelled` | S→C | `{ inviteId }` |
 | `battle:start` | S→C | `{ battleId, opponent }` → vai pra seleção |
-| `battle:pick` | C→S | `{ professorSlug }` (validado contra capturas) |
+| `battle:pick` | C→S | `{ captureId }` (validado contra as capturas do próprio usuário) |
 | `battle:begin` | S→C | estado inicial + moveset próprio + prof do oponente |
 | `battle:move` | C→S | `{ moveId }` (validado: é seu, batalha ativa, ainda não escolheu) |
 | `battle:round` | S→C | `{ events[], hpA, hpB, deadline }` — eventos no formato do motor |
@@ -156,13 +156,13 @@ Com K acima, um jogador ativo alcança Ouro/Platina numa semana; Mestre fica rar
 
 - **`stores/battle.js`** (Pinia): conexão WS, lista de online, convites, estado da batalha ativa.
 - **BatalhaView**: seção "Jogadores online" (status + botão convidar), toast de convite recebido com contagem regressiva de 60s, e **tabs** internas: `Batalha | Ranking` (a aba Ranking de Pokédex futura entra ao lado depois).
-- **Tela de seleção**: grid dos professores capturados (`GET /api/captures` já existe) + "aguardando oponente…".
+- **Tela de seleção**: grid dos professores com exemplar, depois a lista de exemplares daquele professor com tipos e golpes (`GET /api/captures`) + "aguardando oponente…".
 - **ArenaView**: ganha modo `pvp` — sem IA e sem motor local; anima `battle:round` (mesmo formato que `useBattle.js` já consome), timer de 60s visível, banner "oponente está escolhendo…".
 - **Ranking**: `PointsLeaderboard` deixa de usar o mock `data/ranking.js` e consome a API, exibindo tier + pontos.
 
 ## Produção e boas práticas
 
-- **Validação server-side de tudo**: professor precisa estar capturado, golpe precisa estar no moveset, escolha única por turno, participante precisa ser da batalha.
+- **Validação server-side de tudo**: o exemplar precisa ser do próprio usuário, golpe precisa estar no moveset gravado nele, escolha única por turno, participante precisa ser da batalha.
 - **Rate limiting**: 1 convite pendente por usuário; máx. ~5 convites/min (reusar o padrão de `auth-rate-limit.service.ts`).
 - **Timers no servidor** (convite 60s, turno 60s, seleção 60s) com cleanup no disconnect/fim.
 - **Reconexão**: queda de WS não é derrota — ao reconectar, `battle:resync` devolve o estado. **3 turnos consecutivos sem ação = derrota por abandono.**

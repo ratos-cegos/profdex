@@ -1,6 +1,10 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcryptjs';
+import * as bcrypt from '@node-rs/bcrypt';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 
@@ -15,7 +19,7 @@ describe('AuthService', () => {
   function createSubject() {
     const users = {
       findByMatricula: jest.fn(),
-      create: jest.fn(),
+      createForDevelopment: jest.fn(),
     };
     const jwt = {
       sign: jest.fn().mockReturnValue('signed.jwt'),
@@ -30,44 +34,73 @@ describe('AuthService', () => {
     };
   }
 
-  it('registers a unique user and signs a short-lived session payload', async () => {
-    const { jwt, service, users } = createSubject();
-    users.findByMatricula.mockResolvedValue(null);
-    users.create.mockResolvedValue(user);
+  // Fora de desenvolvimento toda conta nasce do login com Google; este serviço
+  // só autentica.
+  describe('registerForDevelopment', () => {
+    const nodeEnv = process.env.NODE_ENV;
 
-    await expect(
-      service.register({
-        matricula: user.matricula,
-        name: user.name,
-        password: 'valid password',
-      }),
-    ).resolves.toEqual({
-      accessToken: 'signed.jwt',
-      user: {
-        id: user.id,
-        matricula: user.matricula,
-        name: user.name,
+    afterEach(() => {
+      process.env.NODE_ENV = nodeEnv;
+    });
+
+    it.each([undefined, 'production', 'test'])(
+      'refuses to register with NODE_ENV=%s',
+      async (env) => {
+        const { service, users } = createSubject();
+        if (env === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = env;
+
+        await expect(
+          service.registerForDevelopment({
+            matricula: '123',
+            name: 'Player',
+            password: 'valid password',
+          }),
+        ).rejects.toThrow(ForbiddenException);
+        // Nem chega a consultar: o portão vem antes de qualquer I/O.
+        expect(users.findByMatricula).not.toHaveBeenCalled();
+        expect(users.createForDevelopment).not.toHaveBeenCalled();
       },
-    });
-    expect(jwt.sign).toHaveBeenCalledWith({
-      sub: user.id,
-      matricula: user.matricula,
-      name: user.name,
-    });
-  });
+    );
 
-  it('rejects duplicate registration without creating a user', async () => {
-    const { service, users } = createSubject();
-    users.findByMatricula.mockResolvedValue(user);
+    it('signs a session for a unique matricula in development', async () => {
+      const { jwt, service, users } = createSubject();
+      process.env.NODE_ENV = 'development';
+      users.findByMatricula.mockResolvedValue(null);
+      users.createForDevelopment.mockResolvedValue({ ...user, role: 'aluno' });
 
-    await expect(
-      service.register({
-        matricula: user.matricula,
-        name: user.name,
-        password: 'valid password',
-      }),
-    ).rejects.toThrow(ConflictException);
-    expect(users.create).not.toHaveBeenCalled();
+      await expect(
+        service.registerForDevelopment({
+          matricula: user.matricula,
+          name: user.name,
+          password: 'valid password',
+        }),
+      ).resolves.toEqual({
+        accessToken: 'signed.jwt',
+        user: {
+          id: user.id,
+          matricula: user.matricula,
+          name: user.name,
+          role: 'aluno',
+        },
+      });
+      expect(jwt.sign).toHaveBeenCalled();
+    });
+
+    it('rejects a duplicate matricula without creating anything', async () => {
+      const { service, users } = createSubject();
+      process.env.NODE_ENV = 'development';
+      users.findByMatricula.mockResolvedValue(user);
+
+      await expect(
+        service.registerForDevelopment({
+          matricula: user.matricula,
+          name: user.name,
+          password: 'valid password',
+        }),
+      ).rejects.toThrow(ConflictException);
+      expect(users.createForDevelopment).not.toHaveBeenCalled();
+    });
   });
 
   it('returns the same generic error for missing and invalid credentials', async () => {

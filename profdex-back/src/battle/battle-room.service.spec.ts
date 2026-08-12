@@ -1,3 +1,4 @@
+import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   BattleRoomService,
@@ -5,7 +6,12 @@ import {
   PICK_TIMEOUT_MS,
   TURN_TIMEOUT_MS,
 } from './battle-room.service';
+import { buildMoveset } from './engine/moves';
 import { RatingService } from './rating.service';
+
+/** Métrica é efeito colateral do fim da batalha: aqui só precisa não explodir. */
+const metricsStub = () =>
+  ({ record: jest.fn().mockReturnValue(0) }) as unknown as MetricsService;
 
 type Emitted = { userId: string; event: string; payload: any };
 
@@ -15,14 +21,14 @@ describe('BattleRoomService', () => {
   let closed: string[][];
   const battleCreate = jest.fn();
   const battleUpdate = jest.fn();
-  const captureFindUnique = jest.fn();
+  const captureFindFirst = jest.fn();
 
   const ana = { userId: 'user-ana', name: 'Ana' };
   const bia = { userId: 'user-bia', name: 'Bia' };
 
   const prisma = {
     battle: { create: battleCreate, update: battleUpdate },
-    capture: { findUnique: captureFindUnique },
+    capture: { findFirst: captureFindFirst },
   } as unknown as PrismaService;
 
   const applyResult = jest.fn().mockResolvedValue({
@@ -41,6 +47,17 @@ describe('BattleRoomService', () => {
     name: owner === ana.userId ? 'Mario' : 'Eron',
   });
 
+  // Um exemplar por jogadora, com tipos e deck JÁ GRAVADOS — é assim que a
+  // captura chega do banco desde que o moveset passou a ser sorteado no
+  // resgate do QR, não no início da batalha.
+  let capturas: Record<string, any>;
+  const capturaDe = (userId: string, types: string[]) => ({
+    id: `cap-${userId}`,
+    moves: buildMoveset(types).map((m) => m.id),
+    professor: professorOf(userId),
+    variant: { types },
+  });
+
   beforeEach(() => {
     jest.useFakeTimers();
     emitted = [];
@@ -48,13 +65,18 @@ describe('BattleRoomService', () => {
     battleCreate.mockReset().mockResolvedValue({});
     battleUpdate.mockReset().mockResolvedValue({});
     applyResult.mockClear();
-    captureFindUnique.mockReset().mockImplementation(({ where }: any) =>
-      Promise.resolve({
-        professor: professorOf(where.userId_professorId.userId),
-      }),
-    );
+    capturas = {
+      [ana.userId]: capturaDe(ana.userId, ['algoritmos']),
+      [bia.userId]: capturaDe(bia.userId, ['arquitetura', 'ia-ml']),
+    };
+    // Espelha `findFirst({ where: { id, userId } })`: exemplar de outra pessoa
+    // simplesmente não é encontrado.
+    captureFindFirst.mockReset().mockImplementation(({ where }: any) => {
+      const minha = capturas[where.userId];
+      return Promise.resolve(minha && minha.id === where.id ? minha : null);
+    });
 
-    service = new BattleRoomService(prisma, ratingService);
+    service = new BattleRoomService(prisma, ratingService, metricsStub());
     service.configure({
       emitToUser: (userId, event, payload) =>
         emitted.push({ userId, event, payload }),
@@ -69,15 +91,15 @@ describe('BattleRoomService', () => {
 
   async function startBattle() {
     service.create(ana, bia);
-    await service.pick(ana.userId, 'prof-a');
-    await service.pick(bia.userId, 'prof-b');
+    await service.pick(ana.userId, capturas[ana.userId].id);
+    await service.pick(bia.userId, capturas[bia.userId].id);
     // deixa promises do begin assentarem
     await Promise.resolve();
   }
 
   it('cancels the room when picks time out, without persisting', async () => {
     service.create(ana, bia);
-    await service.pick(ana.userId, 'prof-a'); // só a Ana escolheu
+    await service.pick(ana.userId, capturas[ana.userId].id); // só a Ana escolheu
 
     jest.advanceTimersByTime(PICK_TIMEOUT_MS);
 
@@ -87,11 +109,18 @@ describe('BattleRoomService', () => {
     expect(closed).toHaveLength(1);
   });
 
-  it('rejects picking a professor that was not captured', async () => {
-    captureFindUnique.mockResolvedValue(null);
+  it('rejects picking an exemplar that was not captured', async () => {
     service.create(ana, bia);
 
-    const result = await service.pick(ana.userId, 'prof-nao-capturado');
+    const result = await service.pick(ana.userId, 'cap-inexistente');
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects picking someone else's exemplar", async () => {
+    service.create(ana, bia);
+
+    const result = await service.pick(ana.userId, capturas[bia.userId].id);
 
     expect(result.ok).toBe(false);
   });
@@ -117,9 +146,26 @@ describe('BattleRoomService', () => {
     expect(beginB.you.professor.slug).toBe('eron');
   });
 
+  it('fights with the deck stored on the exemplar, not a fresh roll', async () => {
+    await startBattle();
+
+    const beginA = eventsFor(ana.userId, 'battle:begin')[0].payload;
+    const beginB = eventsFor(bia.userId, 'battle:begin')[0].payload;
+
+    expect(beginA.you.moves.map((m: any) => m.id)).toEqual(
+      capturas[ana.userId].moves,
+    );
+    expect(beginB.you.moves.map((m: any) => m.id)).toEqual(
+      capturas[bia.userId].moves,
+    );
+    // Os tipos vêm da variante capturada, não de PROFESSOR_TYPES.
+    expect(beginA.you.types).toEqual(['algoritmos']);
+    expect(beginB.you.types).toEqual(['arquitetura', 'ia-ml']);
+  });
+
   it('blind pick: opponent learns THAT you picked, never WHICH', async () => {
     service.create(ana, bia);
-    await service.pick(ana.userId, 'prof-a');
+    await service.pick(ana.userId, capturas[ana.userId].id);
 
     const notice = eventsFor(bia.userId, 'battle:pick:opponent');
     expect(notice).toHaveLength(1);
@@ -161,6 +207,34 @@ describe('BattleRoomService', () => {
     }
   });
 
+  // Regressão do travamento relatado no evento: quem move em SEGUNDO recebe
+  // `battle:round` antes do ack do próprio golpe (a resolução é síncrona dentro
+  // de `move()`). O cliente marcava "já joguei" ao receber o ack, carimbando um
+  // turno que já tinha começado — e os botões de golpe morriam até o F5.
+  // O ack carrega o turno em que o golpe foi aceito para o cliente descartá-lo
+  // quando chega atrasado. Ver docs/BUG-BATALHA-TRAVANDO.md.
+  it('ack do golpe carrega o turno em que foi aceito, não o já resolvido', async () => {
+    await startBattle();
+    const beginA = eventsFor(ana.userId, 'battle:begin')[0].payload;
+    const beginB = eventsFor(bia.userId, 'battle:begin')[0].payload;
+
+    const ackA = service.move(ana.userId, beginA.you.moves[0].id);
+    expect(ackA).toEqual({ ok: true, turn: 1 });
+
+    emitted = [];
+    const ackB = service.move(bia.userId, beginB.you.moves[0].id);
+
+    // A rodada já foi emitida quando o ack de Bia é produzido...
+    expect(eventsFor(bia.userId, 'battle:round')).toHaveLength(1);
+    expect(eventsFor(bia.userId, 'battle:round')[0].payload.turn).toBe(2);
+    // ...e mesmo assim o ack aponta para o turno 1, o que ela de fato jogou.
+    expect(ackB).toEqual({ ok: true, turn: 1 });
+
+    // O servidor não considera que ninguém jogou o turno novo.
+    expect((service.resync(bia.userId) as any).youMoved).toBe(false);
+    expect((service.resync(ana.userId) as any).youMoved).toBe(false);
+  });
+
   it('rejects a move outside your own deck', async () => {
     await startBattle();
 
@@ -186,6 +260,15 @@ describe('BattleRoomService', () => {
     await startBattle();
     const beginA = eventsFor(ana.userId, 'battle:begin')[0].payload;
 
+    // Ana joga sempre o golpe utilitário do deck. `buildMoveset` embaralha os
+    // golpes, então pegar `moves[0]` sortearia um ATAQUE qualquer — e um golpe
+    // forte derruba Bia na 2ª rodada, encerrando por 'nocaute' antes de o
+    // contador de faltas chegar a 3 (era daí que vinha a intermitência deste
+    // teste). O moveset sempre traz exatamente 1 golpe fora de ATAQUE, e sem
+    // dano não existe KO: só o abandono pode terminar a batalha.
+    const harmless = (moves: any[]) =>
+      moves.find((m) => m.category !== 'ataque') ?? moves[0];
+
     for (let i = 0; i < MAX_MISSED_TURNS; i++) {
       const ended = eventsFor(ana.userId, 'battle:end').length > 0;
       if (ended) break;
@@ -195,7 +278,7 @@ describe('BattleRoomService', () => {
       )?.payload;
       const moves =
         (beginPayload ?? roundPayload)?.you?.moves ?? beginA.you.moves;
-      service.move(ana.userId, moves[0].id); // Ana joga; Bia some
+      service.move(ana.userId, harmless(moves).id); // Ana joga; Bia some
       jest.advanceTimersByTime(TURN_TIMEOUT_MS);
       await Promise.resolve();
       await Promise.resolve();

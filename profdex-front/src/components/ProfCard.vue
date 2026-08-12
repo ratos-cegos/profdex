@@ -76,7 +76,12 @@ const cartoonSrc = `/professors/${props.professor.slug}-cartoon.png`
       </div>
 
       <div class="prof-card__status pixel">
-        <span v-if="professor.captured" class="status-captured">CAPTURADO</span>
+        <!-- Vários exemplares do mesmo professor: cada ficha de QR resgatada
+             traz uma combinação de tipos e um deck próprios. -->
+        <span v-if="professor.capturedCount > 1" class="status-captured">
+          ×{{ professor.capturedCount }} CAPTURADOS
+        </span>
+        <span v-else-if="professor.captured" class="status-captured">CAPTURADO</span>
         <span v-else-if="professor.discovered" class="status-discovered">ENCONTRADO</span>
         <span v-else class="status-unknown">???</span>
       </div>

@@ -82,6 +82,15 @@ export class PresenceService {
     return [...(this.users.get(userId)?.sockets ?? [])];
   }
 
+  /** Quantos usuários distintos estão online (não sockets). */
+  count(): number {
+    return this.users.size;
+  }
+
+  /**
+   * Lista completa. Cara em lobby cheio (O(N) e um objeto por usuário) — use
+   * `page`/`search` no caminho quente; isto aqui é para testes e diagnóstico.
+   */
   snapshot(): PresenceUser[] {
     return [...this.users.entries()].map(([id, entry]) => ({
       id,
@@ -89,4 +98,41 @@ export class PresenceService {
       status: entry.status,
     }));
   }
+
+  /**
+   * Primeiros `limit` usuários, pulando `exceptUserId`. Para no limite em vez de
+   * materializar o lobby inteiro: com 1000 online, mandar tudo a cada conexão é
+   * justamente o que fazia o custo crescer com o quadrado da população.
+   */
+  page(limit: number, exceptUserId?: string): PresenceUser[] {
+    const out: PresenceUser[] = [];
+    for (const [id, entry] of this.users) {
+      if (out.length >= limit) break;
+      if (id === exceptUserId) continue;
+      out.push({ id, name: entry.name, status: entry.status });
+    }
+    return out;
+  }
+
+  /** Busca por nome (case/acento-insensível), também limitada. */
+  search(term: string, limit: number, exceptUserId?: string): PresenceUser[] {
+    const needle = normalize(term);
+    if (!needle) return this.page(limit, exceptUserId);
+
+    const out: PresenceUser[] = [];
+    for (const [id, entry] of this.users) {
+      if (out.length >= limit) break;
+      if (id === exceptUserId) continue;
+      if (!normalize(entry.name).includes(needle)) continue;
+      out.push({ id, name: entry.name, status: entry.status });
+    }
+    return out;
+  }
+}
+
+function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }

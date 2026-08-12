@@ -9,6 +9,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!user.value)
 
+  // Em produção contas nascem no login com Google e são concluídas em
+  // /completar-cadastro (POST /auth/google/complete), que já devolve a sessão.
+  // `register` só serve ao ambiente de desenvolvimento: o backend responde 404
+  // sem `NODE_ENV=development`, e a rota /register nem existe no build.
   async function register(matricula, name, password) {
     const { data } = await api.post('/auth/register', { matricula, name, password })
     setSession(data)
@@ -29,7 +33,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function setSession(data) {
-    // Login e cadastro já criaram a sessão no servidor. Marcar a restauração
+    // O login já criou a sessão no servidor. Marcar a restauração
     // aqui evita que o primeiro clique dispare /auth/me novamente e apague o
     // usuário quando a navegação acontece logo após a autenticação.
     applyAuthenticatedSession(user, hasRestoredSession, data)

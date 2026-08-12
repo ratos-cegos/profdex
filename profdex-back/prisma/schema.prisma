@@ -17,6 +17,15 @@ model User {
   discoveries Discovery[]
   captures    Capture[]
 
+  // Login com Google (opcional — matrícula/senha continua valendo).
+  // `email` fica único para uma conta institucional não virar duas; `googleId`
+  // é o identificador estável do Google (o e-mail pode ser renomeado).
+  // Só e-mails @edu.unifil.br e @unifil.br entram — ver institutional-domains.ts
+  email         String?              @unique
+  googleId      String?              @unique @map("google_id")
+  emailVerified Boolean              @default(false) @map("email_verified")
+  resetTokens   PasswordResetToken[]
+
   // PvP ranqueado — Elo com início/piso 1000 (ver docs/BATALHA-PVP.md)
   battleRating Int      @default(1000) @map("battle_rating")
   battleWins   Int      @default(0) @map("battle_wins")
@@ -25,8 +34,148 @@ model User {
   battlesAsA   Battle[] @relation("BattlesAsPlayerA")
   battlesAsB   Battle[] @relation("BattlesAsPlayerB")
 
+  // Métricas de engajamento (ver docs/METRICAS.md)
+  // `role`: "aluno" | "admin" — admin é derivado do domínio do e-mail
+  // institucional (@unifil.br sem o edu) e só dá acesso de LEITURA ao painel.
+  role            String        @default("aluno")
+  engagementScore Int           @default(0) @map("engagement_score")
+  sessions        UserSession[]
+  events          AppEvent[]
+
+  // Quiz de bancada (ver docs/QUIZ.md)
+  quizAttempts QuizAttempt[] @relation("QuizAluno")
+  quizOperated QuizAttempt[] @relation("QuizOperador")
+
   @@index([battleRating(sort: Desc)])
+  @@index([engagementScore(sort: Desc)])
   @@map("users")
+}
+
+// Uma "sessão de uso": da abertura do app até o abandono. `activeMs` só conta
+// tempo com a aba VISÍVEL — sem isso, quem deixa o app aberto a noite toda
+// domina qualquer métrica de tempo e a torna inútil.
+// Sessões sem heartbeat há tempo demais são encerradas por varredura.
+model UserSession {
+  id         String     @id @default(uuid())
+  userId     String     @map("user_id")
+  startedAt  DateTime   @default(now()) @map("started_at")
+  lastSeenAt DateTime   @default(now()) @map("last_seen_at")
+  endedAt    DateTime?  @map("ended_at")
+  activeMs   Int        @default(0) @map("active_ms")
+  userAgent  String?    @map("user_agent")
+  user       User       @relation(fields: [userId], references: [id])
+  events     AppEvent[]
+
+  @@index([userId, startedAt])
+  @@index([startedAt])
+  // Varredura de sessões órfãs: acha as abertas e paradas sem varrer a tabela.
+  @@index([endedAt, lastSeenAt])
+  @@map("user_sessions")
+}
+
+// Fluxo bruto de interações. É a trilha de auditoria — o painel NUNCA lê daqui,
+// lê de MetricHourly. Gravado em lote pelo servidor, não uma linha por request.
+model AppEvent {
+  id         String       @id @default(uuid())
+  userId     String       @map("user_id")
+  sessionId  String?      @map("session_id")
+  type       String
+  occurredAt DateTime     @map("occurred_at")
+  durationMs Int?         @map("duration_ms")
+  metadata   Json?
+  user       User         @relation(fields: [userId], references: [id])
+  session    UserSession? @relation(fields: [sessionId], references: [id])
+
+  @@index([type, occurredAt])
+  @@index([userId, occurredAt])
+  @@index([occurredAt])
+  @@map("app_events")
+}
+
+// Agregado horário pré-calculado. Formato chave-valor de propósito: métrica
+// nova não exige migração. O painel lê só daqui, então continua barato mesmo
+// com milhões de eventos brutos acumulados.
+model MetricHourly {
+  id     String   @id @default(uuid())
+  bucket DateTime // início da hora (UTC)
+  metric String
+  value  Int
+
+  @@unique([bucket, metric])
+  @@index([bucket])
+  @@map("metrics_hourly")
+}
+
+// Banco de questões do quiz de bancada. `theme` é um id da roda de tipos
+// (ver src/battle/engine/types.ts) — o mesmo que classifica os professores,
+// para o aluno que acerta saber qual professor ir capturar.
+//
+// A resposta certa mora SÓ aqui: o servidor nunca a envia junto com a questão,
+// senão bastaria abrir o DevTools do tablet da bancada.
+model QuizQuestion {
+  id         String        @id @default(uuid())
+  theme      String // logica | calculo | ia-ml | robotica | arquitetura | npi | redes | banco | algoritmos
+  difficulty String // facil | media | dificil
+  prompt     String
+  options    Json // string[] com as alternativas, na ordem de exibição
+  answer     Int // índice da alternativa correta em `options`
+  active     Boolean       @default(true)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  attempts   QuizAttempt[]
+
+  // Uma questão é identificada pelo enunciado: reexecutar o seed atualiza em
+  // vez de duplicar o banco de questões.
+  @@unique([prompt])
+  @@index([theme, difficulty, active])
+  @@map("quiz_questions")
+}
+
+// Tentativa registrada na bancada.
+//
+// Guardada mesmo quando erra ou o tempo estoura — é ela que sustenta o
+// cooldown de 10min por tema e o relatório do painel. `operatorId` é o admin
+// que estava operando o tablet: sem isso não há como auditar nada depois.
+model QuizAttempt {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  questionId  String   @map("question_id")
+  theme       String
+  difficulty  String
+  correct     Boolean
+  answerIndex Int?     @map("answer_index") // null = tempo esgotado sem resposta
+  elapsedMs   Int      @map("elapsed_ms")
+  operatorId  String   @map("operator_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user     User         @relation("QuizAluno", fields: [userId], references: [id])
+  operator User         @relation("QuizOperador", fields: [operatorId], references: [id])
+  question QuizQuestion @relation(fields: [questionId], references: [id])
+
+  // Consulta do cooldown: última tentativa daquele aluno naquele tema.
+  @@index([userId, theme, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@index([theme, createdAt])
+  @@map("quiz_attempts")
+}
+
+// Token de redefinição de senha.
+//
+// Guardamos apenas o HASH: um vazamento do banco não pode virar tomada de
+// contas. O token em claro só existe no link enviado por e-mail.
+// `usedAt` garante uso único — sem isso, quem tivesse acesso ao e-mail poderia
+// reusar o mesmo link indefinidamente.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 // Uma batalha PvP. Criada quando os dois jogadores confirmam o professor
@@ -59,19 +208,63 @@ model Battle {
 }
 
 model Professor {
-  id               String      @id @default(uuid())
-  name             String
-  slug             String      @unique
-  captureTokenHash String?     @unique @map("capture_token_hash")
-  modelUrl         String?     @map("model_url")
-  marker1Index     Int         @map("marker1_index")
-  marker2Index     Int         @map("marker2_index")
-  discoveries      Discovery[]
-  captures         Capture[]
-  battlesAsA       Battle[]    @relation("BattleProfessorA")
-  battlesAsB       Battle[]    @relation("BattleProfessorB")
+  id           String             @id @default(uuid())
+  name         String
+  slug         String             @unique
+  modelUrl     String?            @map("model_url")
+  marker1Index Int                @map("marker1_index")
+  marker2Index Int                @map("marker2_index")
+  discoveries  Discovery[]
+  captures     Capture[]
+  variants     ProfessorVariant[]
+  battlesAsA   Battle[]           @relation("BattleProfessorA")
+  battlesAsB   Battle[]           @relation("BattleProfessorB")
 
   @@map("professors")
+}
+
+// Uma combinação de tipos com que o professor pode aparecer. Um professor de
+// dois tipos rende três variantes (cada tipo sozinho e os dois juntos), então
+// existe "o Eron de IA/ML" e "o Eron de Arquitetura+IA/ML" como exemplares
+// diferentes na coleção do aluno.
+//
+// Os tipos são materializados aqui em vez de derivados de PROFESSOR_TYPES em
+// tempo de execução porque a ficha impressa aponta para UMA combinação: mudar
+// a tabela em código não pode reescrever o que já está no bolso do aluno.
+// `typeKey` são os ids ordenados e unidos por "+" — é o que dá o unique.
+model ProfessorVariant {
+  id          String         @id @default(uuid())
+  professorId String         @map("professor_id")
+  typeKey     String         @map("type_key")
+  types       String[]
+  createdAt   DateTime       @default(now()) @map("created_at")
+  professor   Professor      @relation(fields: [professorId], references: [id], onDelete: Cascade)
+  tokens      CaptureToken[]
+  captures    Capture[]
+
+  @@unique([professorId, typeKey])
+  @@map("professor_variants")
+}
+
+// Uma ficha de QR impressa. Vale UMA captura: quem escanear primeiro leva, e
+// depois disso o papel é só papel. Por isso o token é uma linha própria em vez
+// de uma coluna no professor — a tiragem é física e tem quantidade.
+//
+// Guardamos apenas o hash: o token em claro só existe no papel impresso.
+model CaptureToken {
+  id         String           @id @default(uuid())
+  variantId  String           @map("variant_id")
+  tokenHash  String           @unique @map("token_hash")
+  batch      String?
+  redeemedAt DateTime?        @map("redeemed_at")
+  redeemedBy String?          @map("redeemed_by")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  variant    ProfessorVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  capture    Capture?
+
+  // Consulta da tiragem: quantas fichas ainda valem de cada variante.
+  @@index([variantId, redeemedAt])
+  @@map("capture_tokens")
 }
 
 model Discovery {
@@ -86,14 +279,26 @@ model Discovery {
   @@map("discoveries")
 }
 
+// Um exemplar na coleção do aluno. Sem unique por (user, professor): o mesmo
+// professor pode aparecer várias vezes, uma por ficha resgatada.
+//
+// `moves` é sorteado NO RESGATE a partir dos tipos da variante e fica gravado —
+// antes o deck era sorteado a cada batalha e o exemplar não tinha identidade.
+// `variantId` e `tokenId` são opcionais só para as capturas anteriores a este
+// modelo, que o seed preenche (ver prisma/seed.ts).
 model Capture {
-  id          String    @id @default(uuid())
-  userId      String    @map("user_id")
-  professorId String    @map("professor_id")
-  capturedAt  DateTime  @default(now()) @map("captured_at")
-  user        User      @relation(fields: [userId], references: [id])
-  professor   Professor @relation(fields: [professorId], references: [id])
+  id          String            @id @default(uuid())
+  userId      String            @map("user_id")
+  professorId String            @map("professor_id")
+  variantId   String?           @map("variant_id")
+  tokenId     String?           @unique @map("token_id")
+  moves       String[]
+  capturedAt  DateTime          @default(now()) @map("captured_at")
+  user        User              @relation(fields: [userId], references: [id])
+  professor   Professor         @relation(fields: [professorId], references: [id])
+  variant     ProfessorVariant? @relation(fields: [variantId], references: [id])
+  token       CaptureToken?     @relation(fields: [tokenId], references: [id])
 
-  @@unique([userId, professorId])
+  @@index([userId, professorId])
   @@map("captures")
 }
