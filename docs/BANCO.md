@@ -96,9 +96,11 @@ escreve SQL, é o da coluna da direita que vale:
 | `QuizAttempt` | `quiz_attempts` | Tentativas na bancada |
 | `PasswordResetToken` | `password_reset_tokens` | Hashes de link de redefinição |
 | `Battle` | `battles` | Histórico de batalhas PvP |
-| `Professor` | `professors` | Os professores e o hash do token de captura |
+| `Professor` | `professors` | Os professores |
+| `ProfessorVariant` | `professor_variants` | Cada combinação de tipos de um professor |
+| `CaptureToken` | `capture_tokens` | Fichas de QR impressas (hash + uso único) |
 | `Discovery` | `discoveries` | Quem já viu qual professor |
-| `Capture` | `captures` | Quem já capturou qual professor |
+| `Capture` | `captures` | Os exemplares de cada aluno (tipos + deck) |
 
 Existe também `_prisma_migrations`, de controle do Prisma. **Nunca mexa nela** —
 apagar linhas dali faz o Prisma achar que migrations já aplicadas estão
@@ -258,14 +260,21 @@ npm run db:migrate   # recria todas as tabelas
 npm run db:seed      # professores, quiz e admin
 ```
 
-Nos dois caminhos os professores voltam **sem token de captura** — os QRs
-antigos param de funcionar. Para regerar:
+Nos dois caminhos os professores voltam **sem nenhuma ficha de QR** — as fichas
+antigas param de funcionar. Para tirar uma tiragem nova:
 
 ```bash
-CAPTURE_TOKEN_MARIO=<token> CAPTURE_TOKEN_ERON=<token> \
-CAPTURE_TOKEN_GUSTAVO=<token> node scripts/set-capture-tokens.js
-npm run qr:generate
+npm run qr:generate -- --copies=3        # simulação: mostra quantos QRs sairiam
+npm run qr:generate -- --copies=3 --yes  # gera de verdade
 ```
+
+`--copies=N` é quantas fichas de **cada combinação de tipos**. Um professor de
+dois tipos rende três combinações, então `--copies=3` dá 9 QRs para ele.
+
+Cada ficha vale **uma captura só**: o primeiro aluno que escanear leva o
+exemplar e o papel morre (`capture_tokens.redeemed_at`). Rodar o gerador de novo
+**acrescenta** uma tiragem sem invalidar as fichas ainda não resgatadas; use
+`--revoke-unredeemed` quando quiser mesmo zerar as que estão em circulação.
 
 Só o hash do token vai ao banco, então não há como recuperar os antigos: os
 crachás precisam ser reimpressos com os QRs novos.

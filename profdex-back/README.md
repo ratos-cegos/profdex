@@ -113,13 +113,14 @@ npm run db:set-admin                                  # lista administradores
 npm run db:set-admin -- 202312345                     # promove a admin
 npm run db:seed                                       # professores, quiz e admin
 npm run db:seed-quiz                                  # só as questões do quiz
-npm run qr:generate                                   # QR codes de captura
+npm run qr:generate -- --copies=3                     # simula a tiragem de fichas
+npm run qr:generate -- --copies=3 --yes               # gera os QR Codes
 ```
 
 `db:reset` não tem dry-run nem volta: derruba as tabelas, reaplica as migrations
 e roda o seed completo, deixando o login `admin` / `123456` pronto. Ele recusa
-hosts que não sejam locais sem `--yes`, e os professores voltam sem token de
-captura — os QR Codes impressos precisam ser regerados. Detalhes em
+hosts que não sejam locais sem `--yes`, e os professores voltam sem nenhuma
+ficha de captura — os QR Codes impressos precisam ser regerados. Detalhes em
 [`docs/BANCO.md`](../docs/BANCO.md#recomeçar-do-zero).
 
 `--purge-test-users` só apaga contas com prefixo de teste (`smoke`, `bat`,
