@@ -17,12 +17,21 @@ const foundProfessor = ref(null)
 const capturing = ref(false)
 const captured = ref(false)
 const captureAvatarError = ref(false)
+const aviso = ref(null)
 
 let stream = null
 let animFrame = null
 let detector = null
 let lastScannedData = null
 let lastScannedAt = 0
+let avisoTimer = null
+
+// Aviso passageiro sobre a câmera: some sozinho para o scanner seguir usável.
+function mostrarAviso(mensagem) {
+  aviso.value = mensagem
+  clearTimeout(avisoTimer)
+  avisoTimer = setTimeout(() => (aviso.value = null), 5000)
+}
 
 // ── Detecta se o dado do QR é um token de captura ─────────────────────────
 // Aceita: "capture:TOKEN" ou URL autorizada (mesma origem do app, ou uma das
@@ -73,7 +82,12 @@ async function onQRDetected(data) {
       const result = await store.captureByToken(token)
       foundProfessor.value = result.professor
       captured.value = true
-    } catch {
+    } catch (e) {
+      // Ficha já resgatada precisa de resposta na tela: sem isso o aluno fica
+      // insistindo num papel que o app nunca vai aceitar de novo.
+      if (e?.response?.status === 409) {
+        mostrarAviso('Este QR já foi utilizado. Cada ficha vale uma captura.')
+      }
       // token inválido — ignora silenciosamente, não trava o scanner
       lastScannedData = null
     } finally {
@@ -161,6 +175,7 @@ onUnmounted(() => {
   if (animFrame) cancelAnimationFrame(animFrame)
   if (stream) stream.getTracks().forEach((t) => t.stop())
   stream = null
+  clearTimeout(avisoTimer)
 })
 </script>
 
@@ -267,8 +282,11 @@ onUnmounted(() => {
               QR
             </div>
             <div class="hint-copy">
-              <p class="pixel hint-title">APONTE PARA O QR CODE</p>
-              <p class="hint-subtitle">Mantenha o código inteiro dentro da mira.</p>
+              <p v-if="aviso" class="pixel hint-title hint-title--warn">QR JÁ USADO</p>
+              <p v-else class="pixel hint-title">APONTE PARA O QR CODE</p>
+              <p class="hint-subtitle">
+                {{ aviso ?? 'Mantenha o código inteiro dentro da mira.' }}
+              </p>
             </div>
           </div>
         </div>
@@ -526,6 +544,7 @@ onUnmounted(() => {
 }
 .hint-copy { min-width: 0; }
 .hint-title { margin-bottom: 6px; font-size: 8px; color: var(--yellow); }
+.hint-title--warn { color: var(--red-light); }
 .hint-subtitle { font-size: 12px; color: white; line-height: 1.45; text-wrap: pretty; }
 
 /* ── Descoberto (slug QR) ── */

@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import api from '../services/api'
 import { normalizeKey } from '../data/professorTypes'
+import { useCapturesStore } from './captures'
 
 export const useProfessorsStore = defineStore('professors', () => {
   const professors = ref([])
@@ -52,8 +53,10 @@ export const useProfessorsStore = defineStore('professors', () => {
 
   async function captureByToken(token) {
     const { data } = await api.post('/captures/by-token', { token })
-    await fetch()
-    return data // { professor: { id, name, slug, ... }, ... }
+    // A dex (flags e contagem) e a lista de exemplares mudam juntas: recarregar
+    // só uma deixaria o exemplar novo invisível na ficha do professor.
+    await Promise.all([fetch(), useCapturesStore().fetch()])
+    return data // { professor, variant, types, moves: [...] }
   }
 
   return {
