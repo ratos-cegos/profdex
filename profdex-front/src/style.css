@@ -241,9 +241,36 @@ label {
   animation: fadeIn 0.3s ease forwards;
 }
 
+/* Troca de tela (App.vue). Curta e discreta: a ideia é dar continuidade entre
+   rotas, no espírito da troca de tela de um portátil, sem atrasar o toque. */
+.tela-enter-active,
+.tela-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.tela-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.tela-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .loader-pokeball,
   .capturing-ball {
     animation: none !important;
+  }
+
+  .tela-enter-active,
+  .tela-leave-active {
+    transition: none;
+  }
+
+  .tela-enter-from,
+  .tela-leave-to {
+    transform: none;
   }
 }
