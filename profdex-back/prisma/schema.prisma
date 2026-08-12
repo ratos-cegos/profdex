@@ -208,19 +208,63 @@ model Battle {
 }
 
 model Professor {
-  id               String      @id @default(uuid())
-  name             String
-  slug             String      @unique
-  captureTokenHash String?     @unique @map("capture_token_hash")
-  modelUrl         String?     @map("model_url")
-  marker1Index     Int         @map("marker1_index")
-  marker2Index     Int         @map("marker2_index")
-  discoveries      Discovery[]
-  captures         Capture[]
-  battlesAsA       Battle[]    @relation("BattleProfessorA")
-  battlesAsB       Battle[]    @relation("BattleProfessorB")
+  id           String             @id @default(uuid())
+  name         String
+  slug         String             @unique
+  modelUrl     String?            @map("model_url")
+  marker1Index Int                @map("marker1_index")
+  marker2Index Int                @map("marker2_index")
+  discoveries  Discovery[]
+  captures     Capture[]
+  variants     ProfessorVariant[]
+  battlesAsA   Battle[]           @relation("BattleProfessorA")
+  battlesAsB   Battle[]           @relation("BattleProfessorB")
 
   @@map("professors")
+}
+
+// Uma combinação de tipos com que o professor pode aparecer. Um professor de
+// dois tipos rende três variantes (cada tipo sozinho e os dois juntos), então
+// existe "o Eron de IA/ML" e "o Eron de Arquitetura+IA/ML" como exemplares
+// diferentes na coleção do aluno.
+//
+// Os tipos são materializados aqui em vez de derivados de PROFESSOR_TYPES em
+// tempo de execução porque a ficha impressa aponta para UMA combinação: mudar
+// a tabela em código não pode reescrever o que já está no bolso do aluno.
+// `typeKey` são os ids ordenados e unidos por "+" — é o que dá o unique.
+model ProfessorVariant {
+  id          String         @id @default(uuid())
+  professorId String         @map("professor_id")
+  typeKey     String         @map("type_key")
+  types       String[]
+  createdAt   DateTime       @default(now()) @map("created_at")
+  professor   Professor      @relation(fields: [professorId], references: [id], onDelete: Cascade)
+  tokens      CaptureToken[]
+  captures    Capture[]
+
+  @@unique([professorId, typeKey])
+  @@map("professor_variants")
+}
+
+// Uma ficha de QR impressa. Vale UMA captura: quem escanear primeiro leva, e
+// depois disso o papel é só papel. Por isso o token é uma linha própria em vez
+// de uma coluna no professor — a tiragem é física e tem quantidade.
+//
+// Guardamos apenas o hash: o token em claro só existe no papel impresso.
+model CaptureToken {
+  id         String           @id @default(uuid())
+  variantId  String           @map("variant_id")
+  tokenHash  String           @unique @map("token_hash")
+  batch      String?
+  redeemedAt DateTime?        @map("redeemed_at")
+  redeemedBy String?          @map("redeemed_by")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  variant    ProfessorVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  capture    Capture?
+
+  // Consulta da tiragem: quantas fichas ainda valem de cada variante.
+  @@index([variantId, redeemedAt])
+  @@map("capture_tokens")
 }
 
 model Discovery {
@@ -235,14 +279,26 @@ model Discovery {
   @@map("discoveries")
 }
 
+// Um exemplar na coleção do aluno. Sem unique por (user, professor): o mesmo
+// professor pode aparecer várias vezes, uma por ficha resgatada.
+//
+// `moves` é sorteado NO RESGATE a partir dos tipos da variante e fica gravado —
+// antes o deck era sorteado a cada batalha e o exemplar não tinha identidade.
+// `variantId` e `tokenId` são opcionais só para as capturas anteriores a este
+// modelo, que o seed preenche (ver prisma/seed.ts).
 model Capture {
-  id          String    @id @default(uuid())
-  userId      String    @map("user_id")
-  professorId String    @map("professor_id")
-  capturedAt  DateTime  @default(now()) @map("captured_at")
-  user        User      @relation(fields: [userId], references: [id])
-  professor   Professor @relation(fields: [professorId], references: [id])
+  id          String            @id @default(uuid())
+  userId      String            @map("user_id")
+  professorId String            @map("professor_id")
+  variantId   String?           @map("variant_id")
+  tokenId     String?           @unique @map("token_id")
+  moves       String[]
+  capturedAt  DateTime          @default(now()) @map("captured_at")
+  user        User              @relation(fields: [userId], references: [id])
+  professor   Professor         @relation(fields: [professorId], references: [id])
+  variant     ProfessorVariant? @relation(fields: [variantId], references: [id])
+  token       CaptureToken?     @relation(fields: [tokenId], references: [id])
 
-  @@unique([userId, professorId])
+  @@index([userId, professorId])
   @@map("captures")
 }

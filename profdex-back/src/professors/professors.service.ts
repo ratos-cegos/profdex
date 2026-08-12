@@ -23,12 +23,22 @@ export class ProfessorsService {
     ]);
 
     const discoveredIds = new Set(discoveries.map((d) => d.professorId));
-    const capturedIds = new Set(captures.map((c) => c.professorId));
+
+    // Quantos exemplares o aluno tem de cada um — o mesmo professor pode ter
+    // sido capturado em várias fichas, com combinações de tipos diferentes.
+    const capturedCounts = new Map<string, number>();
+    for (const { professorId } of captures) {
+      capturedCounts.set(
+        professorId,
+        (capturedCounts.get(professorId) ?? 0) + 1,
+      );
+    }
 
     return professors.map((p) => ({
       ...p,
       discovered: discoveredIds.has(p.id),
-      captured: capturedIds.has(p.id),
+      captured: capturedCounts.has(p.id),
+      capturedCount: capturedCounts.get(p.id) ?? 0,
     }));
   }
 

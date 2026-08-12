@@ -1,5 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  backfillCaptureVariants,
+  ensureProfessorVariants,
+} from '../professors/professor-variants';
 
 const PROFESSORS = [
   {
@@ -43,6 +47,18 @@ export class SeedService implements OnModuleInit {
           });
         }
         this.logger.log(`Banco populado com ${PROFESSORS.length} professores`);
+      }
+
+      // Fora do `if`: professor cadastrado antes deste modelo também precisa
+      // das variantes, senão não há o que imprimir em QR nem o que capturar.
+      const variantes = await ensureProfessorVariants(this.prisma);
+      if (variantes > 0) {
+        this.logger.log(`${variantes} variantes de professor criadas`);
+      }
+
+      const corrigidas = await backfillCaptureVariants(this.prisma);
+      if (corrigidas > 0) {
+        this.logger.log(`${corrigidas} capturas antigas receberam moveset`);
       }
     } catch {
       // Tabelas ainda não existem — aguarda npx prisma db push

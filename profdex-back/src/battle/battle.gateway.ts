@@ -324,9 +324,10 @@ export class BattleGateway
     @MessageBody() body: unknown,
   ): Promise<Ack> {
     const me = this.userOf(client);
-    const professorId = this.readString(body, 'professorId');
-    if (!professorId) return { ok: false, message: 'Escolha inválida.' };
-    return this.rooms.pick(me.id, professorId);
+    // O exemplar, não o professor: é ele que carrega tipos e deck.
+    const captureId = this.readString(body, 'captureId');
+    if (!captureId) return { ok: false, message: 'Escolha inválida.' };
+    return this.rooms.pick(me.id, captureId);
   }
 
   @SubscribeMessage('battle:move')

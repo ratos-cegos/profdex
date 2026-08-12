@@ -11,6 +11,10 @@
 import 'dotenv/config';
 import * as bcrypt from '@node-rs/bcrypt';
 import { PrismaClient } from '@prisma/client';
+import {
+  backfillCaptureVariants,
+  ensureProfessorVariants,
+} from '../src/professors/professor-variants';
 import { seedQuiz } from './quiz-seed';
 
 const prisma = new PrismaClient();
@@ -43,6 +47,22 @@ async function seedProfessors() {
 }
 
 /**
+ * Materializa as combinações de tipos de cada professor.
+ *
+ * As variantes saem de PROFESSOR_TYPES (código) mas vivem no banco: é delas que
+ * o gerador de QR tira quantas fichas distintas existem, e é a elas que cada
+ * exemplar capturado fica preso — mexer na tabela de tipos depois não reescreve
+ * o que já está no bolso do aluno.
+ */
+async function seedVariants() {
+  const novas = await ensureProfessorVariants(prisma);
+  const corrigidas = await backfillCaptureVariants(prisma);
+  console.log(
+    `Variantes: ${novas} novas, ${corrigidas} capturas antigas corrigidas`,
+  );
+}
+
+/**
  * Garante que `admin` / `123456` SEMPRE entra.
  *
  * A senha é reescrita em toda execução, e não só na criação: o objetivo desta
@@ -70,6 +90,7 @@ async function seedAdmin() {
 
 async function main() {
   await seedProfessors();
+  await seedVariants();
   await seedQuiz(prisma);
   await seedAdmin();
   console.log('\n✅ Seed concluído.');

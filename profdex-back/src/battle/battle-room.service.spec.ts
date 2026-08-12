@@ -6,6 +6,7 @@ import {
   PICK_TIMEOUT_MS,
   TURN_TIMEOUT_MS,
 } from './battle-room.service';
+import { buildMoveset } from './engine/moves';
 import { RatingService } from './rating.service';
 
 /** Métrica é efeito colateral do fim da batalha: aqui só precisa não explodir. */
@@ -20,14 +21,14 @@ describe('BattleRoomService', () => {
   let closed: string[][];
   const battleCreate = jest.fn();
   const battleUpdate = jest.fn();
-  const captureFindUnique = jest.fn();
+  const captureFindFirst = jest.fn();
 
   const ana = { userId: 'user-ana', name: 'Ana' };
   const bia = { userId: 'user-bia', name: 'Bia' };
 
   const prisma = {
     battle: { create: battleCreate, update: battleUpdate },
-    capture: { findUnique: captureFindUnique },
+    capture: { findFirst: captureFindFirst },
   } as unknown as PrismaService;
 
   const applyResult = jest.fn().mockResolvedValue({
@@ -46,6 +47,17 @@ describe('BattleRoomService', () => {
     name: owner === ana.userId ? 'Mario' : 'Eron',
   });
 
+  // Um exemplar por jogadora, com tipos e deck JÁ GRAVADOS — é assim que a
+  // captura chega do banco desde que o moveset passou a ser sorteado no
+  // resgate do QR, não no início da batalha.
+  let capturas: Record<string, any>;
+  const capturaDe = (userId: string, types: string[]) => ({
+    id: `cap-${userId}`,
+    moves: buildMoveset(types).map((m) => m.id),
+    professor: professorOf(userId),
+    variant: { types },
+  });
+
   beforeEach(() => {
     jest.useFakeTimers();
     emitted = [];
@@ -53,11 +65,16 @@ describe('BattleRoomService', () => {
     battleCreate.mockReset().mockResolvedValue({});
     battleUpdate.mockReset().mockResolvedValue({});
     applyResult.mockClear();
-    captureFindUnique.mockReset().mockImplementation(({ where }: any) =>
-      Promise.resolve({
-        professor: professorOf(where.userId_professorId.userId),
-      }),
-    );
+    capturas = {
+      [ana.userId]: capturaDe(ana.userId, ['algoritmos']),
+      [bia.userId]: capturaDe(bia.userId, ['arquitetura', 'ia-ml']),
+    };
+    // Espelha `findFirst({ where: { id, userId } })`: exemplar de outra pessoa
+    // simplesmente não é encontrado.
+    captureFindFirst.mockReset().mockImplementation(({ where }: any) => {
+      const minha = capturas[where.userId];
+      return Promise.resolve(minha && minha.id === where.id ? minha : null);
+    });
 
     service = new BattleRoomService(prisma, ratingService, metricsStub());
     service.configure({
@@ -74,15 +91,15 @@ describe('BattleRoomService', () => {
 
   async function startBattle() {
     service.create(ana, bia);
-    await service.pick(ana.userId, 'prof-a');
-    await service.pick(bia.userId, 'prof-b');
+    await service.pick(ana.userId, capturas[ana.userId].id);
+    await service.pick(bia.userId, capturas[bia.userId].id);
     // deixa promises do begin assentarem
     await Promise.resolve();
   }
 
   it('cancels the room when picks time out, without persisting', async () => {
     service.create(ana, bia);
-    await service.pick(ana.userId, 'prof-a'); // só a Ana escolheu
+    await service.pick(ana.userId, capturas[ana.userId].id); // só a Ana escolheu
 
     jest.advanceTimersByTime(PICK_TIMEOUT_MS);
 
@@ -92,11 +109,18 @@ describe('BattleRoomService', () => {
     expect(closed).toHaveLength(1);
   });
 
-  it('rejects picking a professor that was not captured', async () => {
-    captureFindUnique.mockResolvedValue(null);
+  it('rejects picking an exemplar that was not captured', async () => {
     service.create(ana, bia);
 
-    const result = await service.pick(ana.userId, 'prof-nao-capturado');
+    const result = await service.pick(ana.userId, 'cap-inexistente');
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects picking someone else's exemplar", async () => {
+    service.create(ana, bia);
+
+    const result = await service.pick(ana.userId, capturas[bia.userId].id);
 
     expect(result.ok).toBe(false);
   });
@@ -122,9 +146,26 @@ describe('BattleRoomService', () => {
     expect(beginB.you.professor.slug).toBe('eron');
   });
 
+  it('fights with the deck stored on the exemplar, not a fresh roll', async () => {
+    await startBattle();
+
+    const beginA = eventsFor(ana.userId, 'battle:begin')[0].payload;
+    const beginB = eventsFor(bia.userId, 'battle:begin')[0].payload;
+
+    expect(beginA.you.moves.map((m: any) => m.id)).toEqual(
+      capturas[ana.userId].moves,
+    );
+    expect(beginB.you.moves.map((m: any) => m.id)).toEqual(
+      capturas[bia.userId].moves,
+    );
+    // Os tipos vêm da variante capturada, não de PROFESSOR_TYPES.
+    expect(beginA.you.types).toEqual(['algoritmos']);
+    expect(beginB.you.types).toEqual(['arquitetura', 'ia-ml']);
+  });
+
   it('blind pick: opponent learns THAT you picked, never WHICH', async () => {
     service.create(ana, bia);
-    await service.pick(ana.userId, 'prof-a');
+    await service.pick(ana.userId, capturas[ana.userId].id);
 
     const notice = eventsFor(bia.userId, 'battle:pick:opponent');
     expect(notice).toHaveLength(1);

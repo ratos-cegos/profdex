@@ -33,9 +33,34 @@ describe('ProfessorsService', () => {
       select: PUBLIC_PROFESSOR_SELECT,
     });
     expect(result).toEqual([
-      { ...professor, discovered: true, captured: false },
+      { ...professor, discovered: true, captured: false, capturedCount: 0 },
     ]);
     expect(JSON.stringify(result)).not.toContain('captureToken');
+  });
+
+  it('counts every exemplar of the same professor', async () => {
+    const prisma = {
+      professor: { findMany: jest.fn().mockResolvedValue([professor]) },
+      discovery: {
+        findMany: jest.fn().mockResolvedValue([{ professorId: professor.id }]),
+      },
+      // Três fichas resgatadas do mesmo professor, em combinações diferentes.
+      capture: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { professorId: professor.id },
+            { professorId: professor.id },
+            { professorId: professor.id },
+          ]),
+      },
+    };
+    const service = new ProfessorsService(prisma as unknown as PrismaService);
+
+    const [result] = await service.findAll('user-1');
+
+    expect(result.captured).toBe(true);
+    expect(result.capturedCount).toBe(3);
   });
 
   it('uses the public allowlist when retrieving one professor', async () => {

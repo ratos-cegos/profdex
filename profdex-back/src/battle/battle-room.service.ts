@@ -13,7 +13,7 @@ import {
   turnOrder,
   upkeep,
 } from './engine/engine';
-import { buildMoveset, Move } from './engine/moves';
+import { buildMoveset, getMoveById, Move } from './engine/moves';
 import { typesForProfessor } from './engine/professor-types';
 import { RatingOutcome, RatingService } from './rating.service';
 
@@ -26,7 +26,11 @@ interface RoomPlayer {
   userId: string;
   name: string;
   key: CombatantKey; // 'player' = quem convidou (A) · 'enemy' = convidado (B)
+  // O exemplar escolhido, não o professor: é ele que carrega a combinação de
+  // tipos e o deck gravados na captura.
   professor?: { id: string; slug: string; name: string };
+  captureId?: string;
+  types?: string[];
   moves?: Move[];
   missedTurns: number;
 }
@@ -135,7 +139,7 @@ export class BattleRoomService implements OnModuleDestroy {
 
   // ── Seleção às cegas do professor ─────────────────────────────────────────
 
-  async pick(userId: string, professorId: string): Promise<Ack> {
+  async pick(userId: string, captureId: string): Promise<Ack> {
     const room = this.roomOf(userId);
     if (!room || room.phase !== 'picking') {
       return { ok: false, message: 'Não há seleção em andamento.' };
@@ -143,10 +147,17 @@ export class BattleRoomService implements OnModuleDestroy {
     const me = this.slotOf(room, userId);
     if (me.professor) return { ok: false, message: 'Você já escolheu.' };
 
-    // Só vale professor CAPTURADO — validação no banco, nunca no cliente.
-    const capture = await this.prisma.capture.findUnique({
-      where: { userId_professorId: { userId, professorId } },
-      include: { professor: { select: { id: true, slug: true, name: true } } },
+    // Só vale exemplar CAPTURADO pelo próprio usuário — validação no banco,
+    // nunca no cliente. O `userId` no where é o que impede levar para a arena
+    // o exemplar de outra pessoa.
+    const capture = await this.prisma.capture.findFirst({
+      where: { id: captureId, userId },
+      select: {
+        id: true,
+        moves: true,
+        professor: { select: { id: true, slug: true, name: true } },
+        variant: { select: { types: true } },
+      },
     });
     if (!capture) {
       return {
@@ -155,7 +166,19 @@ export class BattleRoomService implements OnModuleDestroy {
       };
     }
 
+    // Tipos e deck vêm gravados na captura. O fallback cobre exemplares
+    // anteriores a este modelo, que o seed ainda não corrigiu.
+    const types = capture.variant?.types?.length
+      ? capture.variant.types
+      : typesForProfessor(capture.professor);
+    const moves = capture.moves
+      .map((id) => getMoveById(id))
+      .filter((move) => move !== null);
+
     me.professor = capture.professor;
+    me.captureId = capture.id;
+    me.types = types;
+    me.moves = moves.length ? moves : buildMoveset(types);
     // O oponente sabe QUE você escolheu, nunca QUAL (pick às cegas).
     this.emitToOther(room, me.key, 'battle:pick:opponent', {});
 
@@ -175,13 +198,12 @@ export class BattleRoomService implements OnModuleDestroy {
     >;
     for (const key of ['player', 'enemy'] as const) {
       const slot = room.players[key];
-      const professor = slot.professor!;
-      const types = typesForProfessor(professor);
-      slot.moves = buildMoveset(types);
+      // Tipos e deck já foram resolvidos no pick, a partir do exemplar
+      // capturado — a batalha não sorteia mais nada.
       combatants[key] = createCombatant({
-        name: professor.name,
-        types,
-        moves: slot.moves,
+        name: slot.professor!.name,
+        types: slot.types!,
+        moves: slot.moves!,
       });
     }
     room.state = { player: combatants.player, enemy: combatants.enemy };
