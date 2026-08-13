@@ -1,0 +1,39 @@
+# Template processado pelo entrypoint oficial da imagem nginx (envsubst).
+# Só ${DOMAIN} é substituído — as variáveis do nginx como $host, $scheme etc.
+# não têm variável de ambiente com esse nome, então passam intactas.
+#
+# TLS: certificado de Origem do Cloudflare (modo Full Strict), montado em
+# nginx/certs/{cert,key}.pem — ver comentário no docker-compose.prod.yml.
+
+server {
+    listen 80;
+    server_name ${DOMAIN};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/nginx/certs/cert.pem;
+    ssl_certificate_key /etc/nginx/certs/key.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    client_max_body_size 10m;
+
+    location / {
+        proxy_pass http://app:3000;
+        proxy_http_version 1.1;
+
+        # Necessário pro WebSocket do PvP (Socket.IO) sobreviver ao proxy.
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 75s;
+    }
+}

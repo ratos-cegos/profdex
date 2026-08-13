@@ -60,3 +60,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # QR Codes de captura gerados — contem tokens em texto puro
 /qr-out
+
+# Certificado de Origem do Cloudflare (chave privada) usado pelo nginx
+/nginx/certs
