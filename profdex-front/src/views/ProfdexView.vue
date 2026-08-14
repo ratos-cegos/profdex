@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import BottomNav from '../components/BottomNav.vue'
 import ProfCard from '../components/ProfCard.vue'
 import { useAuthStore } from '../stores/auth.js'
 import { useProfessorsStore } from '../stores/professors.js'
@@ -93,20 +94,7 @@ function goDetails(prof) {
       </div>
     </main>
 
-    <nav class="profdex__nav">
-      <button class="nav-btn nav-btn--active" @click="router.push({ name: 'profdex' })">
-        <span class="nav-icon">📒</span>
-        <span class="pixel nav-label">ProfDex</span>
-      </button>
-      <button class="nav-btn nav-btn--primary" @click="router.push({ name: 'scan' })">
-        <span class="nav-icon">📷</span>
-        <span class="pixel nav-label">Scanear</span>
-      </button>
-      <button class="nav-btn nav-btn--battle" @click="router.push({ name: 'batalha' })">
-        <span class="nav-icon nav-icon--text">BT</span>
-        <span class="pixel nav-label">Batalha</span>
-      </button>
-    </nav>
+    <BottomNav />
   </div>
 </template>
 
@@ -202,10 +190,10 @@ function goDetails(prof) {
   transition: width 0.5s ease;
 }
 
+/* O scroll vem da classe utilitária `.page`; repetir flex/overflow aqui só
+   duplicava a regra. */
 .profdex__main {
-  flex: 1;
   padding: 20px 16px;
-  overflow-y: auto;
 }
 
 .loading-state {
@@ -225,9 +213,11 @@ function goDetails(prof) {
   animation: spin 0.8s linear infinite;
 }
 
+/* `auto-fill` + `minmax` mantém 3 colunas na largura típica do app e cai para 2
+   em telas de 320px, onde `repeat(3, 1fr)` espremia os cards. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 12px;
 }
 
@@ -268,72 +258,4 @@ function goDetails(prof) {
   margin-top: 4px;
 }
 
-.profdex__nav {
-  background: var(--surface);
-  border-top: 3px solid var(--surface-border);
-  display: flex;
-  gap: 8px;
-  padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
-  flex-shrink: 0;
-}
-
-.nav-btn {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-height: 52px;
-  color: var(--text-primary);
-  padding: 8px 4px;
-  border-radius: var(--radius);
-  border: 3px solid var(--surface);
-  text-shadow: 1px 1px 0 var(--surface);
-  transition: transform 0.15s ease, filter 0.15s ease;
-}
-
-.nav-btn--active {
-  background: var(--ds-orange);
-  color: var(--surface);
-  text-shadow: none;
-  box-shadow: inset 0 3px 0 var(--ds-orange-glow), inset 0 -4px 0 var(--ds-orange-shadow);
-}
-
-.nav-btn--primary {
-  background: var(--ds-blue);
-  color: var(--text-primary);
-  box-shadow: inset 0 3px 0 var(--ds-blue-glow), inset 0 -4px 0 var(--ds-blue-shadow);
-}
-
-.nav-btn--battle {
-  background: var(--ds-green);
-  color: var(--surface);
-  text-shadow: none;
-  box-shadow: inset 0 3px 0 var(--ds-green-glow), inset 0 -4px 0 var(--ds-green-shadow);
-}
-
-.nav-btn:active {
-  transform: translateY(2px);
-  filter: brightness(0.92);
-}
-
-.nav-icon {
-  font-size: 22px;
-}
-
-.nav-icon--text {
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.nav-label {
-  font-size: 7px;
-}
-
-.nav-btn--primary .nav-label {
-  padding: 3px 4px;
-  background: var(--surface);
-  border-radius: 2px;
-}
 </style>

@@ -37,6 +37,16 @@
   --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --radius: 8px;
   --radius-lg: 16px;
+
+  /* Medidas da navegação — ficam aqui, e não nas views, para que a barra
+     inferior e as abas superiores não possam divergir de rota para rota.
+     A altura acompanha o ícone: ícone + gap + rótulo + padding vertical. */
+  --nav-height: 64px;
+  --nav-pad: 10px;
+  --nav-icon: 34px;
+  --tab-icon: 30px;
+  /* Disco de ícone dos botões grandes da lista de batalha. */
+  --option-icon: 56px;
 }
 
 *, *::before, *::after {
@@ -58,7 +68,11 @@ body {
 }
 
 #app {
-  height: 100%;
+  /* `dvh` acompanha a barra de endereço do navegador móvel, que aparece e some
+     durante a rolagem; com `vh` puro a barra inferior fica abaixo da dobra no
+     iOS. O `100vh` fica de reserva para navegadores sem suporte. */
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   max-width: 480px;
@@ -137,8 +151,13 @@ button {
   pointer-events: none;
 }
 
+/* Área rolável padrão das telas. `min-height: 0` é o que permite o item flex
+   encolher abaixo do próprio conteúdo — sem ele o container cresce, estoura o
+   `#app` (que tem `overflow: hidden`) e o conteúdo aparece cortado em vez de
+   rolar. */
 .page {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -222,9 +241,36 @@ label {
   animation: fadeIn 0.3s ease forwards;
 }
 
+/* Troca de tela (App.vue). Curta e discreta: a ideia é dar continuidade entre
+   rotas, no espírito da troca de tela de um portátil, sem atrasar o toque. */
+.tela-enter-active,
+.tela-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.tela-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.tela-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .loader-pokeball,
   .capturing-ball {
     animation: none !important;
+  }
+
+  .tela-enter-active,
+  .tela-leave-active {
+    transition: none;
+  }
+
+  .tela-enter-from,
+  .tela-leave-to {
+    transform: none;
   }
 }

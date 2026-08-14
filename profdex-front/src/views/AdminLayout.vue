@@ -60,8 +60,10 @@ const atual = computed(() => route.name)
 </template>
 
 <style scoped>
+/* `height` (e não `min-height`): com `min-height` o layout crescia além do
+   `#app`, que tem `overflow: hidden`, e o painel inteiro ficava sem poder rolar. */
 .admin {
-  min-height: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -141,8 +143,11 @@ const atual = computed(() => route.name)
   border-bottom-color: var(--yellow);
 }
 
+/* Área rolável do painel: as views filhas (métricas, tentativas de quiz) têm
+   tabelas longas e não declaram scroll próprio — quem rola é este container. */
 .admin__conteudo {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
 }
 </style>

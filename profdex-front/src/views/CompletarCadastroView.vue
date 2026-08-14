@@ -151,6 +151,8 @@ async function submit() {
 
 .auth-body {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 20px 16px;
   display: flex;
   flex-direction: column;

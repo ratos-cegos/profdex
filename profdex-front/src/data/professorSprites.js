@@ -16,18 +16,42 @@
 
 import { normalizeKey, PLAYER_KEY } from './professorTypes.js'
 
+// Sprites DE FRENTE — é assim que o oponente aparece, ao fundo do palco.
 export const PROFESSOR_SPRITES = {
   eron: '/professors/eron-cartoon.png',
-  gustavo: '/professors/gustavo-cartoon.png',
+  // Pixel art 2D (exportada de sprite-gustavo-frente-parado.ase).
+  gustavo: '/professors/gustavo-frente.png',
   mario: '/professors/mario-cartoon.png',
+}
+
+// Sprites DE COSTAS — perspectiva clássica de batalha por turnos: quem joga vê
+// o próprio personagem de costas, em primeiro plano, encarando o oponente que
+// está de frente lá no fundo. Quem não tem arte de costas cai no sprite frontal.
+export const PROFESSOR_SPRITES_COSTAS = {
+  gustavo: '/professors/gustavo-costas.png',
+}
+
+// Quais sprites são pixel art de verdade. Só esses recebem
+// `image-rendering: pixelated`: aplicar o filtro nos cartoons — que são desenho
+// suave e entram na tela reduzidos — serrilharia as bordas deles.
+const SPRITES_PIXEL_ART = new Set([
+  PROFESSOR_SPRITES.gustavo,
+  PROFESSOR_SPRITES_COSTAS.gustavo,
+])
+
+/** O sprite deve ser ampliado sem suavização? */
+export function ehPixelArt(url) {
+  return SPRITES_PIXEL_ART.has(url)
 }
 
 /** Padrão de quem ainda não tem arte própria. */
 export const DEFAULT_SPRITE_URL = PROFESSOR_SPRITES.gustavo
 
-/** Sprite do jogador na arena PvE — sempre o mesmo boneco. */
+/** Sprite do jogador na arena PvE — de costas, em primeiro plano. */
 export const PLAYER_SPRITE_URL =
-  PROFESSOR_SPRITES[PLAYER_KEY] ?? DEFAULT_SPRITE_URL
+  PROFESSOR_SPRITES_COSTAS[PLAYER_KEY] ??
+  PROFESSOR_SPRITES[PLAYER_KEY] ??
+  DEFAULT_SPRITE_URL
 
 /**
  * Resolve o sprite de um professor: slug, depois nome, depois o padrão.

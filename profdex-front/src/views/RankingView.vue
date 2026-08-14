@@ -1,81 +1,137 @@
 <script setup>
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import api from '../services/api'
+import BottomNav from '../components/BottomNav.vue'
 import PointsLeaderboard from '../components/PointsLeaderboard.vue'
-import { rankingUsers } from '../data/ranking'
+import TopTabs from '../components/TopTabs.vue'
 
-const router = useRouter()
+// Esta tela era um protótipo com dados fixos de `src/data/ranking.js`, enquanto o
+// ranking real (Elo de PvP) vivia como aba interna da BatalhaView. Agora existe
+// um ranking só: o de verdade, aqui, alcançado pela aba superior.
 
-function goBack() {
-  if (window.history.length > 1) {
-    router.back()
-    return
-  }
-
-  router.push({ name: 'profdex' })
+// Emblema por tier (cores/emoji seguem docs/BATALHA-PVP.md).
+const TIER_BADGE = {
+  Bronze: '🥉',
+  Prata: '🥈',
+  Ouro: '🥇',
+  Platina: '💠',
+  Diamante: '💎',
+  Mestre: '👑',
 }
+
+const ranking = ref(null) // { entries, me, page, pageSize, total }
+const carregando = ref(false)
+const erro = ref(null)
+
+async function carregar(pagina = 1) {
+  carregando.value = true
+  erro.value = null
+  try {
+    const { data } = await api.get('/rankings/battle', { params: { page: pagina } })
+    // Página 1 substitui; seguintes anexam ("carregar mais").
+    ranking.value =
+      pagina === 1 || !ranking.value
+        ? data
+        : { ...data, entries: [...ranking.value.entries, ...data.entries] }
+  } catch {
+    erro.value = 'Não deu para carregar o ranking. Tente de novo.'
+  } finally {
+    carregando.value = false
+  }
+}
+
+const temMais = computed(
+  () => ranking.value && ranking.value.entries.length < ranking.value.total,
+)
+
+const vazio = computed(() => ranking.value && !ranking.value.entries.length)
+
+// Adapta o formato da API ao que o PointsLeaderboard consome.
+const jogadores = computed(() =>
+  (ranking.value?.entries || []).map((entrada) => ({
+    id: entrada.id,
+    nome: entrada.name,
+    pontuacao: entrada.rating,
+    // Ex.: "🥉 Bronze · 1V·0D" — o emblema acompanha o nome do tier.
+    detalhe: [
+      [TIER_BADGE[entrada.tier], entrada.tier].filter(Boolean).join(' '),
+      `${entrada.wins}V·${entrada.losses}D`,
+    ].join(' · '),
+    destaque: entrada.id === ranking.value?.me?.id,
+  })),
+)
+
+onMounted(() => carregar(1))
 </script>
 
 <template>
   <div class="ranking-screen">
     <header class="ranking-header">
-      <button class="ranking-header__back" type="button" @click="goBack">
-        <span aria-hidden="true">←</span>
-        Voltar
-      </button>
-      <div>
-        <span class="pixel ranking-header__label">TOP TREINADORES</span>
-        <p class="pixel ranking-header__title">RANKING</p>
-      </div>
+      <span class="pixel ranking-header__label">TOP TREINADORES</span>
+      <p class="pixel ranking-header__title">RANKING</p>
     </header>
 
-    <main class="ranking-page">
-      <PointsLeaderboard :users="rankingUsers" />
+    <main class="ranking-page page">
+      <TopTabs />
+
+      <p v-if="carregando && !ranking" class="ranking-hint">Carregando…</p>
+      <p v-else-if="erro" class="ranking-hint" role="alert">{{ erro }}</p>
+      <p v-else-if="vazio" class="ranking-hint">
+        Ninguém pontuou ainda — vença a primeira batalha do evento!
+      </p>
+
+      <PointsLeaderboard
+        v-if="jogadores.length"
+        :users="jogadores"
+        unidade="ELO"
+        :mostrar-cabecalho="false"
+      />
+
+      <button
+        v-if="temMais"
+        class="pixel ranking-more"
+        type="button"
+        :disabled="carregando"
+        @click="carregar(ranking.page + 1)"
+      >
+        {{ carregando ? '…' : 'CARREGAR MAIS' }}
+      </button>
+
+      <!-- Sua posição, mesmo fora do topo da lista -->
+      <div v-if="ranking?.me" class="rank-me">
+        <template v-if="ranking.me.played">
+          <span class="pixel rank-me__pos">#{{ ranking.me.position }}</span>
+          <span class="rank-me__name">Você · {{ ranking.me.name }}</span>
+          <span class="pixel rank-me__tier">
+            {{ TIER_BADGE[ranking.me.tier] }} {{ ranking.me.rating }} · {{ ranking.me.tier }}
+          </span>
+        </template>
+        <span v-else class="rank-me__name">
+          Você ainda não pontuou — desafie alguém na aba Batalha!
+        </span>
+      </div>
     </main>
 
-    <nav class="ranking-nav" aria-label="Navegação principal">
-      <button class="nav-btn nav-btn--profdex" type="button" @click="router.push({ name: 'profdex' })">
-        <span class="nav-icon" aria-hidden="true">📒</span>
-        <span class="pixel nav-label">ProfDex</span>
-      </button>
-      <button class="nav-btn nav-btn--scan" type="button" @click="router.push({ name: 'scan' })">
-        <span class="nav-icon" aria-hidden="true">📷</span>
-        <span class="pixel nav-label">Scanear</span>
-      </button>
-      <button class="nav-btn nav-btn--battle" type="button" @click="router.push({ name: 'batalha' })">
-        <span class="nav-icon nav-icon--text" aria-hidden="true">BT</span>
-        <span class="pixel nav-label">Batalha</span>
-      </button>
-      <button
-        class="nav-btn nav-btn--ranking"
-        type="button"
-        aria-current="page"
-        @click="goBack"
-      >
-        <span class="nav-icon" aria-hidden="true">🏆</span>
-        <span class="pixel nav-label">Ranking</span>
-      </button>
-    </nav>
+    <BottomNav />
   </div>
 </template>
 
 <style scoped>
+/* Fica no fluxo do `#app` (que já limita a 480px e centraliza). A versão
+   anterior usava `position: fixed; inset: 0`, escapando desse limite — era o que
+   fazia esta tela ter largura diferente de todas as outras rotas. */
 .ranking-screen {
-  position: fixed;
-  inset: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #090b10;
+  background: var(--bg);
 }
 
 .ranking-header {
   position: relative;
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 14px;
   padding: 16px 20px 28px;
-  background: linear-gradient(160deg, #452b70, #7650b6);
+  background: linear-gradient(160deg, var(--red-dark), var(--red));
 }
 
 .ranking-header::after {
@@ -86,48 +142,32 @@ function goBack() {
   left: 0;
   height: 20px;
   border-radius: 20px 20px 0 0;
-  background: #090b10;
-}
-
-.ranking-header__back {
-  position: relative;
-  z-index: 1;
-  min-height: 38px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: var(--radius);
-  background: rgba(0, 0, 0, 0.25);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 12px;
-  font-weight: 750;
+  background: var(--bg);
 }
 
 .ranking-header__label {
   display: block;
   margin-bottom: 5px;
-  color: #ead58a;
+  color: var(--yellow);
   font-size: 7px;
 }
 
 .ranking-header__title {
-  color: #fff;
+  color: var(--text-primary);
   font-size: 18px;
   text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
 }
 
 .ranking-page {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 34px 10px 32px;
-  background:
-    radial-gradient(circle at 50% -20%, rgba(139, 92, 246, 0.1), transparent 34%),
-    linear-gradient(180deg, #090b10 0%, #0b0e14 100%);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 12px 12px;
 }
 
+/* Scanline discreta, no espírito de tela CRT. Depende do `position: relative`
+   acima para se ancorar na área rolável, e não na tela inteira. */
 .ranking-page::before {
   content: '';
   position: absolute;
@@ -138,93 +178,65 @@ function goBack() {
   background-size: 100% 5px;
 }
 
-.ranking-nav {
-  z-index: 2;
-  flex-shrink: 0;
-  display: flex;
-  gap: 8px;
-  padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
-  border-top: 3px solid var(--surface-border);
-  background: var(--surface);
+.ranking-hint {
+  margin: 8px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
 }
 
-.nav-btn {
-  min-width: 0;
-  min-height: 52px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 8px 3px;
-  border: 3px solid var(--surface);
+.ranking-more {
+  min-height: 40px;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-primary);
-  text-shadow: 1px 1px 0 var(--surface);
-  transition: transform 0.15s ease, filter 0.15s ease;
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
 }
 
-.nav-btn--profdex {
-  background: var(--ds-orange);
-  color: var(--surface);
-  text-shadow: none;
-  box-shadow: inset 0 3px 0 var(--ds-orange-glow), inset 0 -4px 0 var(--ds-orange-shadow);
+.ranking-more:hover:not(:disabled) {
+  border-color: var(--yellow);
 }
 
-.nav-btn--scan {
-  background: var(--ds-blue);
-  box-shadow: inset 0 3px 0 var(--ds-blue-glow), inset 0 -4px 0 var(--ds-blue-shadow);
+.ranking-more:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-.nav-btn--battle {
-  background: var(--ds-green);
-  color: var(--surface);
-  text-shadow: none;
-  box-shadow: inset 0 3px 0 var(--ds-green-glow), inset 0 -4px 0 var(--ds-green-shadow);
+/* Fica colada no rodapé enquanto a lista rola — a própria posição é o dado que o
+   jogador mais procura e sumiria ao descer. Sem `margin-top: auto`: com poucos
+   jogadores isso a empurrava para o fim da tela e abria um vão morto no meio. */
+.rank-me {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 2px solid var(--yellow);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.55);
 }
 
-.nav-btn--ranking {
-  background: #7650b6;
-  outline: 2px solid #ead58a;
-  outline-offset: -4px;
-  box-shadow: inset 0 3px 0 #b995f0, inset 0 -4px 0 #452b70;
+.rank-me__pos {
+  font-size: 10px;
+  color: var(--yellow);
 }
 
-.nav-btn:active {
-  transform: translateY(2px);
-  filter: brightness(0.92);
-}
-
-.nav-icon {
-  font-size: 20px;
-  line-height: 1;
-}
-
-.nav-icon--text {
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.nav-label {
+.rank-me__name {
+  flex: 1;
   overflow: hidden;
-  max-width: 100%;
-  font-size: 6px;
+  font-size: 13px;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-@media (min-width: 701px) {
-  .ranking-page {
-    padding: 48px clamp(24px, 5vw, 56px) 56px;
-  }
-
-  .ranking-header {
-    padding-inline: max(20px, calc((100vw - 1120px) / 2));
-  }
-
-  .ranking-nav {
-    width: min(100%, 480px);
-    align-self: center;
-  }
+.rank-me__tier {
+  font-size: 9px;
+  color: var(--yellow);
 }
 </style>

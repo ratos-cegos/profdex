@@ -14,6 +14,7 @@ import {
   PLAYER_KEY,
 } from '../data/professorTypes.js'
 import {
+  ehPixelArt,
   PLAYER_SPRITE_URL,
   spriteUrlForProfessor,
 } from '../data/professorSprites.js'
@@ -23,8 +24,10 @@ const MAX_HP = 120
 const router = useRouter()
 const store = useProfessorsStore()
 
-// Professor inimigo: FIXO no Eron por enquanto — a arena sempre abre a batalha
-// contra ele, independente do professor que veio em /arena/:id.
+// Professor inimigo: FIXO no Gustavo por enquanto — a arena sempre abre a
+// batalha contra ele, independente do professor que veio em /arena/:id. É o
+// único com pixel art nas duas orientações, então é ele que a tela de teste
+// mostra: de frente ao fundo (oponente) e de costas em primeiro plano (jogador).
 // Para voltar a usar o professor da rota, troque o `ENEMY_KEY` por
 // `route.params.id` (o findByKey aceita UUID, slug e nome) e restaure o
 // `useRoute()` no import de vue-router.
@@ -33,11 +36,11 @@ const store = useProfessorsStore()
 // setup — a batalha inteira (tipos, golpes, modelo) deriva deste objeto, e por
 // isso ele precisa estar correto ANTES de useBattle() montar os combatentes.
 // O literal é o fallback de quando a lista não veio (backend fora do ar): os
-// dados do Eron que a batalha usa são slug e nome, então ela roda igual.
-const ENEMY_KEY = 'eron'
+// dados que a batalha usa são slug e nome, então ela roda igual.
+const ENEMY_KEY = 'gustavo'
 const enemyProfessor = store.findByKey(ENEMY_KEY) || {
   id: ENEMY_KEY,
-  name: 'Eron',
+  name: 'Gustavo',
   slug: ENEMY_KEY,
 }
 
@@ -156,14 +159,20 @@ function goBack() {
 
       <img
         class="arena__model arena__model--enemy"
-        :class="{ 'arena__model--hit': enemyHit }"
+        :class="{
+          'arena__model--hit': enemyHit,
+          'arena__model--pixel': ehPixelArt(enemySpriteSrc),
+        }"
         :src="enemySpriteSrc"
         :alt="`Prof. ${enemyProfessor.name} em batalha`"
         decoding="async"
       />
       <img
         class="arena__model arena__model--player"
-        :class="{ 'arena__model--hit': playerHit }"
+        :class="{
+          'arena__model--hit': playerHit,
+          'arena__model--pixel': ehPixelArt(playerSpriteSrc),
+        }"
         :src="playerSpriteSrc"
         alt="Seu personagem"
         decoding="async"
@@ -289,12 +298,27 @@ function goBack() {
   object-fit: contain;
 }
 
+/* Pixel art ampliada sem suavização; `object-fit: contain` acima já preserva a
+   proporção do sprite dentro da caixa do palco. */
+.arena__model--pixel {
+  image-rendering: pixelated;
+}
+
 /* Inimigo: mais ao centro e menor -> parece mais fundo no túnel (perspectiva) */
+/* Enquadramento no estilo das batalhas por turnos clássicas: oponente ao fundo,
+   à esquerda e menor (parece mais distante no túnel); jogador em primeiro plano,
+   à direita e maior.
+   As caixas foram refeitas para os sprites em pixel art, que são bem mais altos
+   que largos (proporção ~0.55) — com as medidas antigas, pensadas para os
+   cartoons quase quadrados, os dois bonecos se sobrepunham e o do jogador
+   avançava por trás do painel de comandos, aparecendo nos vãos entre os botões.
+   As faixas verticais agora não se cruzam: oponente 10%–34%, jogador 35%–71%,
+   e o painel começa por volta de 72%. */
 .arena__model--enemy {
-  top: 24%;
-  left: 10%;
-  width: 50%;
-  height: 34%;
+  top: 10%;
+  left: 6%;
+  width: 38%;
+  height: 24%;
   /* Contorno vermelho discreto: drop-shadow segue a silhueta do sprite
      (o PNG é transparente), diferente de um border/outline retangular.
      --error é o vermelho real da paleta (--red do tema é marrom). */
@@ -304,11 +328,13 @@ function goBack() {
 }
 
 /* Jogador: em primeiro plano, à direita, de costas — abaixado (mais para baixo) */
+/* Jogador à direita: a barra de HP dele é ancorada à esquerda (máx. 58% de
+   largura), então o boneco ocupa a faixa livre da direita sem cobri-la. */
 .arena__model--player {
-  right: -10%;
-  bottom: 17%;
-  width: 88%;
-  height: 50%;
+  right: 3%;
+  bottom: 29%;
+  width: 42%;
+  height: 36%;
   /* Mesmo contorno, em azul */
   filter:
     drop-shadow(0 0 1px var(--ds-blue-glow))
