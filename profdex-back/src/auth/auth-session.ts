@@ -8,7 +8,12 @@ export function getSessionCookieOptions(isProduction: boolean): CookieOptions {
     httpOnly: true,
     maxAge: SESSION_MAX_AGE_MS,
     path: '/api',
-    sameSite: 'lax',
+    // Produção é cross-site (front na Vercel, back na AWS): sem SameSite=None
+    // o navegador não manda o cookie no handshake do WebSocket (nem em outras
+    // requisições cross-site), e o gateway derruba a conexão como não
+    // autenticada. Em dev front e back são same-site (mesmo host via proxy do
+    // Vite), então Lax mantém a proteção de CSRF sem precisar de HTTPS local.
+    sameSite: isProduction ? 'none' : 'lax',
     secure: isProduction,
   };
 }
