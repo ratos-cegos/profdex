@@ -1,0 +1,110 @@
+# Stack completa (produção/AWS): frontend + backend + Postgres + Adminer atrás
+# de um nginx único, exposto publicamente só em 80/443.
+#
+#   docker compose up -d --build
+#
+# Pré-requisito: um `.env` nesta pasta (raiz do repo) com as variáveis de
+# produção — ver .env.example. DATABASE_URL/DIRECT_URL devem apontar para o
+# host `db` (nome do serviço, rede Docker interna), não `localhost`.
+#
+# HTTPS: nginx termina TLS com um Origin Certificate do Cloudflare (modo Full
+# Strict) — sem Let's Encrypt/Certbot. Gere o certificado no painel Cloudflare
+# (SSL/TLS → Origin Server → Create Certificate) e salve os dois arquivos em:
+#
+#   nginx/certs/cert.pem   (certificado)
+#   nginx/certs/key.pem    (chave privada — NUNCA commitar, já está no .gitignore)
+#
+# Defina DOMAIN no `.env`, aponte o DNS no Cloudflare (proxy "laranja" ligado)
+# pro IP público da instância, e libere a porta 443 (e opcionalmente 80) no
+# security group.
+#
+# Adminer: fica só na rede Docker (sem `ports:`), acessível de fora somente
+# via https://$DOMAIN/minha-base-de-dados, protegido por HTTP Basic Auth no
+# nginx (ADMINER_AUTH_USER/ADMINER_AUTH_PASSWORD) antes do login do Postgres.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: profdex-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-profdex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-profdex}
+      POSTGRES_DB: ${POSTGRES_DB:-profdex}
+    expose:
+      - '5432'
+    volumes:
+      - profdex-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-profdex} -d ${POSTGRES_DB:-profdex}',
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: ./profdex-back
+      dockerfile: Dockerfile
+    container_name: profdex-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    expose:
+      - '3000'
+
+  frontend:
+    build:
+      context: ./profdex-front
+      dockerfile: Dockerfile
+    container_name: profdex-frontend
+    restart: unless-stopped
+    expose:
+      - '80'
+
+  adminer:
+    image: adminer:latest
+    container_name: profdex-adminer
+    restart: unless-stopped
+    depends_on:
+      - db
+    expose:
+      - '8080'
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: profdex-nginx
+    restart: unless-stopped
+    depends_on:
+      - app
+      - frontend
+      - adminer
+    environment:
+      DOMAIN: ${DOMAIN}
+      ADMINER_AUTH_USER: ${ADMINER_AUTH_USER}
+      ADMINER_AUTH_PASSWORD: ${ADMINER_AUTH_PASSWORD}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+
+volumes:
+  profdex-pgdata:
+    # Nome fixo (em vez do padrão "<diretório-do-projeto>_profdex-pgdata"):
+    # o compose de produção antigo vivia em profdex-back/docker-compose.prod.yml,
+    # então o volume real na EC2 é "profdex-back_profdex-pgdata". Sem esse
+    # `name:` explícito, mover o compose para a raiz mudaria o nome do projeto
+    # Compose e o `up` criaria um volume NOVO vazio — ou seja, "perderia" o
+    # banco de produção (os dados continuariam no disco, só desconectados).
+    # Confirme com `docker volume ls` na instância antes do primeiro deploy
+    # com este arquivo; se o nome real for outro, ajuste aqui.
+    name: profdex-back_profdex-pgdata
