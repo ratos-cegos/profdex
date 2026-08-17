@@ -1,0 +1,93 @@
+# Build + push das imagens (app, frontend, nginx) pro GitHub Container
+# Registry e deploy na EC2, a cada push na branch `deploy`.
+#
+# A EC2 só baixa e sobe (`docker compose pull` + `up -d`) — quem builda é o
+# runner do Actions, que tem CPU/RAM de sobra comparado com a t3.micro. Ver
+# docker-compose.github.yml para o porquê da estrutura de build/image dupla.
+#
+# Secrets necessários (Settings → Secrets and variables → Actions):
+#   DEPLOY_SSH_HOST   IP ou hostname da EC2 (ex.: 54.210.12.34)
+#   DEPLOY_SSH_USER   usuário SSH (ex.: ubuntu)
+#   DEPLOY_SSH_KEY    chave privada (conteúdo do .pem)
+#   DEPLOY_REPO_PATH  caminho do repo na EC2 (ex.: /home/ubuntu/profdex)
+#
+# GITHUB_TOKEN (automático, sem configurar nada) autentica tanto o push
+# quanto o pull no GHCR — não precisa de PAT.
+#
+# Pré-requisito na EC2: repo já clonado em DEPLOY_REPO_PATH, com o `.env`
+# de produção já preenchido (DOMAIN, ADMINER_AUTH_*, POSTGRES_*, etc. — ver
+# .env.example). Esse `.env` não é tocado pelo `git pull`.
+name: Deploy
+
+on:
+  push:
+    branches:
+      - deploy
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  GHCR_NAMESPACE: ${{ github.repository_owner }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login no GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: .env vazio (só pra satisfazer o env_file do docker-compose.yml — build não lê segredo nenhum)
+        run: touch .env
+
+      - name: Build das imagens
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.github.yml \
+            build app frontend nginx
+
+      - name: Push das imagens
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.github.yml \
+            push app frontend nginx
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+    steps:
+      - name: Configura chave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Pull das imagens + up na EC2
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_HOST }}" bash -s <<EOF
+            set -euo pipefail
+            echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+            cd "${{ secrets.DEPLOY_REPO_PATH }}"
+            git pull --ff-only
+
+            export GHCR_NAMESPACE="$GHCR_NAMESPACE"
+            export IMAGE_TAG="$IMAGE_TAG"
+            docker compose -f docker-compose.yml -f docker-compose.github.yml pull app frontend nginx
+            docker compose -f docker-compose.yml -f docker-compose.github.yml up -d
+            docker image prune -f
+          EOF
