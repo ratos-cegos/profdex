@@ -104,6 +104,15 @@ const router = createRouter({
       meta: { auth: true },
     },
     {
+      // Quiz Treino — o aluno praticando sozinho, fora do fluxo do evento.
+      // Nada aqui pontua, captura ou entra no cooldown da bancada; por isso é
+      // rota de aluno (`auth`), sem `admin`, e vive fora de /admin/quiz.
+      path: '/quiz/treino',
+      name: 'quiz-treino',
+      component: () => import('../views/QuizTreinoView.vue'),
+      meta: { auth: true },
+    },
+    {
       path: '/ranking',
       name: 'ranking',
       component: () => import('../views/RankingView.vue'),
