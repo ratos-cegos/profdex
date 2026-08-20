@@ -8,6 +8,32 @@ tema; errou (ou estourou o tempo), volta em 10 minutos.
 Tudo passa por rota administrativa: `/admin/quiz/*` no servidor,
 `/admin/quiz/bancada` no app.
 
+## Os quatro passos, do ponto de vista do aluno
+
+É assim que o percurso é anunciado no app (tela inicial, "Como Funciona"):
+
+1. **Encontre o estande ProfDex** — a mesa do time no evento. É onde a bancada
+   fica aberta o dia inteiro.
+2. **Rode o quiz com perguntas sobre o curso** — uma pergunta, respondida na
+   bancada com um administrador ao lado. Acertou, ganhou.
+3. **Receba o QR** — no acerto, um QR de captura é sorteado da pilha do estande.
+4. **Capture!** — o aluno lê o QR no scanner do app, e a prova é validada pelo
+   servidor antes de a captura valer.
+
+Do lado de dentro, esses quatro passos correspondem às quatro etapas da tela da
+bancada: **matrícula → tema → questão de 60s → resultado** (ver
+`AdminQuizBoothView.vue`), com a matrícula pedida a cada rodada porque quem
+responde muda o tempo todo.
+
+> ⚠️ **Divergência a resolver.** O passo 3 acima descreve o QR como **sorteado
+> da pilha, podendo sair qualquer professor de qualquer tipo**. O servidor, no
+> entanto, devolve em `POST /admin/quiz/answer` a lista `professores` **filtrada
+> pelo tema da questão** (`professoresDoTema`), e o resto deste documento parte
+> dessa premissa — inclusive a seção "Por que tema". As duas coisas não podem
+> valer ao mesmo tempo: ou o QR é do tema, ou é sorteado. Enquanto a decisão de
+> produto não for tomada, vale o que o operador faz na mesa — o gate é humano e
+> o servidor não amarra a captura ao acerto de qualquer forma.
+
 ## Por que "tema"
 
 Os temas do quiz **são** os tipos da roda de batalha
