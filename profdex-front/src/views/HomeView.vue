@@ -15,22 +15,22 @@ function start() {
 
 const steps = [
   {
-    icon: '📍',
-    title: 'Encontre os Professores',
-    desc: 'Explore o evento e encontre os professores participantes.',
+    icon: '/icons/passo1.png',
+    title: 'Encontre o Estande ProfDex',
+    desc: 'Procure a mesa do time ProfDex no evento. É de lá que sai tudo.',
   },
   {
-    icon: '🎓',
-    title: 'Ache o Professor',
-    desc: 'O app te diz quem é o professor. Encontre-o pessoalmente e responda uma pergunta corretamente.',
+    icon: '/icons/passo2.png',
+    title: 'Rode o Quiz do Curso',
+    desc: 'Na bancada, responda uma pergunta sobre o curso. Acertou, ganhou.',
   },
   {
-    icon: '🃏',
+    icon: '/icons/passo3.png',
     title: 'Receba o QR',
-    desc: 'Acertou? O professor apresenta o QR de captura protegido.',
+    desc: 'No acerto, um QR é sorteado da pilha — pode vir qualquer professor, de qualquer tipo.',
   },
   {
-    icon: '✨',
+    icon: '/icons/passo4.png',
     title: 'Capture!',
     desc: 'Leia o QR no scanner. A prova é validada pelo servidor antes da captura.',
   },
@@ -52,7 +52,7 @@ const steps = [
 
       <div class="home__steps">
         <div v-for="(step, i) in steps" :key="i" class="step-box animate-fade-in">
-          <div class="step-box__icon">{{ step.icon }}</div>
+          <img class="step-box__icon" :src="step.icon" alt="" aria-hidden="true" />
           <div class="step-box__body">
             <div class="step-box__num">{{ String(i + 1).padStart(2, '0') }}</div>
             <div class="step-box__title">{{ step.title }}</div>
@@ -168,9 +168,18 @@ const steps = [
   border-bottom: none;
 }
 
+/* Dimensionado pela ALTURA, com a largura livre — a mesma regra da barra de
+   navegacao. As quatro artes tem proporcoes diferentes (de 0.73 a 1.34); numa
+   caixa quadrada as mais largas apareceriam com pouco mais da metade da altura
+   das outras, e a coluna de texto deixaria de alinhar. */
 .step-box__icon {
-  font-size: 24px;
+  height: 40px;
+  width: auto;
   flex-shrink: 0;
+  object-fit: contain;
+  image-rendering: pixelated;
+  user-select: none;
+  pointer-events: none;
 }
 
 .step-box__num {
