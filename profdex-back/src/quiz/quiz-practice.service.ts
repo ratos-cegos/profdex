@@ -64,7 +64,7 @@ export class QuizPracticeService {
 
     if (!questoes.length) {
       throw new NotFoundException(
-        `Nenhuma questão cadastrada para o tema "${theme}". Rode o seed do quiz.`,
+        'Esse tema ainda não tem perguntas disponíveis.',
       );
     }
 

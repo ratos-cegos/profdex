@@ -197,8 +197,8 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
 
     <main class="treino__main page">
       <p class="treino__aviso">
-        Treino livre — não vale ponto, não captura professor e não trava por 10
-        minutos.
+        Treino livre — jogue quantas vezes quiser. Não vale ponto nem captura
+        professor.
       </p>
 
       <p v-if="erro" class="error-msg" aria-live="polite">{{ erro }}</p>

@@ -32,7 +32,7 @@ const steps = [
   {
     icon: '/icons/passo4.png',
     title: 'Capture!',
-    desc: 'Leia o QR no scanner. A prova é validada pelo servidor antes da captura.',
+    desc: 'Leia o QR no scanner do app e o professor entra na sua coleção.',
   },
 ]
 </script>
