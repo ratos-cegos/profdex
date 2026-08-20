@@ -42,6 +42,15 @@ const ICONES = [
   { entrada: 'profdex_scanner.png', saida: 'scanner.png', removerPreto: false },
   { entrada: 'profdex_batalha.png', saida: 'batalha.png', removerPreto: true },
   { entrada: 'profdex_ranking.png', saida: 'ranking.png', removerPreto: false },
+  { entrada: 'profdex_quiz.png', saida: 'quiz.png', removerPreto: false },
+  // Os quatro passos do "Como Funciona" da tela inicial. Passam pelo mesmo
+  // tratamento dos ícones de navegação: a arte chega acima de 1000px para
+  // renderizar a ~40px, e o recorte na bounding box tira a margem irregular de
+  // cada arquivo — sem isso os quatro apareceriam com tamanhos diferentes.
+  { entrada: 'profdex_passo1.png', saida: 'passo1.png', removerPreto: false },
+  { entrada: 'profdex_passo2.png', saida: 'passo2.png', removerPreto: false },
+  { entrada: 'profdex_passo3.png', saida: 'passo3.png', removerPreto: false },
+  { entrada: 'profdex_passo4.png', saida: 'passo4.png', removerPreto: false },
 ]
 
 // ── PNG: leitura ────────────────────────────────────────────────────────────
