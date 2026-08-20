@@ -103,8 +103,8 @@ const steps = [
 
 /* Eagle Ball pixel art */
 .home__ball {
-  width: 76px;
-  height: 76px;
+  width: 88px;
+  height: 88px;
 }
 
 /* Títulos do Hero */
@@ -158,9 +158,11 @@ const steps = [
 
 .step-box {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding-bottom: 12px;
+  /* Centralizado: com o icone a 56px e a coluna de texto em ~64px, ancorar no
+     topo deixava o desenho "subindo" em relacao ao bloco de texto. */
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
   border-bottom: 2px dashed var(--surface-border);
 }
 
@@ -168,13 +170,16 @@ const steps = [
   border-bottom: none;
 }
 
-/* Dimensionado pela ALTURA, com a largura livre — a mesma regra da barra de
-   navegacao. As quatro artes tem proporcoes diferentes (de 0.73 a 1.34); numa
-   caixa quadrada as mais largas apareceriam com pouco mais da metade da altura
-   das outras, e a coluna de texto deixaria de alinhar. */
+/* Caixa de tamanho FIXO com `object-fit: contain`, e nao largura livre.
+   As quatro artes vao de 0.73 a 1.34 de proporcao: com a largura solta, o
+   passo4 ocupava ~41px e o passo2 ~75px, e a coluna de texto comecava 34px
+   mais a direita em umas linhas do que em outras — visivel numa lista
+   vertical. A caixa fixa alinha o texto; o `contain` garante que nenhuma arte
+   seja esticada ou cortada, so centralizada dentro dela.
+   76x56 comporta a mais larga na altura cheia. */
 .step-box__icon {
-  height: 40px;
-  width: auto;
+  width: 76px;
+  height: 56px;
   flex-shrink: 0;
   object-fit: contain;
   image-rendering: pixelated;
@@ -201,6 +206,20 @@ const steps = [
   font-size: 9px;
   color: var(--text-muted);
   line-height: 1.6;
+}
+
+/* Aparelhos estreitos (abaixo do iPhone SE/mini): o icone cede alguns pixels
+   para a descricao nao quebrar em linhas de duas palavras. */
+@media (max-width: 359px) {
+  .step-box__icon {
+    width: 64px;
+    height: 48px;
+  }
+
+  .home__ball {
+    width: 76px;
+    height: 76px;
+  }
 }
 
 /* Botão Vermelho */
