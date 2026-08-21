@@ -18,7 +18,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
-import { TYPE_CYCLE, getType } from '../data/types'
+import TypeIcon from '../components/TypeIcon.vue'
+import { TYPE_CYCLE, getType, legibleColor } from '../data/types'
 
 const router = useRouter()
 
@@ -327,11 +328,11 @@ function formatarEspera(s) {
           :key="t.id"
           class="carta"
           type="button"
-          :style="{ '--tema': t.color }"
+          :style="{ '--tema': t.color, '--tema-icone': legibleColor(t.color) }"
           :disabled="carregando || !t.questoes || t.esperaSegundos > 0"
           @click="comecar(t)"
         >
-          <span class="carta__icone">{{ t.icon }}</span>
+          <TypeIcon class="carta__icone" :type="t.id" :size="36" />
           <span class="carta__nome">{{ t.label }}</span>
           <span v-if="t.esperaSegundos > 0" class="carta__aviso">
             aguarde {{ formatarEspera(t.esperaSegundos) }}
@@ -348,7 +349,10 @@ function formatarEspera(s) {
     <!-- ── Pergunta ───────────────────────────────────────────────────── -->
     <section v-else-if="etapa === 'pergunta'" class="cena cena--pergunta">
       <header class="faixa">
-        <span class="faixa__tema"> {{ temaAtual?.icon }} {{ temaAtual?.label }} </span>
+        <span class="faixa__tema">
+          <TypeIcon v-if="temaAtual" :type="temaAtual.id" :size="16" />
+          {{ temaAtual?.label }}
+        </span>
         <span class="faixa__nivel">
           {{ DIFICULDADES[sessao.question.difficulty] }}
         </span>
@@ -752,9 +756,13 @@ function formatarEspera(s) {
   cursor: default;
 }
 
+/* O `size` do TypeIcon vira atributo width/height no SVG, e atributo de
+   apresentacao perde para CSS -- entao o tamanho responsivo continua aqui. */
 .carta__icone {
-  font-size: clamp(26px, 4vw, 44px);
-  line-height: 1;
+  width: clamp(26px, 4vw, 44px);
+  height: auto;
+  color: var(--tema-icone);
+  flex-shrink: 0;
 }
 
 .carta__nome {
@@ -782,6 +790,10 @@ function formatarEspera(s) {
 }
 
 .faixa__tema {
+  /* O icone virou elemento e precisa alinhar com o nome do tema ao lado. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 800;
   color: var(--tema);
 }
