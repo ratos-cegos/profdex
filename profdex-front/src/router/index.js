@@ -169,6 +169,14 @@ const router = createRouter({
           name: 'admin-quiz',
           component: () => import('../views/AdminQuizAttemptsView.vue'),
         },
+        {
+          // Aba separada da de cima: o treino nao pontua nem entra no ranking,
+          // e juntar os dois numeros faria alguem ler volume de treino como
+          // participacao no evento.
+          path: 'quiz-treino',
+          name: 'admin-quiz-treino',
+          component: () => import('../views/AdminQuizTreinoView.vue'),
+        },
       ],
     },
     {
