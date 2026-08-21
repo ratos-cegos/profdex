@@ -1,8 +1,11 @@
 <script setup>
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import TypeIcon from '../components/TypeIcon.vue'
 import {
   TYPE_CYCLE,
+  legibleColor,
+  onColor,
   strongAgainst,
   weakAgainst,
 } from '../data/types'
@@ -220,12 +223,17 @@ const guide = computed(() =>
                 stroke="rgba(0,0,0,0.35)"
                 stroke-width="2"
               />
-              <text
-                :x="node.x"
-                :y="node.y + 7"
-                text-anchor="middle"
-                class="wheel__emoji"
-              >{{ node.icon }}</text>
+              <!-- `<svg>` aninhado nao aceita x/y, entao quem posiciona e o <g>.
+                   O -11 centraliza o icone de 22px no meio do no.
+                   A cor vem de `onColor`: o circulo esta preenchido com a cor
+                   canonica do tipo, e sobre ela so preto ou branco tem
+                   contraste - a paleta vai de #495057 a #F5A623. -->
+              <g
+                :transform="`translate(${node.x - 11}, ${node.y - 11})`"
+                :style="{ color: onColor(node.color) }"
+              >
+                <TypeIcon :type="node.id" :size="22" />
+              </g>
             </g>
           </svg>
 
@@ -246,10 +254,10 @@ const guide = computed(() =>
             v-for="type in guide"
             :key="type.id"
             class="type-card"
-            :style="{ '--type-color': type.color }"
+            :style="{ '--type-color': type.color, '--type-icon': legibleColor(type.color) }"
           >
             <header class="type-card__head">
-              <span class="type-card__icon">{{ type.icon }}</span>
+              <TypeIcon class="type-card__icon" :type="type.id" :size="22" />
               <h3 class="pixel type-card__name">{{ type.label }}</h3>
             </header>
             <p class="type-card__desc">{{ type.description }}</p>
@@ -450,9 +458,7 @@ const guide = computed(() =>
   height: auto;
 }
 
-.wheel__emoji {
-  font-size: 22px;
-}
+/* A cor do icone da roda vai inline (depende da cor do no); aqui nada. */
 
 .wheel__center-title {
   fill: var(--yellow);
@@ -511,7 +517,8 @@ const guide = computed(() =>
 }
 
 .type-card__icon {
-  font-size: 20px;
+  color: var(--type-icon);
+  flex-shrink: 0;
 }
 
 .type-card__name {

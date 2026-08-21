@@ -17,7 +17,8 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
-import { TYPE_CYCLE, getType } from '../data/types'
+import TypeIcon from '../components/TypeIcon.vue'
+import { TYPE_CYCLE, getType, legibleColor } from '../data/types'
 import api from '../services/api'
 import { useMetricsStore } from '../stores/metrics'
 
@@ -60,6 +61,11 @@ const temasExibidos = computed(() =>
   TYPE_CYCLE.map((t) => ({
     ...t,
     questoes: temas.value.find((x) => x.theme === t.id)?.questoes ?? 0,
+    // O ícone herda `currentColor`. A cor canônica do tipo é feita para
+    // PREENCHER área, não para virar traço sobre fundo escuro: o NPI (#495057)
+    // daria 1,7:1 no fundo do card e sumiria. `legibleColor` clareia até 4,5:1
+    // mantendo o matiz.
+    corIcone: legibleColor(t.color),
   })),
 )
 
@@ -212,11 +218,11 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
             :key="t.id"
             class="tema"
             type="button"
-            :style="{ '--tema': t.color }"
+            :style="{ '--tema': t.color, '--tema-icone': t.corIcone }"
             :disabled="carregando || !t.questoes"
             @click="comecar(t.id)"
           >
-            <span class="tema__icone" aria-hidden="true">{{ t.icon }}</span>
+            <TypeIcon class="tema__icone" :type="t.id" :size="26" />
             <span class="pixel tema__nome">{{ t.label }}</span>
             <span class="tema__qtd">
               {{ t.questoes ? `${t.questoes} questões` : 'sem questões' }}
@@ -436,8 +442,11 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
   filter: brightness(1.1);
 }
 
+/* O SVG ja vem com width/height do `size`; aqui so entra a cor, que ele herda
+   via `currentColor`. */
 .tema__icone {
-  font-size: 22px;
+  color: var(--tema-icone);
+  flex-shrink: 0;
 }
 
 .tema__nome {

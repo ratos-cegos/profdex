@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCapturesStore } from '../stores/captures'
 import { useProfessorsStore } from '../stores/professors'
+import TypeIcon from '../components/TypeIcon.vue'
 import { typesForProfessor, typeInfos } from '../data/professorTypes.js'
 import { movesForTypes } from '../data/moves.js'
 
@@ -131,7 +132,7 @@ function goAR() {
               class="type-badge"
               :style="{ '--type-color': t.color }"
             >
-              <span class="type-badge__icon" aria-hidden="true">{{ t.icon }}</span>
+              <TypeIcon class="type-badge__icon" :type="t.id" :size="14" />
               {{ t.label }}
             </span>
           </div>
@@ -188,7 +189,7 @@ function goAR() {
                 class="type-badge"
                 :style="{ '--type-color': t.color }"
               >
-                <span class="type-badge__icon" aria-hidden="true">{{ t.icon }}</span>
+                <TypeIcon class="type-badge__icon" :type="t.id" :size="14" />
                 {{ t.label }}
               </span>
             </div>
@@ -344,8 +345,9 @@ function goAR() {
   text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.35);
 }
 
+/* `.type-badge` ja define `color: #fff` e o icone herda via `currentColor`. */
 .type-badge__icon {
-  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .stats {
