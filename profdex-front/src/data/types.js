@@ -6,6 +6,12 @@
 //
 // A ordem do array abaixo É a roda (sentido horário). Mudar a ordem muda as
 // vantagens — os "forte/fraco" são derivados dela em runtime, não digitados à mão.
+//
+// ⚠️ O campo `icon` (emoji) é LEGADO. As telas renderizam `TypeIcon.vue`, que
+// indexa pelo `id` e traz a arte oficial vetorial. O emoji continua aqui de
+// propósito: um `{{ t.icon }}` esquecido em alguma tela não quebraria o build —
+// renderizaria vazio, em silêncio. Mantido, ele degrada para o emoji antigo em
+// vez de deixar um buraco. Não usar em código novo.
 
 export const SUPER_EFFECTIVE = 2
 export const NOT_EFFECTIVE = 0.5
@@ -134,4 +140,67 @@ export function effectiveness(attackerId, defenderId) {
 export function typeMultiplier(attackType, defenderTypes) {
   const list = Array.isArray(defenderTypes) ? defenderTypes : [defenderTypes]
   return list.reduce((mult, d) => mult * effectiveness(attackType, d), 1)
+}
+
+// ── Cor legível ─────────────────────────────────────────────────────────────
+// Trazidos da landing page junto com o TypeIcon. Os ícones de tipo herdam
+// `currentColor`, então quem decide a cor é quem os renderiza — e a paleta dos
+// 9 tipos vai de #495057 (NPI, quase preto) a #F5A623 (Arquitetura, laranja
+// claro). Uma cor fixa reprovaria em contraste na metade dos casos.
+
+/**
+ * Preto ou branco SOBRE a cor do tipo, escolhido por luminância relativa
+ * (WCAG 2.1) em vez de no olho. Use quando o ícone fica em cima de uma área
+ * preenchida com a cor canônica (setor da roda, badge sólida).
+ */
+export function onColor(hex) {
+  const channel = (v) => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const int = Number.parseInt(hex.slice(1), 16)
+  const luminance =
+    0.2126 * channel((int >> 16) & 255) +
+    0.7152 * channel((int >> 8) & 255) +
+    0.0722 * channel(int & 255)
+
+  // Contraste contra branco = 1.05 / (L + 0.05); contra preto = (L + 0.05) / 0.05.
+  // O ponto de virada é L ≈ 0,179.
+  return luminance > 0.179 ? '#121418' : '#ffffff'
+}
+
+/**
+ * Versão da cor do tipo que dá para LER sobre o fundo escuro do app.
+ *
+ * A paleta canônica foi desenhada para PREENCHER áreas, não para virar cor de
+ * traço. O NPI (`#495057`) sobre `--bg-deep` (`#121418`) dá 1,7:1 — o ícone
+ * sumiria. Este helper clareia até passar em 4,5:1 mantendo o matiz: continua
+ * sendo "a cor do NPI", só que visível.
+ *
+ * @param {string} hex Cor canônica do tipo.
+ * @param {number} minContrast Contraste mínimo desejado (4.5 = AA para texto).
+ */
+export function legibleColor(hex, minContrast = 4.5) {
+  const toLinear = (v) => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const luminance = (r, g, b) => 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
+
+  // Luminância do --bg-deep (#121418), fixa: é o fundo de todas as telas.
+  const BG = 0.00603
+  const int = Number.parseInt(hex.slice(1), 16)
+  let [r, g, b] = [(int >> 16) & 255, (int >> 8) & 255, int & 255]
+
+  // Clareia em passos de 6% na direção do branco. 20 passos chegam a ~71% de
+  // branco no pior caso — suficiente para qualquer cor da paleta, e o laço
+  // sempre termina.
+  for (let step = 0; step < 20; step++) {
+    if ((luminance(r, g, b) + 0.05) / (BG + 0.05) >= minContrast) break
+    r = Math.round(r + (255 - r) * 0.06)
+    g = Math.round(g + (255 - g) * 0.06)
+    b = Math.round(b + (255 - b) * 0.06)
+  }
+
+  return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')
 }
