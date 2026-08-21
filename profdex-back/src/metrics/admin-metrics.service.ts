@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { QUIZ_THEMES } from '../quiz/quiz.constants';
 import {
   EVENT_TYPES,
   INTERACTION_SOURCE_LABELS,
@@ -207,6 +208,68 @@ export class AdminMetricsService {
    * hoje. É o indicador mais honesto de que o app prendeu, e não só chamou
    * atenção no primeiro contato.
    */
+  /**
+   * Quiz Treino — painel próprio, separado do quiz de bancada.
+   *
+   * Lê SÓ de `metrics_hourly`, onde o rollup já deixou o recorte por tema
+   * pronto. Nenhuma varredura de `app_events`, nenhum JOIN com `quiz_attempts`:
+   * o treino é livre, não pontua e não entra em nada oficial, então o painel
+   * dele também não pode encostar nas tabelas da competição.
+   *
+   * É uma leitura por prefixo numa tabela que tem, no máximo, algumas dezenas
+   * de linhas por hora — barata mesmo com milhões de eventos brutos acumulados.
+   */
+  async practiceQuiz(days = 7) {
+    const from = new Date(Date.now() - Math.min(Math.max(days, 1), 30) * 86_400_000);
+    from.setMinutes(0, 0, 0);
+
+    const rows = await this.prisma.metricHourly.findMany({
+      where: {
+        bucket: { gte: from },
+        OR: [
+          { metric: { startsWith: 'practice_answered_' } },
+          { metric: { startsWith: 'practice_correct_' } },
+        ],
+      },
+      select: { metric: true, value: true },
+    });
+
+    const respostas = new Map<string, number>();
+    const acertos = new Map<string, number>();
+    for (const r of rows) {
+      const [mapa, prefixo] = r.metric.startsWith('practice_answered_')
+        ? [respostas, 'practice_answered_']
+        : [acertos, 'practice_correct_'];
+      const tema = r.metric.slice(prefixo.length);
+      mapa.set(tema, (mapa.get(tema) ?? 0) + r.value);
+    }
+
+    // A grade sai com os 9 temas sempre, mesmo os sem nenhuma resposta: um tema
+    // ausente da lista é indistinguível de um tema com zero treino, e é
+    // justamente o zero que o administrador precisa enxergar.
+    const porTema = QUIZ_THEMES.map((tema) => {
+      const total = respostas.get(tema) ?? 0;
+      const certos = acertos.get(tema) ?? 0;
+      return {
+        tema,
+        respostas: total,
+        acertos: certos,
+        taxa: total ? Math.round((certos / total) * 100) : null,
+      };
+    });
+
+    const total = porTema.reduce((n, t) => n + t.respostas, 0);
+    const certos = porTema.reduce((n, t) => n + t.acertos, 0);
+
+    return {
+      dias: Math.min(Math.max(days, 1), 30),
+      total,
+      acertos: certos,
+      taxa: total ? Math.round((certos / total) * 100) : null,
+      porTema,
+    };
+  }
+
   async retentionD1() {
     const startToday = new Date();
     startToday.setHours(0, 0, 0, 0);
