@@ -79,8 +79,34 @@ em que o fato acontece:
 | `quiz_answered`, `quiz_correct` | `quiz.service.ts` |
 
 O que o app ainda declara: `screen_view`, `scan_open`, `ranking_viewed`,
-`guide_opened` — volume de navegação, que não pontua. Um front adulterado não
-consegue inflar o próprio placar.
+`guide_opened`, `quiz_practice_answered` — volume de navegação e treino, que não
+pontua. Um front adulterado não consegue inflar o próprio placar.
+
+### `quiz_practice_answered` — o Quiz Treino
+
+Vale **0 pontos e 0 interações**, e é o único evento de quiz que o cliente pode
+declarar. Os três detalhes que explicam por quê:
+
+- **Não é `SERVER_ONLY`, ao contrário de `quiz_answered`/`quiz_correct`.** O
+  treino é corrigido no próprio aparelho do aluno (o gabarito vai junto com a
+  questão), então o servidor nunca saberia que houve resposta — como
+  server-only, o evento simplesmente nunca seria registrado.
+- **Forjá-lo não rende nada**, exatamente porque vale 0/0. `addPoints` retorna
+  cedo em `points <= 0`, então `users.engagement_score` nunca é tocado.
+- **Zera de propósito**: o treino é ilimitado e sem supervisão. Qualquer valor
+  acima de zero faria o placar medir quem deixou o dedo no botão, e não quem
+  participou do evento — a régua de `quiz_answered` foi calibrada para uma
+  tentativa por tema a cada 10 minutos, com um administrador ao lado.
+
+O treino também **não grava `quiz_attempts`** (é o que sustenta o cooldown da
+bancada) e **não afeta o ranking**, que ordena por `battleRating`/`battleWins` e
+nunca lê `app_events`.
+
+⚠️ **Uma ressalva ao ler o painel:** `active_users` é
+`COUNT(DISTINCT user_id) FROM app_events` **sem filtro de tipo**
+(`rollup.service.ts`). Um aluno que só treina conta como ativo, mesmo somando 0
+ponto e 0 interação. Isso já valia para `screen_view`, disparado em toda
+navegação — o treino não muda o comportamento, só amplia quem cai nele.
 
 ## Total de interações
 
@@ -106,7 +132,8 @@ equivale.
 
 `battle_won` e `quiz_correct` valem 0 aqui: eles são gravados **junto** com o
 evento de conclusão, e contar os dois faria a mesma batalha valer mais para um
-lado do que para o outro.
+lado do que para o outro. `quiz_practice_answered` vale 0 por outro motivo — é
+treino livre, ver acima.
 
 O total é somado pelo rollup (métrica `interactions`) e o painel só lê o
 agregado. Sai também `interactions_time` sozinha, para a tela mostrar quanto do
