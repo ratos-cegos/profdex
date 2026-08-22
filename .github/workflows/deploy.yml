@@ -83,7 +83,33 @@ jobs:
             set -euo pipefail
             echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
             cd "${{ secrets.DEPLOY_REPO_PATH }}"
-            git pull --ff-only
+
+            # Em que estado o repo da instância está. Se um deploy sair torto,
+            # o log já responde isso sem precisar de SSH.
+            echo "--- repo na EC2 ---"
+            git rev-parse --abbrev-ref HEAD
+            git log -1 --oneline
+            git status --short
+            echo "-------------------"
+
+            # Explícito, e não "git pull": o pull segue o upstream do branch em
+            # CHECKOUT. Se a instância estiver em outro branch (ou destacada),
+            # ele busca, imprime "Already up to date." e sai com 0 — deixando os
+            # arquivos versionados velhos no disco. Foi exatamente o que
+            # aconteceu em 22/08/2026: o docker-compose.yml sem o serviço
+            # "landing" continuou lá e o "up" morreu com "no such service".
+            #
+            # E isto vale além do compose: o template do nginx de borda é
+            # MONTADO do disco da instância (ver o volume em docker-compose.yml),
+            # não vai dentro da imagem. Config de roteamento nova só chega na
+            # borda por este git.
+            #
+            # "merge --ff-only" em vez de "reset --hard" de propósito: se alguém
+            # editou um arquivo versionado na instância, o deploy para e diz, em
+            # vez de apagar em silêncio.
+            git fetch origin deploy
+            git checkout deploy
+            git merge --ff-only origin/deploy
 
             export GHCR_NAMESPACE="$GHCR_NAMESPACE"
             export IMAGE_TAG="$IMAGE_TAG"

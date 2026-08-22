@@ -117,10 +117,23 @@ Push na branch `deploy` dispara `.github/workflows/deploy.yml`:
    Container Registry
    (`ghcr.io/<owner>/profdex-{app,frontend,landing,nginx}:<sha>`), usando
    `GITHUB_TOKEN` (sem precisar criar token pessoal).
-2. **deploy**: conecta via SSH na EC2, dá `git pull --ff-only` (só pra
-   atualizar `docker-compose*.yml`/configs do nginx — o `.env` de produção
-   não é tocado, fica fora do Git), faz login no GHCR reaproveitando o mesmo
-   `GITHUB_TOKEN` e roda `pull` + `up -d` com as duas camadas de compose.
+2. **deploy**: conecta via SSH na EC2, sincroniza o repo de lá com a `deploy`
+   (`git fetch` + `git checkout deploy` + `git merge --ff-only`), faz login no
+   GHCR reaproveitando o mesmo `GITHUB_TOKEN` e roda `pull` + `up -d` com as
+   duas camadas de compose. O `.env` de produção não é tocado — fica fora do
+   Git.
+
+   > O `checkout` explícito não é decoração. Um `git pull` simples segue o
+   > upstream do branch que estiver em checkout na instância: se ela estiver
+   > em outro branch, o pull imprime "Already up to date." e **sai com 0**,
+   > deixando os arquivos versionados velhos no disco. Foi assim que o deploy
+   > de 22/08/2026 quebrou com `no such service: landing` — o
+   > `docker-compose.yml` antigo continuava lá.
+
+   O que vem do Git na instância (e não das imagens) é mais do que parece:
+   `docker-compose*.yml` **e** `nginx/templates/`, que é montado como volume
+   no container da borda. Mudança de roteamento só chega em produção por
+   este passo.
 
 A EC2 nunca builda nada — só baixa imagens prontas. Isso importa porque o
 t3.micro não aguenta rodar `npm ci` + `vite build` + `prisma generate` +
@@ -142,7 +155,8 @@ Pré-requisito na EC2: repositório já clonado em `DEPLOY_REPO_PATH`, com o
 
 Se o `pull` na EC2 falhar por permissão no GHCR, verifique em
 *Settings → Packages* se a visibilidade dos pacotes `profdex-app` /
-`profdex-frontend` / `profdex-nginx` permite leitura pelo token do repositório
+`profdex-frontend` / `profdex-landing` / `profdex-nginx` permite leitura pelo
+token do repositório
 (ou torne-os públicos).
 
 ## Deploy manual (alternativa, sem Actions)
