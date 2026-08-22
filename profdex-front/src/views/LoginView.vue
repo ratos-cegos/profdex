@@ -128,8 +128,13 @@ async function submit() {
   font-family: 'Press Start 2P', monospace !important;
 }
 
+/* Rola a tela inteira (cabeçalho junto): com o teclado aberto em telas baixas o
+   formulário não cabia e, como o `#app` tem `overflow: hidden`, o excedente
+   simplesmente sumia em vez de rolar. */
 .auth-page {
   height: 100%;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   background-color: var(--bg-deep);

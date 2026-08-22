@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import api from '../services/api'
+import BottomNav from '../components/BottomNav.vue'
+import TopTabs from '../components/TopTabs.vue'
 import { useAuthStore } from '../stores/auth'
 import { useProfessorsStore } from '../stores/professors'
 import { useBattleStore } from '../stores/battle'
@@ -106,47 +107,7 @@ function challenge(player) {
   closeLobby()
 }
 
-// ── Aba Ranking (batalha) ─────────────────────────────────────────────────
-// A aba de ranking da Pokédex (completar a coleção) entrará ao lado no futuro.
-const tab = ref('batalha') // 'batalha' | 'ranking'
-const ranking = ref(null) // { entries, me, page, pageSize, total }
-const rankingLoading = ref(false)
-const rankingError = ref(null)
-
-async function loadRanking(page = 1) {
-  rankingLoading.value = true
-  rankingError.value = null
-  try {
-    const { data } = await api.get('/rankings/battle', { params: { page } })
-    // Página 1 substitui; seguintes anexam ("carregar mais").
-    ranking.value =
-      page === 1 || !ranking.value
-        ? data
-        : { ...data, entries: [...ranking.value.entries, ...data.entries] }
-  } catch {
-    rankingError.value = 'Não deu para carregar o ranking. Tente de novo.'
-  } finally {
-    rankingLoading.value = false
-  }
-}
-
-const hasMoreRanking = computed(
-  () => ranking.value && ranking.value.entries.length < ranking.value.total,
-)
-
-// Emblema por tier (cores/emoji seguem docs/BATALHA-PVP.md).
-const TIER_BADGE = {
-  Bronze: '🥉',
-  Prata: '🥈',
-  Ouro: '🥇',
-  Platina: '💠',
-  Diamante: '💎',
-  Mestre: '👑',
-}
-
-watch(tab, (t) => {
-  if (t === 'ranking') loadRanking(1)
-})
+// O ranking vive na rota `/ranking` (RankingView), alcançada pela aba superior.
 
 // Usa o professor vindo da query (?profId=X) ou fallback para o primeiro capturado
 const selectedProfessor = computed(() => {
@@ -184,10 +145,6 @@ function goToArena() {
   routeToCharacter('arena')
 }
 
-function goToRanking() {
-  router.push({ name: 'ranking' })
-}
-
 function openBattleGuide() {
   router.push({ name: 'battle-guide' })
 }
@@ -211,29 +168,7 @@ function goBack() {
     </header>
 
     <main class="batalha__main page">
-      <!-- Tabs: Batalha | Ranking (a aba de ranking da Pokédex entra aqui depois) -->
-      <div class="tabs" role="tablist">
-        <button
-          class="pixel tabs__btn"
-          :class="{ 'tabs__btn--active': tab === 'batalha' }"
-          type="button"
-          role="tab"
-          :aria-selected="tab === 'batalha'"
-          @click="tab = 'batalha'"
-        >
-          ⚔️ Batalha
-        </button>
-        <button
-          class="pixel tabs__btn"
-          :class="{ 'tabs__btn--active': tab === 'ranking' }"
-          type="button"
-          role="tab"
-          :aria-selected="tab === 'ranking'"
-          @click="tab = 'ranking'"
-        >
-          🏆 Ranking
-        </button>
-      </div>
+      <TopTabs />
 
       <!-- Convites recebidos: lista rolável com contagem regressiva (em qualquer aba) -->
       <section
@@ -306,58 +241,7 @@ function goBack() {
         {{ secondsLeft(battle.outgoingInvite.expiresAt) }}s
       </p>
 
-      <!-- Aba Ranking -->
-      <section v-if="tab === 'ranking'" class="ranking-tab" aria-label="Ranking de batalha">
-        <p v-if="rankingLoading && !ranking" class="ranking-tab__hint">Carregando…</p>
-        <p v-else-if="rankingError" class="ranking-tab__hint">{{ rankingError }}</p>
-        <p v-else-if="ranking && !ranking.entries.length" class="ranking-tab__hint">
-          Ninguém pontuou ainda — vença a primeira batalha do evento!
-        </p>
-
-        <template v-if="ranking?.entries.length">
-          <ol class="ranking-tab__list">
-            <li
-              v-for="entry in ranking.entries"
-              :key="entry.id"
-              class="rank-row"
-              :class="{ 'rank-row--me': entry.id === ranking.me?.id }"
-            >
-              <span class="pixel rank-row__pos">#{{ entry.position }}</span>
-              <span class="rank-row__name">{{ entry.name }}</span>
-              <span class="rank-row__record">{{ entry.wins }}V·{{ entry.losses }}D</span>
-              <span class="pixel rank-row__tier">
-                {{ TIER_BADGE[entry.tier] }} {{ entry.rating }}
-              </span>
-            </li>
-          </ol>
-
-          <button
-            v-if="hasMoreRanking"
-            class="pixel ranking-tab__more"
-            type="button"
-            :disabled="rankingLoading"
-            @click="loadRanking(ranking.page + 1)"
-          >
-            {{ rankingLoading ? '…' : 'CARREGAR MAIS' }}
-          </button>
-        </template>
-
-        <!-- Sua posição, mesmo fora do topo -->
-        <div v-if="ranking?.me" class="rank-me">
-          <template v-if="ranking.me.played">
-            <span class="pixel rank-me__pos">#{{ ranking.me.position }}</span>
-            <span class="rank-me__name">Você · {{ ranking.me.name }}</span>
-            <span class="pixel rank-me__tier">
-              {{ TIER_BADGE[ranking.me.tier] }} {{ ranking.me.rating }} · {{ ranking.me.tier }}
-            </span>
-          </template>
-          <span v-else class="rank-me__name">
-            Você ainda não pontuou — desafie alguém na aba Batalha!
-          </span>
-        </div>
-      </section>
-
-      <section v-show="tab === 'batalha'" class="battle-options" aria-label="Opções de batalha">
+      <section class="battle-options" aria-label="Opções de batalha">
         <button
           class="battle-option battle-option--online"
           type="button"
@@ -386,22 +270,15 @@ function goBack() {
           type="button"
           @click="goToArena"
         >
-          <span class="option-icon">⚔️</span>
+          <span class="option-icon option-icon--arte">
+            <img class="option-icon__img" src="/icons/batalha.png" alt="" aria-hidden="true" />
+          </span>
           <span class="pixel option-label">Batalha</span>
         </button>
 
         <button class="battle-option" type="button">
           <span class="option-icon">QZ</span>
           <span class="pixel option-label">Quiz</span>
-        </button>
-
-        <button
-          class="battle-option battle-option--ranking"
-          type="button"
-          @click="goToRanking"
-        >
-          <span class="option-icon">🏆</span>
-          <span class="pixel option-label">Ranking</span>
         </button>
 
         <button
@@ -427,20 +304,7 @@ function goBack() {
       </section>
     </main>
 
-    <nav class="batalha__nav">
-      <button class="nav-btn" @click="router.push({ name: 'profdex' })">
-        <span class="nav-icon">📒</span>
-        <span class="pixel nav-label">ProfDex</span>
-      </button>
-      <button class="nav-btn nav-btn--primary" @click="router.push({ name: 'scan' })">
-        <span class="nav-icon">📷</span>
-        <span class="pixel nav-label">Scanear</span>
-      </button>
-      <button class="nav-btn nav-btn--active" @click="router.push({ name: 'batalha' })">
-        <span class="nav-icon nav-icon--text">BT</span>
-        <span class="pixel nav-label">Batalha</span>
-      </button>
-    </nav>
+    <BottomNav />
 
     <!-- Modal: jogadores online -->
     <div
@@ -573,15 +437,14 @@ function goBack() {
   text-overflow: ellipsis;
 }
 
+/* `flex: 1` e `overflow-y` já vêm da classe utilitária `.page`. */
 .batalha__main {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
   padding: 20px 16px;
   gap: 20px;
-  overflow-y: auto;
 }
 
 /* Lobby de jogadores online */
@@ -900,127 +763,6 @@ function goBack() {
   cursor: pointer;
 }
 
-/* Tabs */
-.tabs {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.tabs__btn {
-  min-height: 42px;
-  font-size: 9px;
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  color: var(--text-muted);
-  border: 2px solid var(--border);
-  cursor: pointer;
-}
-
-.tabs__btn--active {
-  color: var(--yellow);
-  border-color: var(--yellow);
-}
-
-/* Aba Ranking */
-.ranking-tab {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.ranking-tab__hint {
-  margin: 8px 0;
-  color: var(--text-muted);
-  font-size: 13px;
-  text-align: center;
-}
-
-.ranking-tab__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.rank-row {
-  display: grid;
-  grid-template-columns: 44px 1fr auto auto;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-}
-
-.rank-row--me {
-  border-color: var(--yellow);
-}
-
-.rank-row__pos {
-  font-size: 8px;
-  color: var(--text-muted);
-}
-
-.rank-row__name {
-  font-size: 14px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rank-row__record {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.rank-row__tier {
-  font-size: 9px;
-  color: var(--yellow);
-}
-
-.ranking-tab__more {
-  min-height: 40px;
-  font-size: 8px;
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  color: var(--text);
-  border: 1px solid var(--border);
-  cursor: pointer;
-}
-
-.rank-me {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px;
-  border-radius: var(--radius);
-  background: var(--bg-surface);
-  border: 2px solid var(--yellow);
-}
-
-.rank-me__pos {
-  font-size: 10px;
-  color: var(--yellow);
-}
-
-.rank-me__name {
-  flex: 1;
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rank-me__tier {
-  font-size: 9px;
-  color: var(--yellow);
-}
-
 /* Opções de batalha */
 .battle-options {
   width: 100%;
@@ -1030,9 +772,9 @@ function goBack() {
 
 .battle-option {
   width: 100%;
-  min-height: 72px;
+  min-height: 76px;
   display: grid;
-  grid-template-columns: 52px 1fr;
+  grid-template-columns: var(--option-icon) 1fr;
   align-items: center;
   gap: 14px;
   padding: 12px 16px;
@@ -1052,10 +794,6 @@ function goBack() {
   border-color: var(--red-light);
 }
 
-.battle-option--ranking {
-  border-color: var(--yellow);
-}
-
 .battle-option--guide {
   border-color: var(--ds-green);
 }
@@ -1065,8 +803,8 @@ function goBack() {
 }
 
 .option-icon {
-  width: 52px;
-  height: 52px;
+  width: var(--option-icon);
+  height: var(--option-icon);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1074,8 +812,25 @@ function goBack() {
   background: var(--bg-surface);
   color: var(--yellow);
   border: 2px solid var(--border);
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 900;
+}
+
+/* Disco que abriga pixel art: o disco vira só a moldura e a arte ocupa quase
+   todo o diâmetro, em vez de ficar um emoji pequeno perdido no meio. */
+.option-icon--arte {
+  padding: 4px;
+  background: var(--surface);
+}
+
+.option-icon__img {
+  width: 100%;
+  height: 100%;
+  /* No disco redondo a arte larga é limitada pelo diâmetro; `contain` garante
+     que ela caiba inteira em vez de vazar pela borda. */
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 
 .option-label {
@@ -1083,45 +838,4 @@ function goBack() {
   text-align: left;
 }
 
-/* Navegação */
-.batalha__nav {
-  background: var(--bg-card);
-  border-top: 1px solid var(--border);
-  display: flex;
-  padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
-  flex-shrink: 0;
-}
-
-.nav-btn {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  padding: 8px 4px;
-  border-radius: var(--radius);
-}
-
-.nav-btn--active {
-  color: var(--yellow);
-}
-
-.nav-btn--primary {
-  color: var(--red-light);
-}
-
-.nav-icon {
-  font-size: 22px;
-}
-
-.nav-icon--text {
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.nav-label {
-  font-size: 7px;
-}
 </style>

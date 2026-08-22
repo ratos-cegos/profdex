@@ -27,6 +27,8 @@ async function preloadProfessors() {
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
+  // Sem `scrollBehavior` de propósito: o scroll não é o da janela (o body tem
+  // `overflow: hidden`) e cada rota monta um `.page` novo, que já nasce no topo.
   routes: [
     {
       path: '/',

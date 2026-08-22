@@ -6,20 +6,41 @@ const props = defineProps({
     type: Array,
     required: true,
   },
+  // Unidade da pontuação. O ranking do evento é de Elo de batalha, não de pontos.
+  unidade: {
+    type: String,
+    default: 'pts',
+  },
+  // A RankingView já tem o próprio cabeçalho; evita título duplicado.
+  mostrarCabecalho: {
+    type: Boolean,
+    default: true,
+  },
 })
+
+// Nem todo jogador tem foto (alunos não têm retrato cadastrado); nesses casos
+// mostramos a inicial no lugar de um <img> quebrado.
+const inicial = (nome) => (nome || '?').trim().charAt(0).toUpperCase()
 
 const sortedUsers = computed(() =>
   [...props.users].sort((a, b) => b.pontuacao - a.pontuacao),
 )
 
-const podiumUsers = computed(() => {
+// O pódio tem SEMPRE três lugares, na ordem 2º · 1º · 3º. Antes os vazios eram
+// filtrados fora, e com 1 ou 2 jogadores a grade de 3 colunas ficava com um vão
+// à direita e o card do campeão deixava de ser o do meio. Agora a vaga não
+// preenchida vira um slot "aberto", e a composição se mantém em qualquer número
+// de jogadores.
+const podiumSlots = computed(() => {
   const users = sortedUsers.value
   return [
-    { ...users[1], position: 2, metal: 'silver' },
-    { ...users[0], position: 1, metal: 'gold' },
-    { ...users[2], position: 3, metal: 'bronze' },
-  ].filter((user) => user.id)
+    { position: 2, metal: 'prata', lugar: 'esquerda', user: users[1] ?? null },
+    { position: 1, metal: 'ouro', lugar: 'centro', user: users[0] ?? null },
+    { position: 3, metal: 'bronze', lugar: 'direita', user: users[2] ?? null },
+  ]
 })
+
+const MEDALHA = { ouro: '🥇', prata: '🥈', bronze: '🥉' }
 
 const remainingUsers = computed(() => sortedUsers.value.slice(3))
 
@@ -28,45 +49,78 @@ const formatPoints = (points) => pointsFormatter.format(points)
 </script>
 
 <template>
-  <section class="leaderboard" aria-labelledby="leaderboard-title">
-    <header class="leaderboard__header">
+  <section
+    class="leaderboard"
+    :aria-labelledby="mostrarCabecalho ? 'leaderboard-title' : undefined"
+    :aria-label="mostrarCabecalho ? undefined : 'Ranking'"
+  >
+    <header v-if="mostrarCabecalho" class="leaderboard__header">
       <h1 id="leaderboard-title">Ranking de Pontos</h1>
       <p>Os melhores da temporada</p>
     </header>
 
     <div class="podium" aria-label="Pódio dos três primeiros colocados">
       <article
-        v-for="user in podiumUsers"
-        :key="user.id"
+        v-for="(slot, i) in podiumSlots"
+        :key="slot.position"
         class="podium-card"
-        :class="[`podium-card--${user.metal}`, { 'podium-card--winner': user.position === 1 }]"
+        :class="[
+          `podium-card--${slot.metal}`,
+          `podium-card--${slot.lugar}`,
+          { 'podium-card--vago': !slot.user },
+        ]"
+        :style="{ '--slot-index': i }"
       >
+        <span class="podium-card__medalha" aria-hidden="true">{{ MEDALHA[slot.metal] }}</span>
+
         <div class="podium-card__avatar-wrap">
           <img
+            v-if="slot.user?.url_da_foto"
             class="podium-card__avatar"
-            :src="user.url_da_foto"
-            :alt="`Foto de ${user.nome}`"
+            :src="slot.user.url_da_foto"
+            :alt="`Foto de ${slot.user.nome}`"
           />
+          <span v-else class="pixel podium-card__inicial" aria-hidden="true">
+            {{ slot.user ? inicial(slot.user.nome) : '?' }}
+          </span>
         </div>
 
-        <div class="podium-card__position" :aria-label="`${user.position}º lugar`">
-          {{ user.position }}
+        <div class="podium-card__position" :aria-label="`${slot.position}º lugar`">
+          {{ slot.position }}
         </div>
-        <h2>{{ user.nome }}</h2>
-        <p>{{ formatPoints(user.pontuacao) }} <span>pts</span></p>
+
+        <template v-if="slot.user">
+          <h2>{{ slot.user.nome }}</h2>
+          <p>{{ formatPoints(slot.user.pontuacao) }} <span>{{ unidade }}</span></p>
+          <p v-if="slot.user.detalhe" class="podium-card__detalhe">{{ slot.user.detalhe }}</p>
+        </template>
+        <template v-else>
+          <h2 class="podium-card__vazio">---</h2>
+          <p class="podium-card__vazio">Vaga aberta</p>
+        </template>
       </article>
     </div>
 
-    <ol class="ranking-list" :start="4" aria-label="Demais posições do ranking">
+    <ol
+      v-if="remainingUsers.length"
+      class="ranking-list"
+      :start="4"
+      aria-label="Demais posições do ranking"
+    >
       <li
         v-for="(user, index) in remainingUsers"
         :key="user.id"
         class="ranking-row"
+        :class="{ 'ranking-row--destaque': user.destaque }"
+        :style="{ '--row-index': index }"
       >
         <span class="ranking-row__position" aria-hidden="true">{{ index + 4 }}</span>
-        <span class="ranking-row__name">{{ user.nome }}</span>
+        <span class="ranking-row__name">
+          {{ user.nome }}
+          <small v-if="user.detalhe" class="ranking-row__detalhe">{{ user.detalhe }}</small>
+        </span>
         <span class="ranking-row__points">
-          {{ formatPoints(user.pontuacao) }} <small>pts</small>
+          {{ formatPoints(user.pontuacao) }} <small>{{ unidade }}</small>
         </span>
       </li>
     </ol>
@@ -114,12 +168,14 @@ const formatPoints = (points) => pointsFormatter.format(points)
   --metal: var(--silver);
   position: relative;
   min-width: 0;
-  min-height: 340px;
+  /* Altura fluida: alto o bastante para o pódio ter presença, baixo o bastante
+     para sobrar tela para a lista num aparelho de 390x844. */
+  min-height: clamp(178px, 42vw, 230px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  padding: 34px 24px 28px;
+  padding: 30px 10px 18px;
   border: 1px solid color-mix(in srgb, var(--metal) 66%, transparent);
   background:
     radial-gradient(circle at 50% 10%, color-mix(in srgb, var(--metal) 9%, transparent), transparent 38%),
@@ -127,17 +183,19 @@ const formatPoints = (points) => pointsFormatter.format(points)
   box-shadow: inset 0 1px color-mix(in srgb, var(--metal) 22%, transparent);
 }
 
-.podium-card:first-child {
+/* As bordas seguem a POSIÇÃO no pódio, não a ordem dos filhos: com menos de três
+   jogadores o `:last-child` caía no card errado e a composição quebrava. */
+.podium-card--esquerda {
   border-radius: 20px 0 0 0;
   border-right: 0;
 }
 
-.podium-card:last-child {
+.podium-card--direita {
   border-radius: 0 20px 0 0;
   border-left: 0;
 }
 
-.podium-card--gold {
+.podium-card--ouro {
   --metal: var(--gold);
 }
 
@@ -145,13 +203,44 @@ const formatPoints = (points) => pointsFormatter.format(points)
   --metal: var(--bronze);
 }
 
-.podium-card--winner {
+/* O campeão é sempre o do meio e sempre o mais alto. */
+.podium-card--centro {
   z-index: 2;
-  min-height: 395px;
+  min-height: clamp(214px, 50vw, 276px);
   border-radius: 20px 20px 0 0;
   box-shadow:
     0 -10px 55px rgba(242, 193, 78, 0.08),
     inset 0 1px rgba(255, 232, 163, 0.45);
+}
+
+/* Vaga ainda não conquistada: mesma caixa, tudo apagado e borda tracejada. */
+.podium-card--vago {
+  border-style: dashed;
+  border-color: #2b3140;
+  background: linear-gradient(180deg, #0d1016 0%, #0a0d12 100%);
+  box-shadow: none;
+}
+
+.podium-card--vago.podium-card--centro {
+  box-shadow: none;
+}
+
+.podium-card__medalha {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(0.9rem, 3.6vw, 1.15rem);
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.45));
+}
+
+.podium-card--vago .podium-card__medalha {
+  filter: grayscale(1);
+  opacity: 0.28;
+}
+
+.podium-card__vazio {
+  color: #4c5361 !important;
 }
 
 .podium-card__avatar-wrap {
@@ -169,9 +258,21 @@ const formatPoints = (points) => pointsFormatter.format(points)
     0 16px 30px rgba(0, 0, 0, 0.35);
 }
 
-.podium-card--winner .podium-card__avatar-wrap {
+.podium-card--centro .podium-card__avatar-wrap {
   width: clamp(126px, 14vw, 164px);
   border-width: 3px;
+}
+
+.podium-card--vago .podium-card__avatar-wrap {
+  border-style: dashed;
+  border-color: #2b3140;
+  box-shadow: none;
+}
+
+.podium-card--vago .podium-card__inicial,
+.podium-card--vago .podium-card__position {
+  color: #3c4353;
+  text-shadow: none;
 }
 
 .podium-card__avatar {
@@ -180,6 +281,18 @@ const formatPoints = (points) => pointsFormatter.format(points)
   border-radius: 50%;
   object-fit: cover;
   background: #20242d;
+}
+
+/* Fallback para quem não tem foto: inicial em bloco, no lugar de um <img> vazio. */
+.podium-card__inicial {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #20242d;
+  color: var(--metal);
+  font-size: clamp(1.1rem, 4vw, 1.6rem);
 }
 
 .podium-card__position {
@@ -217,6 +330,13 @@ const formatPoints = (points) => pointsFormatter.format(points)
   font-weight: 700;
 }
 
+.podium-card__detalhe {
+  margin-top: 2px;
+  color: #a6aab2;
+  font-size: clamp(0.62rem, 2.6vw, 0.78rem);
+  font-weight: 700;
+}
+
 .ranking-list {
   overflow: hidden;
   border: 1px solid #252a35;
@@ -250,11 +370,24 @@ const formatPoints = (points) => pointsFormatter.format(points)
   font-variant-numeric: tabular-nums;
 }
 
+.ranking-row--destaque {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
 .ranking-row__name {
+  min-width: 0;
   padding: 0 34px;
   color: #f2f3f5;
   font-size: clamp(1rem, 2vw, 1.2rem);
   font-weight: 800;
+}
+
+.ranking-row__detalhe {
+  display: block;
+  margin-top: 2px;
+  color: #828896;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .ranking-row__points {
@@ -276,21 +409,16 @@ const formatPoints = (points) => pointsFormatter.format(points)
   }
 
   .podium-card {
-    min-height: 250px;
-    padding: 22px 8px 20px;
-  }
-
-  .podium-card--winner {
-    min-height: 290px;
+    padding: 26px 6px 16px;
   }
 
   .podium-card__avatar-wrap {
-    width: clamp(72px, 22vw, 98px);
-    margin-bottom: 14px;
+    width: clamp(64px, 19vw, 88px);
+    margin-bottom: 10px;
   }
 
-  .podium-card--winner .podium-card__avatar-wrap {
-    width: clamp(84px, 25vw, 112px);
+  .podium-card--centro .podium-card__avatar-wrap {
+    width: clamp(76px, 23vw, 102px);
   }
 
   .podium-card__position {
@@ -325,11 +453,11 @@ const formatPoints = (points) => pointsFormatter.format(points)
 
 @media (max-width: 430px) {
   .podium-card__avatar-wrap {
-    width: 68px;
+    width: 62px;
   }
 
-  .podium-card--winner .podium-card__avatar-wrap {
-    width: 82px;
+  .podium-card--centro .podium-card__avatar-wrap {
+    width: 74px;
   }
 
   .podium-card h2 {
@@ -359,21 +487,28 @@ const formatPoints = (points) => pointsFormatter.format(points)
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  /* Entrada escalonada: as colunas caem da esquerda para a direita e a lista
+     entra logo atrás. O índice vem do template, então a ordem não depende de
+     quantos cards existem. */
   .podium-card {
-    animation: leaderboard-reveal 0.55s both;
-  }
-
-  .podium-card:nth-child(2) {
-    animation-delay: 90ms;
-  }
-
-  .podium-card:nth-child(3) {
-    animation-delay: 180ms;
+    animation: podium-drop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+    animation-delay: calc(var(--slot-index, 0) * 110ms);
   }
 
   .ranking-row {
     animation: leaderboard-reveal 0.45s both;
-    animation-delay: calc(var(--row-index, 0) * 40ms + 180ms);
+    animation-delay: calc(var(--row-index, 0) * 40ms + 330ms);
+  }
+}
+
+@keyframes podium-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
