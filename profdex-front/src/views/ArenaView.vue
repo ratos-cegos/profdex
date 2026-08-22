@@ -2,7 +2,6 @@
 import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BattleHpBar from '../components/BattleHpBar.vue'
-import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
 import { useBattle } from '../composables/useBattle.js'
 import { openBackCamera } from '../composables/useBackCamera.js'
 import { useProfessorsStore } from '../stores/professors'
@@ -157,7 +156,17 @@ function goBack() {
         playsinline
         muted
       />
-      <BinaryTunnelScene v-if="!arEnabled" class="arena__scenario" :speed="4" />
+      <!-- Fundo: ginásio UNIFIL (PNG 1×, sem WebGL). O túnel binário ficou
+           em /tunel-binario. Troque o arquivo em public/arena/ginasio-unifil.png
+           pela arte 16-bit final quando estiver pronta. -->
+      <div v-if="!arEnabled" class="arena__scenario" aria-hidden="true">
+        <img
+          class="arena__ginasio"
+          src="/arena/ginasio-unifil.png"
+          alt=""
+          decoding="async"
+        />
+      </div>
 
       <!-- Idle no wrapper, shake/pixel no <img>: duas animações em `transform`
            no mesmo elemento se anulam. -->
@@ -274,11 +283,7 @@ function goBack() {
     prendendo os modelos (z-index:1) abaixo do HUD (z-index:2). Assim os
     bonecos nunca cobrem os botões/textos. */
   z-index: 0;
-  /* Piso da arena: gradiente sutil para dar profundidade */
-  background:
-    radial-gradient(ellipse 65% 18% at 32% 42%, rgba(237, 175, 104, 0.12), transparent),
-    radial-gradient(ellipse 70% 16% at 72% 74%, rgba(237, 175, 104, 0.14), transparent),
-    linear-gradient(180deg, var(--bg-deep) 0%, #1a1e26 55%, var(--bg-deep) 100%);
+  background: var(--bg-deep);
 }
 
 /* No modo AR o gradiente some para a câmera aparecer limpa */
@@ -296,11 +301,20 @@ function goBack() {
   z-index: 0;
 }
 
-/* Camada de fundo: cenário do túnel binário (AR desligada) */
+/* Camada de fundo: ginásio (PNG 480×270, object-fit cover, pixelated). */
 .arena__scenario {
   position: absolute;
   inset: 0;
   z-index: 0;
+  overflow: hidden;
+}
+
+.arena__ginasio {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 62%;
+  image-rendering: pixelated;
 }
 
 /* Caixa do lutador: idle e lunge de ataque vivem aqui (`transform`). */
@@ -313,15 +327,17 @@ function goBack() {
 }
 
 .arena__fighter--enemy {
-  top: 10%;
-  left: 6%;
-  width: 38%;
-  height: 24%;
+  /* Pés no oval distante do ginásio (centro ~62% da arte, à esquerda). */
+  top: 22%;
+  left: 8%;
+  width: 36%;
+  height: 26%;
 }
 
 .arena__fighter--player {
-  right: 3%;
-  bottom: 29%;
+  /* Pés no oval próximo, à direita, acima do painel de comandos. */
+  right: 4%;
+  bottom: 30%;
   width: 42%;
   height: 36%;
   animation-delay: 1.2s;

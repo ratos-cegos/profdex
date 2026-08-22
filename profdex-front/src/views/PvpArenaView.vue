@@ -2,7 +2,6 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import BattleHpBar from '../components/BattleHpBar.vue'
-import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
 import { useBattleStore } from '../stores/battle'
 import { spriteUrlForProfessor, ehPixelArt } from '../data/professorSprites'
 import { getType } from '../data/types'
@@ -212,8 +211,13 @@ onUnmounted(() => clock && clearInterval(clock))
 
 <template>
   <div v-if="pvp?.you" class="pvp-arena">
-    <div class="pvp-arena__bg">
-      <BinaryTunnelScene :speed="5" color="#ff2bc4" />
+    <div class="pvp-arena__bg" aria-hidden="true">
+      <img
+        class="pvp-arena__ginasio"
+        src="/arena/ginasio-unifil.png"
+        alt=""
+        decoding="async"
+      />
     </div>
 
     <!-- Rival (topo) -->
@@ -319,7 +323,7 @@ onUnmounted(() => clock && clearInterval(clock))
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #08000f;
+  background: var(--bg-deep);
   display: flex;
   flex-direction: column;
 }
@@ -327,7 +331,16 @@ onUnmounted(() => clock && clearInterval(clock))
 .pvp-arena__bg {
   position: absolute;
   inset: 0;
-  opacity: 0.8;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.pvp-arena__ginasio {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  image-rendering: pixelated;
 }
 
 .pvp-arena__foe,
