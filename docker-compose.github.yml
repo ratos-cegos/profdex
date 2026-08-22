@@ -6,13 +6,13 @@
 #
 #   No GitHub Actions (runner faz o build, tem CPU de sobra):
 #     docker compose -f docker-compose.yml -f docker-compose.github.yml \
-#       build app frontend nginx
+#       build app frontend landing nginx
 #     docker compose -f docker-compose.yml -f docker-compose.github.yml \
-#       push app frontend nginx
+#       push app frontend landing nginx
 #
 #   Na EC2 (só baixa e sobe, sem buildar nada):
 #     docker compose -f docker-compose.yml -f docker-compose.github.yml \
-#       pull app frontend nginx
+#       pull app frontend landing nginx
 #     docker compose -f docker-compose.yml -f docker-compose.github.yml \
 #       up -d
 #
@@ -34,6 +34,12 @@ services:
     image: ghcr.io/${GHCR_NAMESPACE}/profdex-frontend:${IMAGE_TAG:-latest}
     build:
       context: ./profdex-front
+      dockerfile: Dockerfile
+
+  landing:
+    image: ghcr.io/${GHCR_NAMESPACE}/profdex-landing:${IMAGE_TAG:-latest}
+    build:
+      context: ./profdex-landing
       dockerfile: Dockerfile
 
   nginx:

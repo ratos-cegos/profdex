@@ -2,7 +2,9 @@
   "scripts": {
     "dev": "npm-run-all2 --parallel dev:front dev:back",
     "dev:front": "npm run dev --prefix profdex-front",
-    "dev:back": "npm run start:dev --prefix profdex-back"
+    "dev:back": "npm run start:dev --prefix profdex-back",
+    "dev:landing": "npm run dev --prefix profdex-landing",
+    "dev:all": "npm-run-all2 --parallel dev:front dev:back dev:landing"
   },
   "dependencies": {
     "@google/model-viewer": "^4.3.1"

@@ -1,4 +1,4 @@
-# Build + push das imagens (app, frontend, nginx) pro GitHub Container
+# Build + push das imagens (app, frontend, landing, nginx) pro GitHub Container
 # Registry e deploy na EC2, a cada push na branch `deploy`.
 #
 # A EC2 só baixa e sobe (`docker compose pull` + `up -d`) — quem builda é o
@@ -54,12 +54,12 @@ jobs:
       - name: Build das imagens
         run: |
           docker compose -f docker-compose.yml -f docker-compose.github.yml \
-            build app frontend nginx
+            build app frontend landing nginx
 
       - name: Push das imagens
         run: |
           docker compose -f docker-compose.yml -f docker-compose.github.yml \
-            push app frontend nginx
+            push app frontend landing nginx
 
   deploy:
     needs: build-and-push
@@ -87,7 +87,7 @@ jobs:
 
             export GHCR_NAMESPACE="$GHCR_NAMESPACE"
             export IMAGE_TAG="$IMAGE_TAG"
-            docker compose -f docker-compose.yml -f docker-compose.github.yml pull app frontend nginx
+            docker compose -f docker-compose.yml -f docker-compose.github.yml pull app frontend landing nginx
             docker compose -f docker-compose.yml -f docker-compose.github.yml up -d
             docker image prune -f
           EOF

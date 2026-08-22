@@ -6,7 +6,52 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 `Adicionado` para novidades, `Alterado` para mudanças de comportamento existente,
 `Corrigido` para defeitos e `Removido` para o que saiu.
 
-## [Não publicado]
+## [Não publicado] — branch `deploy`
+
+Trabalho da branch de deploy, sobre a `main` já integrada.
+
+### Adicionado
+
+- **Landing page em `/landing`** (`profdex-landing/`). A vitrine pública do
+  ProfDex, que vivia num repositório e num deploy Vercel separados
+  ([KenzoLima/landing-page-profdex](https://github.com/KenzoLima/landing-page-profdex)),
+  passa a ser publicada no mesmo domínio do app —
+  `https://profdex.unifil.tech/landing/` — pelo mesmo pipeline: um `git push`
+  na `deploy`, uma imagem no GHCR, um `docker compose up`.
+
+  Continua sendo um **build separado**, com container próprio, e não uma rota
+  do Vue Router do app. Os dois têm requisitos opostos: o app é uma casca
+  mobile de 480px com `overflow: hidden` no `body`, e a landing é uma página
+  longa de leitura, com 3D sob demanda. Fundir as duas custaria brigar com o
+  CSS global do app e somar `three`/TresJS/GSAP ao bundle de quem só quer
+  jogar.
+
+  O que a mudança exigiu no código copiado está em
+  [`profdex-landing/README.md`](profdex-landing/README.md); o resumo é que a
+  página agora vive sob um **prefixo de URL** (`base: '/landing/'`), e o Vite
+  aplica esse prefixo sozinho no HTML e no CSS mas **não** em strings dentro do
+  JavaScript. Daí o `src/config/asset.js`: sem ele, os `.glb` e os sprites
+  pediriam `/models/…` na raiz do domínio, onde o app responde com o
+  `index.html` dele — um 404 que chega como 200 e aparece só como "o modelo não
+  carrega".
+
+- **`npm run dev:landing` e `npm run dev:all`** na raiz. O `dev:all` sobe app,
+  backend e landing juntos; com os três no ar, o dev server do app repassa
+  `/landing` para o da landing, então o endereço em desenvolvimento é o mesmo
+  de produção. `npm run dev` segue sendo só app + backend.
+
+### Alterado
+
+- **`nginx/templates/default.conf.template`**: nova `location /landing/` (mais
+  o redirect de `/landing` sem barra), declarada antes do `location /` que é o
+  catch-all do app. O `proxy_pass` vai **sem** barra final de propósito — o
+  container da landing serve os arquivos já sob `/landing/`, casando com o que
+  o build do Vite emite.
+- **`docker-compose.yml` / `docker-compose.github.yml` / workflow de deploy**:
+  o serviço `landing` entra na stack e na lista de imagens buildadas e
+  empurradas para o GHCR (`ghcr.io/<owner>/profdex-landing`).
+
+## [Não publicado] — branch `refactor/frontend`
 
 Trabalho da branch `refactor/frontend`, ainda não integrado à `main`.
 

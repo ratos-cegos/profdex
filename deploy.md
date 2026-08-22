@@ -1,8 +1,8 @@
 # Deploy — Profdex
 
-Frontend, backend, Postgres e Adminer rodam como containers Docker Compose em
-uma única instância AWS EC2 (t3.micro), atrás de um nginx único que é o
-**único serviço exposto à internet**. Tudo sob o mesmo domínio:
+Frontend, landing, backend, Postgres e Adminer rodam como containers Docker
+Compose em uma única instância AWS EC2 (t3.micro), atrás de um nginx único que é
+o **único serviço exposto à internet**. Tudo sob o mesmo domínio:
 
 ```
 https://profdex.unifil.tech
@@ -13,6 +13,7 @@ https://profdex.unifil.tech
 ```
 Internet → Cloudflare → EC2:80/443 → nginx
                                        ├── /                    → frontend (estático)
+                                       ├── /landing/            → landing (estático)
                                        ├── /api/*  (+ WebSocket) → app (NestJS)
                                        │                            └── db (Postgres)
                                        └── /minha-base-de-dados/  → Basic Auth → adminer
@@ -23,6 +24,13 @@ Internet → Cloudflare → EC2:80/443 → nginx
   com um Origin Certificate do Cloudflare (modo *Full Strict*).
 - **frontend** (Vue/Vite) builda estático e é servido por um nginx próprio,
   interno (sem processo Node permanente em produção).
+- **landing** (Vue/Vite, `profdex-landing/`) é a vitrine pública, em
+  `/landing/`. Container separado do `frontend` de propósito: o app é uma casca
+  mobile de 480px com `overflow: hidden`, e a landing é uma página longa de
+  leitura com 3D sob demanda — juntar as duas custaria brigar com o CSS global
+  do app e somar as dependências de vitrine (three, TresJS, GSAP) ao bundle de
+  quem só quer jogar. O build usa `base: '/landing/'`, então os assets pedem
+  `/landing/assets/…` e não colidem com os do app na raiz.
 - **app** (NestJS) usa prefixo global `/api`. O WebSocket do PvP (Socket.IO)
   já usa `path: '/api/socket.io'` — cai na mesma `location /api/` do nginx,
   não precisa de location separada.
@@ -38,12 +46,13 @@ na AWS.
 
 | Arquivo | Papel |
 |---|---|
-| `docker-compose.yml` | Stack completa. Usado sozinho builda as imagens localmente (`app`, `frontend`, `nginx` a partir do código). |
-| `docker-compose.github.yml` | Override: troca `app`/`frontend`/`nginx` para usar imagens pré-buildadas do GHCR em vez de buildar na EC2. Usado junto com o arquivo acima (`-f docker-compose.yml -f docker-compose.github.yml`). |
+| `docker-compose.yml` | Stack completa. Usado sozinho builda as imagens localmente (`app`, `frontend`, `landing`, `nginx` a partir do código). |
+| `docker-compose.github.yml` | Override: troca `app`/`frontend`/`landing`/`nginx` para usar imagens pré-buildadas do GHCR em vez de buildar na EC2. Usado junto com o arquivo acima (`-f docker-compose.yml -f docker-compose.github.yml`). |
 | `.env.example` | Template das variáveis usadas pelo `docker-compose.yml` (raiz). Copiar para `.env` e preencher. |
 | `nginx/Dockerfile`, `nginx/templates/default.conf.template`, `nginx/docker-entrypoint.d/10-generate-htpasswd.sh` | Imagem do nginx de borda. O `.htpasswd` do Adminer é gerado em runtime a partir de `ADMINER_AUTH_USER`/`ADMINER_AUTH_PASSWORD` — nunca versionado. |
 | `nginx/certs/{cert,key}.pem` | Certificado de Origem do Cloudflare (gitignored — nunca commitar). |
 | `profdex-front/Dockerfile`, `profdex-front/nginx.conf` | Build multi-stage do frontend (Vite → nginx estático). |
+| `profdex-landing/Dockerfile`, `profdex-landing/nginx.conf` | Build multi-stage da landing (Vite → nginx estático), servindo sob o prefixo `/landing/`. |
 | `profdex-back/Dockerfile` | Build do backend (sem alterações na migração — já era multi-stage). |
 | `profdex-back/scripts/deploy-aws.sh` | Script manual antigo (SSH + `git pull` + `docker compose up --build` direto na EC2). Ainda funciona, mas não é mais o caminho principal — ver [CI/CD](#cicd-github-actions) abaixo. |
 | `.github/workflows/deploy.yml` | Pipeline: build + push das imagens no push para a branch `deploy`, depois deploy via SSH na EC2. |
@@ -103,9 +112,10 @@ ambiente local, use `curl -k` ou aceite o aviso do navegador.
 
 Push na branch `deploy` dispara `.github/workflows/deploy.yml`:
 
-1. **build-and-push**: builda as imagens `app`, `frontend`, `nginx` a partir
-   do código (runner do Actions, não a EC2) e empurra pro GitHub Container
-   Registry (`ghcr.io/<owner>/profdex-{app,frontend,nginx}:<sha>`), usando
+1. **build-and-push**: builda as imagens `app`, `frontend`, `landing`, `nginx`
+   a partir do código (runner do Actions, não a EC2) e empurra pro GitHub
+   Container Registry
+   (`ghcr.io/<owner>/profdex-{app,frontend,landing,nginx}:<sha>`), usando
    `GITHUB_TOKEN` (sem precisar criar token pessoal).
 2. **deploy**: conecta via SSH na EC2, dá `git pull --ff-only` (só pra
    atualizar `docker-compose*.yml`/configs do nginx — o `.env` de produção

@@ -1,5 +1,5 @@
-# Stack completa (produção/AWS): frontend + backend + Postgres + Adminer atrás
-# de um nginx único, exposto publicamente só em 80/443.
+# Stack completa (produção/AWS): frontend + landing + backend + Postgres +
+# Adminer atrás de um nginx único, exposto publicamente só em 80/443.
 #
 #   docker compose up -d --build
 #
@@ -67,6 +67,18 @@ services:
     expose:
       - '80'
 
+  # Vitrine pública (profdex.unifil.tech/landing). Container próprio, e não
+  # uma rota do app, porque as duas páginas têm requisitos opostos — ver o
+  # comentário no topo de profdex-landing/Dockerfile.
+  landing:
+    build:
+      context: ./profdex-landing
+      dockerfile: Dockerfile
+    container_name: profdex-landing
+    restart: unless-stopped
+    expose:
+      - '80'
+
   adminer:
     image: adminer:latest
     container_name: profdex-adminer
@@ -85,6 +97,7 @@ services:
     depends_on:
       - app
       - frontend
+      - landing
       - adminer
     environment:
       DOMAIN: ${DOMAIN}

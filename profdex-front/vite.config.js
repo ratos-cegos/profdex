@@ -64,6 +64,18 @@ export default defineConfig(({ mode }) => {
       host: true,
       allowedHosts: true,
       proxy: {
+        // Paridade com produção: lá o nginx de borda serve a landing em
+        // /landing/ (mesmo domínio do app). Sem este repasse, um link para
+        // /landing só funcionaria depois do deploy — e a landing tem base
+        // '/landing/' também em dev, então o caminho chega inteiro, sem
+        // reescrita. Requer o dev server da landing no ar
+        // (`npm run dev:landing` na raiz, ou `npm run dev:all`).
+        '/landing': {
+          target: 'http://localhost:5174',
+          changeOrigin: false,
+          // HMR da landing: o WebSocket do Vite dela também passa por aqui.
+          ws: true,
+        },
         '/api': {
           target: apiProxyTarget,
           changeOrigin: true,
