@@ -114,6 +114,8 @@ const {
   message,
   enemyHit,
   playerHit,
+  enemyAttack,
+  playerAttack,
   playerStatus,
   enemyStatus,
   isOver,
@@ -157,26 +159,38 @@ function goBack() {
       />
       <BinaryTunnelScene v-if="!arEnabled" class="arena__scenario" :speed="4" />
 
-      <img
-        class="arena__model arena__model--enemy"
-        :class="{
-          'arena__model--hit': enemyHit,
-          'arena__model--pixel': ehPixelArt(enemySpriteSrc),
-        }"
-        :src="enemySpriteSrc"
-        :alt="`Prof. ${enemyProfessor.name} em batalha`"
-        decoding="async"
-      />
-      <img
-        class="arena__model arena__model--player"
-        :class="{
-          'arena__model--hit': playerHit,
-          'arena__model--pixel': ehPixelArt(playerSpriteSrc),
-        }"
-        :src="playerSpriteSrc"
-        alt="Seu personagem"
-        decoding="async"
-      />
+      <!-- Idle no wrapper, shake/pixel no <img>: duas animações em `transform`
+           no mesmo elemento se anulam. -->
+      <div
+        class="arena__fighter arena__fighter--enemy"
+        :class="{ 'arena__fighter--attack': enemyAttack }"
+      >
+        <img
+          class="arena__model arena__model--enemy"
+          :class="{
+            'arena__model--hit': enemyHit,
+            'arena__model--pixel': ehPixelArt(enemySpriteSrc),
+          }"
+          :src="enemySpriteSrc"
+          :alt="`Prof. ${enemyProfessor.name} em batalha`"
+          decoding="async"
+        />
+      </div>
+      <div
+        class="arena__fighter arena__fighter--player"
+        :class="{ 'arena__fighter--attack': playerAttack }"
+      >
+        <img
+          class="arena__model arena__model--player"
+          :class="{
+            'arena__model--hit': playerHit,
+            'arena__model--pixel': ehPixelArt(playerSpriteSrc),
+          }"
+          :src="playerSpriteSrc"
+          alt="Seu personagem"
+          decoding="async"
+        />
+      </div>
     </div>
 
     <!-- HUD sobreposto ao palco -->
@@ -289,11 +303,44 @@ function goBack() {
   z-index: 0;
 }
 
+/* Caixa do lutador: idle e lunge de ataque vivem aqui (`transform`). */
+.arena__fighter {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  transform-origin: 50% 100%;
+  animation: idle-respira 2.4s ease-in-out infinite;
+}
+
+.arena__fighter--enemy {
+  top: 10%;
+  left: 6%;
+  width: 38%;
+  height: 24%;
+}
+
+.arena__fighter--player {
+  right: 3%;
+  bottom: 29%;
+  width: 42%;
+  height: 36%;
+  animation-delay: 1.2s;
+}
+
+.arena__fighter--attack.arena__fighter--enemy {
+  animation: arena-ataque-foe 0.45s ease-out;
+}
+
+.arena__fighter--attack.arena__fighter--player {
+  animation: arena-ataque-you 0.45s ease-out;
+}
+
 /* Sprites 2D dos combatentes. Ocupam o mesmo lugar dos antigos <model-viewer>;
    `contain` preserva a proporção da arte dentro daquela caixa. */
 .arena__model {
-  position: absolute;
-  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   object-fit: contain;
 }
@@ -315,10 +362,6 @@ function goBack() {
    As faixas verticais agora não se cruzam: oponente 10%–34%, jogador 35%–71%,
    e o painel começa por volta de 72%. */
 .arena__model--enemy {
-  top: 10%;
-  left: 6%;
-  width: 38%;
-  height: 24%;
   /* Contorno vermelho discreto: drop-shadow segue a silhueta do sprite
      (o PNG é transparente), diferente de um border/outline retangular.
      --error é o vermelho real da paleta (--red do tema é marrom). */
@@ -331,10 +374,6 @@ function goBack() {
 /* Jogador à direita: a barra de HP dele é ancorada à esquerda (máx. 58% de
    largura), então o boneco ocupa a faixa livre da direita sem cobri-la. */
 .arena__model--player {
-  right: 3%;
-  bottom: 29%;
-  width: 42%;
-  height: 36%;
   /* Mesmo contorno, em azul */
   filter:
     drop-shadow(0 0 1px var(--ds-blue-glow))
@@ -345,6 +384,34 @@ function goBack() {
 .arena__model--hit {
   animation: shake 0.4s ease;
   filter: brightness(1.6) saturate(0.4);
+}
+
+@keyframes arena-ataque-you {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  40% {
+    transform: translate(-18%, -12%);
+  }
+}
+
+@keyframes arena-ataque-foe {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  40% {
+    transform: translate(18%, 14%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arena__fighter,
+  .arena__fighter--attack,
+  .arena__model--hit {
+    animation: none;
+  }
 }
 
 .arena__hud {

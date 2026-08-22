@@ -237,6 +237,16 @@ label {
   100% { background: transparent; }
 }
 
+@keyframes idle-respira {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+  50% {
+    transform: translateY(-2px) scaleY(1.01);
+  }
+}
+
 .animate-fade-in {
   animation: fadeIn 0.3s ease forwards;
 }

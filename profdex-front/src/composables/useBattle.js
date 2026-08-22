@@ -27,6 +27,10 @@ export function useBattle({ player, enemy }) {
 
   const enemyHit = ref(false)
   const playerHit = ref(false)
+  // Quem desferiu o golpe (o outro lado do `target`). Idle fica no wrapper;
+  // o lunge de ataque também, para não disputar `transform` com o shake.
+  const enemyAttack = ref(false)
+  const playerAttack = ref(false)
   const playerStatus = ref('')
   const enemyStatus = ref('')
 
@@ -42,6 +46,7 @@ export function useBattle({ player, enemy }) {
   }
 
   const hitFlag = (key) => (key === 'player' ? playerHit : enemyHit)
+  const attackFlag = (target) => (target === 'player' ? enemyAttack : playerAttack)
 
   // Reproduz uma fila de eventos do motor, animando dano/cura e mensagens.
   async function play(events) {
@@ -53,9 +58,12 @@ export function useBattle({ player, enemy }) {
           break
         case 'damage': {
           const flag = hitFlag(ev.target)
+          const lunge = attackFlag(ev.target)
+          lunge.value = true
           flag.value = true
           syncHp()
           await delay(450)
+          lunge.value = false
           flag.value = false
           message.value = `Causou ${ev.amount} de dano!`
           await delay(650)
@@ -153,6 +161,8 @@ export function useBattle({ player, enemy }) {
     message,
     enemyHit,
     playerHit,
+    enemyAttack,
+    playerAttack,
     playerStatus,
     enemyStatus,
     isOver,

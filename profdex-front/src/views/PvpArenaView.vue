@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import BattleHpBar from '../components/BattleHpBar.vue'
 import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
 import { useBattleStore } from '../stores/battle'
-import { spriteUrlForProfessor } from '../data/professorSprites'
+import { spriteUrlForProfessor, ehPixelArt } from '../data/professorSprites'
 import { getType } from '../data/types'
 
 // Arena PvP: o servidor resolve tudo; esta tela só envia a intenção de golpe
@@ -20,6 +20,8 @@ const foeHp = ref(0)
 const message = ref('')
 const youHit = ref(false)
 const foeHit = ref(false)
+const youAttack = ref(false)
+const foeAttack = ref(false)
 const animating = ref(false)
 const showResult = ref(false)
 
@@ -91,10 +93,13 @@ async function play(events) {
       case 'damage': {
         const isYou = ev.target === 'player'
         const flag = isYou ? youHit : foeHit
+        const lunge = isYou ? foeAttack : youAttack
+        lunge.value = true
         flag.value = true
         if (isYou) youHp.value = Math.max(0, youHp.value - ev.amount)
         else foeHp.value = Math.max(0, foeHp.value - ev.amount)
         await delay(450)
+        lunge.value = false
         flag.value = false
         message.value = `Causou ${ev.amount} de dano!`
         await delay(650)
@@ -218,24 +223,40 @@ onUnmounted(() => clock && clearInterval(clock))
         :hp="foeHp"
         :max-hp="pvp.foe.maxHp"
       />
-      <img
-        class="pvp-arena__model pvp-arena__model--foe"
-        :class="{ 'pvp-arena__model--hit': foeHit }"
-        :src="foeSprite"
-        :alt="`Prof. ${pvp.foe.professor?.name ?? pvp.opponent.name}`"
-        decoding="async"
-      />
+      <div
+        class="pvp-arena__sprite pvp-arena__sprite--foe"
+        :class="{ 'pvp-arena__sprite--attack': foeAttack }"
+      >
+        <img
+          class="pvp-arena__model pvp-arena__model--foe"
+          :class="{
+            'pvp-arena__model--hit': foeHit,
+            'pvp-arena__model--pixel': ehPixelArt(foeSprite),
+          }"
+          :src="foeSprite"
+          :alt="`Prof. ${pvp.foe.professor?.name ?? pvp.opponent.name}`"
+          decoding="async"
+        />
+      </div>
     </div>
 
     <!-- Você (base) -->
     <div class="pvp-arena__you">
-      <img
-        class="pvp-arena__model"
-        :class="{ 'pvp-arena__model--hit': youHit }"
-        :src="youSprite"
-        :alt="pvp.you.professor?.name ?? 'Seu professor'"
-        decoding="async"
-      />
+      <div
+        class="pvp-arena__sprite"
+        :class="{ 'pvp-arena__sprite--attack': youAttack }"
+      >
+        <img
+          class="pvp-arena__model"
+          :class="{
+            'pvp-arena__model--hit': youHit,
+            'pvp-arena__model--pixel': ehPixelArt(youSprite),
+          }"
+          :src="youSprite"
+          :alt="pvp.you.professor?.name ?? 'Seu professor'"
+          decoding="async"
+        />
+      </div>
       <BattleHpBar :name="pvp.you.professor?.name ?? 'Você'" :hp="youHp" :max-hp="pvp.you.maxHp" />
     </div>
 
@@ -330,10 +351,32 @@ onUnmounted(() => clock && clearInterval(clock))
   justify-content: flex-end;
 }
 
-.pvp-arena__model {
+.pvp-arena__sprite {
   width: 46vw;
   max-width: 240px;
   flex: 1;
+  min-height: 0;
+  display: flex;
+  transform-origin: 50% 100%;
+  animation: idle-respira 2.4s ease-in-out 1.2s infinite;
+}
+
+.pvp-arena__sprite--foe {
+  align-self: flex-start;
+  animation-delay: 0s;
+}
+
+.pvp-arena__sprite--attack {
+  animation: pvp-ataque-you 0.45s ease-out;
+}
+
+.pvp-arena__sprite--foe.pvp-arena__sprite--attack {
+  animation: pvp-ataque-foe 0.45s ease-out;
+}
+
+.pvp-arena__model {
+  width: 100%;
+  height: 100%;
   min-height: 0;
   /* `contain` mantém o sprite inteiro no quadro que antes era do model-viewer,
      sem esticar a arte quando a tela é estreita. */
@@ -342,6 +385,10 @@ onUnmounted(() => clock && clearInterval(clock))
   background: transparent;
   /* Sombra no lugar da que o model-viewer projetava. */
   filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.45));
+}
+
+.pvp-arena__model--pixel {
+  image-rendering: pixelated;
 }
 
 .pvp-arena__model--foe {
@@ -357,6 +404,34 @@ onUnmounted(() => clock && clearInterval(clock))
   50% {
     opacity: 0.2;
     filter: brightness(3);
+  }
+}
+
+@keyframes pvp-ataque-you {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  40% {
+    transform: translate(0, -12%);
+  }
+}
+
+@keyframes pvp-ataque-foe {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  40% {
+    transform: translate(0, 14%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pvp-arena__sprite,
+  .pvp-arena__sprite--attack,
+  .pvp-arena__model--hit {
+    animation: none;
   }
 }
 
