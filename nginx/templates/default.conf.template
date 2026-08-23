@@ -1,0 +1,113 @@
+# Template processado pelo entrypoint oficial da imagem nginx (envsubst).
+# Só ${DOMAIN} é substituído — as variáveis do nginx como $host, $scheme etc.
+# não têm variável de ambiente com esse nome, então passam intactas.
+#
+# TLS: certificado de Origem do Cloudflare (modo Full Strict), montado em
+# nginx/certs/{cert,key}.pem — ver comentário no docker-compose.yml.
+#
+# Roteamento por path, tudo sob o mesmo domínio (profdex.unifil.tech):
+#   /                    → frontend (SPA estática, container `frontend`)
+#   /landing             → landing (vitrine estática, container `landing`) —
+#                          página de divulgação, fora da casca mobile do app.
+#                          O prefixo é preservado (proxy_pass SEM barra final)
+#                          porque o build do Vite emite os assets já com
+#                          `base: '/landing/'` — ver profdex-landing/Dockerfile.
+#   /api/*               → backend (container `app`) — o prefixo /api é
+#                          preservado porque o Nest já usa `setGlobalPrefix('api')`
+#   /api/socket.io/*     → mesmo backend, mesma location: o gateway de
+#                          batalha (Socket.IO) já usa `path: '/api/socket.io'`
+#                          (precisa ficar sob /api porque o cookie de sessão
+#                          é emitido com `path: '/api'`), então não existe
+#                          location `/socket.io/` separada — é só REST + WS
+#                          compartilhando o mesmo proxy_pass com os headers
+#                          de upgrade.
+#   /minha-base-de-dados → Adminer (container `adminer`), atrás de HTTP
+#                          Basic Auth (.htpasswd gerado em runtime)
+
+server {
+    listen 80;
+    server_name ${DOMAIN};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/nginx/certs/cert.pem;
+    ssl_certificate_key /etc/nginx/certs/key.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    client_max_body_size 10m;
+
+    location /api/ {
+        proxy_pass http://app:3000;
+        proxy_http_version 1.1;
+
+        # Upgrade necessário aqui (não só numa location /socket.io/
+        # separada) porque o handshake do Socket.IO vive sob /api/socket.io.
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 75s;
+    }
+
+    # Aceita com e sem barra final antes de aplicar o basic auth + proxy.
+    location = /minha-base-de-dados {
+        return 301 /minha-base-de-dados/;
+    }
+
+    location /minha-base-de-dados/ {
+        auth_basic "Restricted";
+        auth_basic_user_file /etc/nginx/.htpasswd;
+
+        add_header X-Content-Type-Options nosniff;
+        add_header Referrer-Policy no-referrer;
+
+        # Barra final nos dois lados: nginx repassa "/" pro Adminer (não
+        # "/minha-base-de-dados/"), e o Adminer usa links relativos à página
+        # atual — por isso a navegação interna dele continua sob o prefixo.
+        proxy_pass http://adminer:8080/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Aceita sem barra final: /landing → /landing/ (senão o proxy responde o
+    # index e os caminhos relativos do HTML resolvem contra a raiz do domínio).
+    location = /landing {
+        return 301 /landing/;
+    }
+
+    location /landing/ {
+        add_header X-Content-Type-Options nosniff;
+        add_header Referrer-Policy no-referrer;
+
+        # Sem barra final no proxy_pass: o container serve os arquivos em
+        # /usr/share/nginx/html/landing/, então o caminho chega inteiro e casa
+        # com o disco. Trocar por `http://landing:80/` (com barra) removeria o
+        # prefixo e daria 404 em tudo.
+        proxy_pass http://landing:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        add_header X-Content-Type-Options nosniff;
+        add_header Referrer-Policy no-referrer;
+
+        proxy_pass http://frontend:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

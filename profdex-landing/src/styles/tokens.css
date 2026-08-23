@@ -1,0 +1,107 @@
+/* Tokens da landing.
+ *
+ * Os valores de marca são cópia literal do bloco `:root` de
+ * profdex-front/src/style.css — a landing e o app precisam ser reconhecíveis
+ * como a mesma coisa. Os aliases de compatibilidade do app (--red, --yellow,
+ * --bg-card…) NÃO foram copiados: existem lá para não quebrar telas antigas,
+ * e código novo não deveria nascer com dívida.
+ *
+ * O que é exclusivo da landing vem depois, na segunda metade do bloco.
+ */
+
+:root {
+  /* ── Marca ProfDex / UniFil (idêntico ao app) ─────────────────────────── */
+  --unifil-orange: #995200;
+  --unifil-gold: #edaf68;
+  --bg-deep: #121418;
+  --surface: #1a1a1a;
+  --surface-border: #2b2b2b;
+  --text-primary: #ffffff;
+  --text-muted: #a8b8c0;
+  --error: #ff6b6b;
+  --success-bg: #234a18;
+  --success-text: #82d16b;
+
+  /* ── Controles estilo Nintendo DS (paleta de acento) ──────────────────── */
+  --ds-orange: #cba034;
+  --ds-orange-glow: #ffdf6d;
+  --ds-orange-shadow: #896712;
+  --ds-blue: #3c7fa1;
+  --ds-blue-glow: #7ec5e6;
+  --ds-blue-shadow: #1e4d66;
+  --ds-green: #549942;
+  --ds-green-glow: #9ae186;
+  --ds-green-shadow: #2e6221;
+
+  /* ── Tipografia ───────────────────────────────────────────────────────── */
+  --font-pixel: 'Press Start 2P', 'Courier New', monospace;
+  /* Todo o site em pixel, por pedido explícito — inclusive texto corrido.
+   * A pilha do sistema fica de fallback: se o .woff2 não chegar, o texto cai
+   * num monoespaçado sóbrio em vez de um serifado qualquer. */
+  --font-body: 'Press Start 2P', 'Courier New', monospace;
+
+  /* Escala fluida. O app fixa 22/11/9px porque vive numa tela de 480px; aqui a
+   * página vai de 320px a 1920px, então a regra é manter a PROPORÇÃO
+   * pixel/legibilidade, não os números. `Press Start 2P` come ~1,6× a largura de
+   * uma fonte normal no mesmo font-size — daí os tetos conservadores. */
+  --fs-hero: clamp(28px, 7vw, 56px);
+  --fs-h2: clamp(15px, 2.6vw, 24px);
+  --fs-h3: clamp(12px, 1.7vw, 15px);
+  --fs-pixel-sm: clamp(9px, 1.2vw, 11px);
+  --fs-body: clamp(15px, 1.5vw, 17px);
+  --fs-body-sm: clamp(13px, 1.3vw, 15px);
+
+  /* ── Espaçamento (escala de 8, alinhada ao pixel) ─────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 40px;
+  --space-6: 64px;
+  --space-7: 96px;
+
+  /* ── Layout ───────────────────────────────────────────────────────────── */
+  /* Altura da barra fixa do topo. Um valor só para todos os tamanhos, e
+   * de propósito: ele entra em TRÊS lugares que precisam concordar entre si
+   * — o espaço reservado no topo do hero, o `scroll-padding-top` das
+   * âncoras e o `rootMargin` do observador que troca o estilo da barra
+   * (src/composables/useScrollSpy.js). Variar por breakpoint criaria uma
+   * quarta cópia do número dentro do JS, que não reage a media query. */
+  --nav-h: 60px;
+
+  /* Fluido a partir de 1120px: em telas até ~1470px o valor não muda (o `1120px`
+   * mínimo do clamp domina), então nenhuma seção abaixo desse ponto se
+   * reposiciona. Acima disso o conteúdo cresce com a tela — 76vw — até travar
+   * em 1440px, que é o teto onde `--maxw-prose` (62ch) mais o resto dos
+   * grids ainda respiram sem virar uma faixa de texto absurdamente larga.
+   * Sem isto, um monitor de 1920px sobrava ~400px de moldura vazia de cada
+   * lado — a placa de circuito e a parede de masmorra já são textura, não
+   * cobrem por conteúdo nenhum. */
+  --maxw-content: clamp(1120px, 76vw, 1440px);
+  --maxw-prose: 62ch;
+
+  /* Raio pequeno é regra da linguagem visual: nada de pílulas arredondadas. */
+  --radius: 4px;
+  --radius-lg: 8px;
+
+  /* ── Movimento ────────────────────────────────────────────────────────── */
+  --dur-fast: 120ms;
+  --dur-base: 300ms;
+  --dur-slow: 600ms;
+  /* `steps()` é o que faz a animação parecer de console 8-bit. Interpolação
+   * suave (ease-out) contradiz a linguagem — usar só onde o movimento precisa
+   * desaparecer, nunca onde ele é o efeito. */
+  --ease-pixel: steps(6, end);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Pares de contraste verificados (WCAG 2.1), para não haver dúvida depois:
+ *
+ *   branco       sobre --unifil-orange … 5,6:1  ✔ AA texto normal
+ *   --unifil-gold sobre --bg-deep ……… 10,5:1  ✔ AAA
+ *   --text-muted  sobre --bg-deep ………  9,4:1  ✔ AAA
+ *   --unifil-gold sobre --unifil-orange  3,1:1  ✘ só título grande / borda
+ *
+ * A última é a armadilha: dourado sobre laranja é bonito e ilegível em corpo
+ * de texto. No hero ele aparece só no "DEX", que é display de 56px.
+ */

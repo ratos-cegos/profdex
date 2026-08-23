@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" />
+
+    <!-- Sem `user-scalable=no`: o app usa isso porque é uma UI de jogo em tela
+        cheia, mas impedir o zoom numa página de LEITURA é falha de
+        acessibilidade (WCAG 1.4.4). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- #995200 é a cor de marca real (profdex-front/src/style.css).
+        O index.html do app ainda declara #CC0000, de uma paleta anterior. -->
+    <meta name="theme-color" content="#995200" />
+    <meta name="color-scheme" content="dark" />
+
+    <title>ProfDex — Colecione seus professores | TechFil</title>
+    <meta
+      name="description"
+      content="Uma Pokédex de professores na TechFil: responda o quiz, capture o QR code do professor e batalhe contra outros alunos em turnos."
+    />
+
+    <!-- Open Graph: o card que aparece quando alguém cola o link no grupo do
+      WhatsApp da turma — que é, na prática, o principal canal de divulgação.
+      A imagem é gerada por scripts/optimize-assets.mjs. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ProfDex" />
+    <meta property="og:title" content="ProfDex — Colecione seus professores" />
+    <meta
+      property="og:description"
+      content="Responda o quiz, capture o QR do professor e batalhe em turnos. Semana Tecnológica da UniFil."
+    />
+    <!-- Absoluta de propósito: o crawler do WhatsApp/Telegram não resolve
+      caminho relativo, e este é o único endereço em que a página é divulgada.
+      O `og:image` também é o único atributo desta lista que o Vite NÃO
+      reescreve com o `base` do build (ele cuida de href/src, não de
+      meta[content]) — se voltasse a ser "/og-image.png", em /landing/ o card
+      apontaria para a raiz do domínio, onde mora o app. -->
+    <meta
+      property="og:image"
+      content="https://profdex.unifil.tech/landing/og-image.png"
+    />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Logo do ProfDex: uma águia em pixel art dentro de uma bola de captura." />
+    <meta property="og:locale" content="pt_BR" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- A fonte é auto-hospedada (ver public/fonts/README.md): uma requisição
+        na conexão já aberta, em vez de dois handshakes com o Google.
+        `preload` porque ela desenha o título do hero — o elemento do LCP. -->
+    <link
+      rel="preload"
+      href="/fonts/press-start-2p-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

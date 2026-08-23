@@ -1,0 +1,172 @@
+/* As duas assinaturas visuais do ProfDex, extraídas de
+ * profdex-front/src/views/HomeView.vue para virarem classes reutilizáveis.
+ *
+ * Estavam presas no `<style scoped>` de uma view; aqui elas são o vocabulário
+ * da página inteira. Se a identidade mudar, muda em um arquivo só.
+ */
+
+/* ── A caixa "molde GBA" ────────────────────────────────────────────────── */
+/* Borda dupla em camadas: 4px laranja por fora, 2px dourado por dentro, e mais
+ * 4px da própria surface para afastar o conteúdo do dourado. É o que dá o ar de
+ * caixa de diálogo de Game Boy Advance. */
+.gba-frame {
+  background: var(--surface);
+  border: 4px solid var(--unifil-orange);
+  box-shadow:
+    inset 0 0 0 2px var(--unifil-gold),
+    inset 0 0 0 4px var(--surface);
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-3);
+}
+
+@media (min-width: 720px) {
+  .gba-frame {
+    padding: var(--space-5) var(--space-4);
+  }
+}
+
+/* Variante sem o dourado: para grades com muitas caixas, onde a borda dupla
+ * repetida vira ruído visual. */
+.gba-frame--plain {
+  border-width: 3px;
+  box-shadow: none;
+}
+
+/* Variante escura, para caixas sobre a própria surface. */
+.gba-frame--deep {
+  background: var(--bg-deep);
+  box-shadow:
+    inset 0 0 0 2px var(--unifil-gold),
+    inset 0 0 0 4px var(--bg-deep);
+}
+
+/* ── O botão com chanfro de pixel ───────────────────────────────────────── */
+/* O truque: dois `inset` opostos simulam luz vindo de cima-esquerda — escuro
+ * embaixo-direita, dourado em cima-esquerda. É bisel de 8 bits, sem gradiente. */
+.btn-pixel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  /* 44px de alvo de toque no mínimo — o público está com o celular na mão, em
+   * movimento. */
+  min-height: 52px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--unifil-orange);
+  border: 3px solid var(--surface-border);
+  box-shadow:
+    inset -3px -3px 0 var(--surface-border),
+    inset 3px 3px 0 var(--unifil-gold);
+  border-radius: 0;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-pixel-sm);
+  /* Branco sobre o laranja da marca dá 5,6:1 — passa AA. Dourado não passaria. */
+  color: var(--text-primary);
+  text-shadow: 2px 2px 0 var(--surface);
+  letter-spacing: 1px;
+  text-align: center;
+  transition: transform var(--dur-fast) steps(2, end);
+}
+
+.btn-pixel:hover {
+  text-decoration: none;
+  background: #a85b00;
+  /* Sobe um pixel inteiro no hover e afunda no clique: o botão tem as duas
+     metades do gesto físico, e as duas em `steps()` — um botão de console não
+     desliza, ele muda de quadro. */
+  transform: translate(-1px, -1px);
+}
+
+/* O "afundar" no clique — o feedback que faz o botão parecer físico. */
+.btn-pixel:active {
+  transform: translate(1px, 1px) scale(0.98);
+  box-shadow:
+    inset 3px 3px 0 var(--surface-border),
+    inset -3px -3px 0 var(--ds-orange-shadow);
+}
+
+.btn-pixel--block {
+  width: 100%;
+}
+
+.btn-pixel--ghost {
+  background: transparent;
+  box-shadow:
+    inset -3px -3px 0 var(--surface-border),
+    inset 3px 3px 0 var(--surface-border);
+  color: var(--unifil-gold);
+}
+
+.btn-pixel--ghost:hover {
+  background: var(--surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-pixel {
+    transition: none;
+  }
+
+  .btn-pixel:hover,
+  .btn-pixel:active {
+    transform: none;
+  }
+}
+
+/* ── Numeração de passo em dois dígitos (01, 02, …) ─────────────────────── */
+.step-num {
+  font-family: var(--font-pixel);
+  font-size: var(--fs-pixel-sm);
+  color: var(--unifil-gold);
+}
+
+/* ── Título de seção ────────────────────────────────────────────────────── */
+.section-kicker {
+  font-family: var(--font-pixel);
+  font-size: var(--fs-pixel-sm);
+  color: var(--unifil-gold);
+}
+
+.section-title {
+  font-family: var(--font-pixel);
+  font-size: var(--fs-h2);
+  color: var(--text-primary);
+  text-shadow: 3px 3px 0 var(--surface);
+}
+
+/* Fio dourado sob cada título, desenhado da esquerda quando a seção entra.
+ *
+ * Ele existe por ritmo: sete seções empilhadas precisavam de uma marca de
+ * "começa aqui" mais forte que o espaço em branco, e o vocabulário da casa já
+ * tem o fio dourado (o molde GBA, o bisel da Pokédex). Cresce em `steps()`,
+ * como as barras de HP e as da tabela de pontos.
+ *
+ * A largura padrão é a FINAL: se o JS do reveal nunca rodar, o atributo não
+ * aparece, o seletor não casa e o fio fica desenhado — mesmo modo de falha do
+ * resto do reveal. */
+.section-title::after {
+  content: '';
+  display: block;
+  width: 64px;
+  height: 3px;
+  margin-top: var(--space-2);
+  background: var(--unifil-gold);
+}
+
+[data-reveal='pending'] .section-title::after {
+  width: 0;
+}
+
+[data-reveal='shown'] .section-title::after {
+  width: 64px;
+  transition: width var(--dur-slow) var(--ease-pixel);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal='pending'] .section-title::after {
+    width: 64px;
+  }
+
+  [data-reveal='shown'] .section-title::after {
+    transition: none;
+  }
+}

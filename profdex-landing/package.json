@@ -1,0 +1,37 @@
+{
+  "name": "landin-page-profdex",
+  "version": "1.0.0",
+  "description": "Landing page do ProfDex — Semana Tecnológica da UniFil",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "prebuild": "npm run check:assets",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check:assets": "node scripts/check-asset-budget.mjs",
+    "assets:optimize": "node scripts/optimize-assets.mjs",
+    "assets:placeholders": "node scripts/make-placeholder-assets.mjs",
+    "model:optimize": "node scripts/optimize-model.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@gltf-transform/core": "^4.4.2",
+    "@gltf-transform/extensions": "^4.4.2",
+    "@gltf-transform/functions": "^4.4.2",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "draco3dgltf": "^1.5.7",
+    "meshoptimizer": "^1.2.0",
+    "sharp": "^0.35.3",
+    "vite": "^8.2.1"
+  },
+  "dependencies": {
+    "@tresjs/cientos": "^5.8.1",
+    "@tresjs/core": "^5.8.3",
+    "gsap": "^3.15.0",
+    "three": "^0.185.1",
+    "vue": "^3.5.41"
+  }
+}

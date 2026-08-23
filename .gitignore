@@ -3,3 +3,11 @@ node_modules/
 **/.env
 **/dist/
 **/prisma/*.db
+
+temp/
+
+# Certificado de Origem do Cloudflare (chave privada) usado pelo nginx de borda
+/nginx/certs
+# .htpasswd do Adminer é gerado em runtime a partir de ADMINER_AUTH_USER/
+# ADMINER_AUTH_PASSWORD — nunca deve ser versionado
+**/.htpasswd

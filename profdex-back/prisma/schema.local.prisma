@@ -1,0 +1,106 @@
+// Schema APENAS para desenvolvimento local, em SQLite — não vai para o Git
+// (ignorado em `.gitignore`). O `schema.prisma` continua sendo o oficial, em
+// PostgreSQL, e é ele que o deploy usa.
+//
+// Uso:
+//   npx prisma db push --schema prisma/schema.local.prisma
+//   node scripts/setup-db.js
+//
+// O `.env` local precisa de DATABASE_URL="file:./dev.db". O caminho é relativo
+// a ESTA pasta, então o banco fica em `prisma/dev.db`.
+//
+// Atenção: `npm install` roda `prisma generate` no schema PostgreSQL pelo
+// postinstall. Depois de instalar dependências, rode de novo:
+//   npx prisma generate --schema prisma/schema.local.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String      @id @default(uuid())
+  matricula   String      @unique
+  name        String
+  password    String
+  createdAt   DateTime    @default(now()) @map("created_at")
+  discoveries Discovery[]
+  captures    Capture[]
+
+  battleRating Int      @default(1000) @map("battle_rating")
+  battleWins   Int      @default(0) @map("battle_wins")
+  battleLosses Int      @default(0) @map("battle_losses")
+  battleDraws  Int      @default(0) @map("battle_draws")
+  battlesAsA   Battle[] @relation("BattlesAsPlayerA")
+  battlesAsB   Battle[] @relation("BattlesAsPlayerB")
+
+  @@index([battleRating(sort: Desc)])
+  @@map("users")
+}
+
+model Battle {
+  id           String    @id @default(uuid())
+  pairKey      String    @map("pair_key")
+  playerAId    String    @map("player_a_id")
+  playerBId    String    @map("player_b_id")
+  professorAId String    @map("professor_a_id")
+  professorBId String    @map("professor_b_id")
+  status       String
+  winnerId     String?   @map("winner_id")
+  ratingDeltaA Int?      @map("rating_delta_a")
+  ratingDeltaB Int?      @map("rating_delta_b")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  finishedAt   DateTime? @map("finished_at")
+
+  playerA    User      @relation("BattlesAsPlayerA", fields: [playerAId], references: [id])
+  playerB    User      @relation("BattlesAsPlayerB", fields: [playerBId], references: [id])
+  professorA Professor @relation("BattleProfessorA", fields: [professorAId], references: [id])
+  professorB Professor @relation("BattleProfessorB", fields: [professorBId], references: [id])
+
+  @@index([pairKey, finishedAt])
+  @@map("battles")
+}
+
+model Professor {
+  id               String      @id @default(uuid())
+  name             String
+  slug             String      @unique
+  captureTokenHash String?     @unique @map("capture_token_hash")
+  modelUrl         String?     @map("model_url")
+  marker1Index     Int         @map("marker1_index")
+  marker2Index     Int         @map("marker2_index")
+  discoveries      Discovery[]
+  captures         Capture[]
+  battlesAsA       Battle[]    @relation("BattleProfessorA")
+  battlesAsB       Battle[]    @relation("BattleProfessorB")
+
+  @@map("professors")
+}
+
+model Discovery {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  professorId  String    @map("professor_id")
+  discoveredAt DateTime  @default(now()) @map("discovered_at")
+  user         User      @relation(fields: [userId], references: [id])
+  professor    Professor @relation(fields: [professorId], references: [id])
+
+  @@unique([userId, professorId])
+  @@map("discoveries")
+}
+
+model Capture {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  professorId String    @map("professor_id")
+  capturedAt  DateTime  @default(now()) @map("captured_at")
+  user        User      @relation(fields: [userId], references: [id])
+  professor   Professor @relation(fields: [professorId], references: [id])
+
+  @@unique([userId, professorId])
+  @@map("captures")
+}

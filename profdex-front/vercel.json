@@ -2,8 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://back-profedex.unifil.tech/api/$1"
+      "source": "/api/:path*",
+      "destination": "https://profdex.unifil.tech/api/:path*"
     },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

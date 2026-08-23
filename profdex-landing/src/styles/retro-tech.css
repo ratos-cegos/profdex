@@ -1,0 +1,121 @@
+/* Camada retro-tech: as superfícies que antes eram cor chapada.
+ *
+ * A página tinha duas áreas lisas — o laranja do hero e os ~8.300 px de
+ * `--bg-deep` embaixo dele. Nenhuma das duas ganhava nada com isso: cor chapada
+ * em tela grande não lê como "console", lê como div sem acabamento.
+ *
+ * Aqui elas viram material. Laranja = placa de circuito impresso. Escuro =
+ * parede de masmorra de 16 bits vista por um monitor de fósforo. E as caixas de
+ * arte ganham o bisel dourado/prata da Pokédex.
+ *
+ * Três regras que valem para o arquivo inteiro:
+ *
+ *   1. NENHUM hex novo. Prata sai de --text-muted (o único cinza-azulado da
+ *      paleta) misturado com --text-primary e --surface-border. Preto e branco
+ *      puros entram só como SOMBRA e LUZ em alfa baixo, que é o que o resto do
+ *      código já fazia (rgb(0 0 0 / 6%) no hero, / 25% no drop-shadow).
+ *
+ *   2. Toda parada de gradiente é DURA e em pixel inteiro. Interpolação suave
+ *      borra a grade e mata a definição — é o oposto do pedido.
+ *
+ *   3. Textura nunca custa contraste de texto. Os alfas ficam em ≤7%: branco
+ *      sobre o laranja da marca sai de 5,6:1 para ~5,3:1, ainda AA folgado.
+ */
+
+:root {
+  /* ── Prata (nova função, cor velha) ──────────────────────────────────── */
+  /* O metal da Pokédex é cinza-azulado, e a paleta já tinha exatamente um:
+   * --text-muted (#a8b8c0). Clarear com --text-primary dá o brilho; escurecer
+   * com --surface-border dá a sombra do bisel. */
+  --silver-hi: color-mix(in srgb, var(--text-muted) 45%, var(--text-primary));
+  --silver-lo: color-mix(in srgb, var(--text-muted) 38%, var(--surface-border));
+
+  /* ── O bisel Pokédex ─────────────────────────────────────────────────── */
+  /* Quatro anéis, de fora para dentro: prata clara em cima-esquerda, prata
+   * escura embaixo-direita (bisel de 8 bits, mesmo truque do .btn-pixel),
+   * dourado, e um fio escuro que separa o dourado da arte.
+   *
+   * A ordem da lista é a ordem de PINTURA: a primeira sombra fica por cima. Por
+   * isso o anel escuro de 5px vem por último (só sobra o que o dourado de 4px
+   * não cobriu) e as duas prateadas com deslocamento vêm primeiro (cobrem o
+   * dourado nos 2px de cada lado). O resultado é anel prata 0–2, dourado 2–4,
+   * escuro 4–5 — sem uma única div a mais no HTML. */
+  --dex-bevel:
+    inset 2px 2px 0 var(--silver-hi),
+    inset -2px -2px 0 var(--silver-lo),
+    inset 0 0 0 4px var(--unifil-gold),
+    inset 0 0 0 5px var(--bg-deep);
+
+  /* Versão fina, para a grade da Pokédex. O gba.css já avisa que borda dupla
+   * repetida em muitas caixas vira ruído — então aqui o dourado é FIO de 1px,
+   * não faixa: a assinatura aparece 14 vezes sem gritar 14 vezes. */
+  --dex-bevel-sm:
+    inset 1px 1px 0 var(--silver-hi),
+    inset -1px -1px 0 var(--silver-lo),
+    inset 0 0 0 2px var(--unifil-gold),
+    inset 0 0 0 3px var(--bg-deep);
+
+  /* Entrada travada: mesmo bisel, sem dourado. Uma silhueta que ainda não foi
+   * capturada não deveria brilhar — na Pokédex o metal só acende quando a
+   * entrada existe. */
+  --dex-bevel-locked:
+    inset 1px 1px 0 var(--silver-lo),
+    inset -1px -1px 0 var(--surface-border);
+}
+
+/* ── O fundo escuro: masmorra vista por um monitor ──────────────────────── */
+/* Cinco camadas, todas em tile inteiro para não haver meio pixel:
+ *
+ *   1. varredura de monitor — 1px aceso a cada 3px
+ *   2. junta horizontal das fiadas de pedra (32px)
+ *   3. junta vertical
+ *   4. luz no topo de cada bloco
+ *   5. luz na lateral esquerda de cada bloco
+ *
+ * As juntas são pretas a 30%: sobre #121418 isso dá ~#0d0e11. É a diferença
+ * mínima que o olho ainda pega em tela boa e some em tela ruim — que é o teto
+ * certo para textura atrás de texto de corpo.
+ *
+ * `background-attachment` fica no padrão (scroll). Fixo daria "a parede é o
+ * monitor" com mais autenticidade e repintaria 8.872px a cada frame de rolagem
+ * no celular, que é justamente o aparelho de todo mundo aqui. */
+body {
+  background-color: var(--bg-deep);
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--text-muted) 4%, transparent) 0 1px,
+      transparent 1px 3px
+    ),
+    repeating-linear-gradient(to bottom, rgb(0 0 0 / 30%) 0 2px, transparent 2px 32px),
+    repeating-linear-gradient(to right, rgb(0 0 0 / 30%) 0 2px, transparent 2px 32px),
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--text-muted) 5%, transparent) 2px 3px,
+      transparent 3px 32px
+    ),
+    repeating-linear-gradient(
+      to right,
+      color-mix(in srgb, var(--text-muted) 4%, transparent) 2px 3px,
+      transparent 3px 32px
+    );
+}
+
+/* ── A caixa de arte com moldura Pokédex ────────────────────────────────── */
+/* Só a moldura. O FUNDO de cada caixa continua sendo a cor do tipo do professor
+ * — é informação, não decoração, e o bisel foi desenhado em `box-shadow`
+ * justamente para não encostar nele. */
+.dex-art {
+  border: 2px solid var(--bg-deep);
+  border-radius: var(--radius);
+  box-shadow: var(--dex-bevel);
+}
+
+.dex-art--sm {
+  border-width: 2px;
+  box-shadow: var(--dex-bevel-sm);
+}
+
+.dex-art--locked {
+  box-shadow: var(--dex-bevel-locked);
+}

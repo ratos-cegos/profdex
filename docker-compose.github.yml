@@ -1,0 +1,49 @@
+# Override para usar imagens pré-buildadas no GitHub Container Registry em vez
+# de buildar na EC2 (t3.micro tem CPU/RAM curtos pra `npm ci` + `vite build` +
+# `prisma generate` + `nest build` ao mesmo tempo).
+#
+# Um mesmo arquivo serve dois papéis, dependendo do comando:
+#
+#   No GitHub Actions (runner faz o build, tem CPU de sobra):
+#     docker compose -f docker-compose.yml -f docker-compose.github.yml \
+#       build app frontend landing nginx
+#     docker compose -f docker-compose.yml -f docker-compose.github.yml \
+#       push app frontend landing nginx
+#
+#   Na EC2 (só baixa e sobe, sem buildar nada):
+#     docker compose -f docker-compose.yml -f docker-compose.github.yml \
+#       pull app frontend landing nginx
+#     docker compose -f docker-compose.yml -f docker-compose.github.yml \
+#       up -d
+#
+# Requer no .env (raiz):
+#   GHCR_NAMESPACE=<owner ou org do GitHub, em minúsculas>
+#   IMAGE_TAG=<tag da imagem — ex.: sha do commit, ou "latest">
+#
+# `db` e `adminer` não entram aqui: já usam imagens públicas (postgres/adminer)
+# e não são buildados a partir do repo, então o docker-compose.yml base já
+# resolve os dois sem overrides.
+services:
+  app:
+    image: ghcr.io/${GHCR_NAMESPACE}/profdex-app:${IMAGE_TAG:-latest}
+    build:
+      context: ./profdex-back
+      dockerfile: Dockerfile
+
+  frontend:
+    image: ghcr.io/${GHCR_NAMESPACE}/profdex-frontend:${IMAGE_TAG:-latest}
+    build:
+      context: ./profdex-front
+      dockerfile: Dockerfile
+
+  landing:
+    image: ghcr.io/${GHCR_NAMESPACE}/profdex-landing:${IMAGE_TAG:-latest}
+    build:
+      context: ./profdex-landing
+      dockerfile: Dockerfile
+
+  nginx:
+    image: ghcr.io/${GHCR_NAMESPACE}/profdex-nginx:${IMAGE_TAG:-latest}
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
