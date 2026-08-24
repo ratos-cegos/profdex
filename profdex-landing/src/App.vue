@@ -3,7 +3,8 @@ import HeroSection from '@/sections/HeroSection.vue'
 import HowItWorksSection from '@/sections/HowItWorksSection.vue'
 import TypeWheelSection from '@/sections/TypeWheelSection.vue'
 import BattleSection from '@/sections/BattleSection.vue'
-import BattleVideoSection from '@/sections/BattleVideoSection.vue'
+// import BattleVideoSection from '@/sections/BattleVideoSection.vue' — ver o
+// comentário na seção comentada abaixo, no <template>.
 import ModelSection from '@/sections/ModelSection.vue'
 import PvpSection from '@/sections/PvpSection.vue'
 import ScoreSection from '@/sections/ScoreSection.vue'
@@ -34,7 +35,13 @@ import SiteFooter from '@/sections/SiteFooter.vue'
     <HowItWorksSection />
     <TypeWheelSection />
     <BattleSection />
-    <BattleVideoSection />
+    <!-- Seção do vídeo desligada até o vídeo existir. Um player de story 9:16
+         com play desabilitado e badge "Em breve" promete algo que a página
+         ainda não entrega — e ocupa a posição de maior atenção, logo depois da
+         batalha. O componente e o copy continuam prontos (BattleVideoSection.vue
+         tem a nota de integração passo a passo); para religar, descomente esta
+         linha e o import lá em cima. -->
+    <!-- <BattleVideoSection /> -->
     <ModelSection />
     <PvpSection />
     <ScoreSection />
