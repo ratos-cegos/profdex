@@ -581,7 +581,12 @@ onBeforeUnmount(() => {
     <!-- Equivalente textual completo: quem usa leitor de tela recebe a roda
          inteira de uma vez, sem precisar clicar tipo por tipo. -->
     <table class="sr-only">
-      <caption>
+      <!-- `sr-only` também NO caption, e não só na tabela: caption é uma caixa
+           fora do box da tabela, então o clip-path do `.sr-only` do <table> não
+           o alcança de forma confiável. Como a tabela é `position: absolute`, o
+           caption que escapa fica fora do fluxo e pinta por cima do conteúdo ao
+           lado em telas estreitas. Mesmo padrão do ScoreSection.vue. -->
+      <caption class="sr-only">
         Vantagens de cada tipo na roda do ProfDex
       </caption>
       <thead>
