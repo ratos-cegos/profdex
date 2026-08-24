@@ -8,6 +8,12 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 
 ## [Não publicado] — branch `feat/sprites-2d-e-ginasio`
 
+### Adicionado
+
+- **Tânia palmeirense:** sprite de frente e costas
+  (`t-camis-palmeirense-frente.png` / `-costas.png`) na arena em
+  `/arena/t-camis-palmeirense`.
+
 ### Alterado
 
 - **Ginásio da arena:** PvE e PvP usam `public/arena/unifil-ginasio.png` como fundo.

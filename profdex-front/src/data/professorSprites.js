@@ -31,6 +31,7 @@ export const PROFESSOR_SPRITES = {
   't-camis': '/professors/tania-frente.png',
   camis: '/professors/tania-frente.png',
   tania: '/professors/tania-frente.png',
+  't-camis-palmeirense': '/professors/t-camis-palmeirense-frente.png',
 }
 
 // Sprites DE COSTAS — perspectiva clássica de batalha por turnos: quem joga vê
@@ -45,6 +46,7 @@ export const PROFESSOR_SPRITES_COSTAS = {
   't-camis': '/professors/tania-costas.png',
   camis: '/professors/tania-costas.png',
   tania: '/professors/tania-costas.png',
+  't-camis-palmeirense': '/professors/t-camis-palmeirense-costas.png',
 }
 
 export const ATAQUE_FRAMES = 6
@@ -59,6 +61,7 @@ export const PROFESSOR_ATAQUE = {
   't-camis': '/professors/tania-ataque-sheet.png',
   camis: '/professors/tania-ataque-sheet.png',
   tania: '/professors/tania-ataque-sheet.png',
+  't-camis-palmeirense': '/professors/t-camis-palmeirense-ataque-sheet.png',
 }
 
 export const PROFESSOR_ATAQUE_COSTAS = {
@@ -70,6 +73,7 @@ export const PROFESSOR_ATAQUE_COSTAS = {
   't-camis': '/professors/tania-ataque-costas-sheet.png',
   camis: '/professors/tania-ataque-costas-sheet.png',
   tania: '/professors/tania-ataque-costas-sheet.png',
+  't-camis-palmeirense': '/professors/t-camis-palmeirense-ataque-costas-sheet.png',
 }
 
 // Quais sprites são pixel art de verdade. Só esses recebem
@@ -82,12 +86,14 @@ const SPRITES_PIXEL_ART = new Set([
   PROFESSOR_SPRITES.mario,
   PROFESSOR_SPRITES.simone,
   PROFESSOR_SPRITES.tania,
+  PROFESSOR_SPRITES['t-camis-palmeirense'],
   PROFESSOR_SPRITES_COSTAS.eron,
   PROFESSOR_SPRITES_COSTAS.gustavo,
   PROFESSOR_SPRITES_COSTAS.joao,
   PROFESSOR_SPRITES_COSTAS.mario,
   PROFESSOR_SPRITES_COSTAS.simone,
   PROFESSOR_SPRITES_COSTAS.tania,
+  PROFESSOR_SPRITES_COSTAS['t-camis-palmeirense'],
 ])
 
 /** O sprite deve ser ampliado sem suavização? */

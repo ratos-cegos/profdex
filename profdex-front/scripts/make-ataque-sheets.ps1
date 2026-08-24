@@ -68,6 +68,7 @@ $pairs = @(
   @{ slug = 'mario'; frente = 'mario-frente.png'; costas = 'mario-costas.png' }
   @{ slug = 'simone'; frente = 'simone-frente.png'; costas = 'simone-costas.png' }
   @{ slug = 'tania'; frente = 'tania-frente.png'; costas = 'tania-costas.png' }
+  @{ slug = 't-camis-palmeirense'; frente = 't-camis-palmeirense-frente.png'; costas = 't-camis-palmeirense-costas.png' }
 )
 
 foreach ($p in $pairs) {

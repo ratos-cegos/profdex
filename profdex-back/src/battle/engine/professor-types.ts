@@ -12,6 +12,7 @@ export const PROFESSOR_TYPES: Record<string, string[]> = {
   't-camis': ['calculo', 'logica'],
   camis: ['calculo', 'logica'],
   tania: ['calculo', 'logica'],
+  't-camis-palmeirense': ['calculo', 'logica'],
   joao: ['logica', 'algoritmos'],
 };
 
