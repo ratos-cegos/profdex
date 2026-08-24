@@ -33,6 +33,9 @@ const PROFESSORS = [
   { name: 'Mário', slug: 'mario', marker1Index: 0, marker2Index: 1 },
   { name: 'Eron', slug: 'eron', marker1Index: 2, marker2Index: 3 },
   { name: 'Gustavo', slug: 'gustavo', marker1Index: 4, marker2Index: 5 },
+  { name: 'João', slug: 'joao', marker1Index: 6, marker2Index: 7 },
+  { name: 'Simone', slug: 'simone', marker1Index: 8, marker2Index: 9 },
+  { name: 'Tânia', slug: 't-camis', marker1Index: 10, marker2Index: 11 },
 ];
 
 async function seedProfessors() {
@@ -44,6 +47,27 @@ async function seedProfessors() {
     });
   }
   console.log(`Professores: ${PROFESSORS.length} inseridos`);
+  await pruneExtraProfessors();
+}
+
+/** Tira do banco quem saiu do elenco (Marcelo, Renata, Serginho, etc.). */
+async function pruneExtraProfessors() {
+  const keep = PROFESSORS.map((p) => p.slug);
+  const extras = await prisma.professor.findMany({
+    where: { slug: { notIn: keep } },
+    select: { id: true, slug: true },
+  });
+  if (!extras.length) return;
+  const ids = extras.map((e) => e.id);
+  await prisma.capture.deleteMany({ where: { professorId: { in: ids } } });
+  await prisma.discovery.deleteMany({ where: { professorId: { in: ids } } });
+  await prisma.battle.deleteMany({
+    where: {
+      OR: [{ professorAId: { in: ids } }, { professorBId: { in: ids } }],
+    },
+  });
+  await prisma.professor.deleteMany({ where: { id: { in: ids } } });
+  console.log(`Fora do elenco, removidos: ${extras.map((e) => e.slug).join(', ')}`);
 }
 
 /**

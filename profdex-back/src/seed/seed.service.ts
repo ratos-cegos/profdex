@@ -27,6 +27,27 @@ const PROFESSORS = [
     marker1Index: 4,
     marker2Index: 5,
   },
+  {
+    id: 'prof-joao',
+    name: 'João',
+    slug: 'joao',
+    marker1Index: 6,
+    marker2Index: 7,
+  },
+  {
+    id: 'prof-simone',
+    name: 'Simone',
+    slug: 'simone',
+    marker1Index: 8,
+    marker2Index: 9,
+  },
+  {
+    id: 'prof-t-camis',
+    name: 'Tânia',
+    slug: 't-camis',
+    marker1Index: 10,
+    marker2Index: 11,
+  },
 ];
 
 @Injectable()
@@ -37,17 +58,14 @@ export class SeedService implements OnModuleInit {
 
   async onModuleInit() {
     try {
-      const count = await this.prisma.professor.count();
-      if (count === 0) {
-        for (const prof of PROFESSORS) {
-          await this.prisma.professor.upsert({
-            where: { slug: prof.slug },
-            update: {},
-            create: prof,
-          });
-        }
-        this.logger.log(`Banco populado com ${PROFESSORS.length} professores`);
+      for (const prof of PROFESSORS) {
+        await this.prisma.professor.upsert({
+          where: { slug: prof.slug },
+          update: {},
+          create: prof,
+        });
       }
+      this.logger.log(`Professores no seed: ${PROFESSORS.length}`);
 
       // Fora do `if`: professor cadastrado antes deste modelo também precisa
       // das variantes, senão não há o que imprimir em QR nem o que capturar.

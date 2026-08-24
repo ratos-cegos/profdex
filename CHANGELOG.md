@@ -8,9 +8,12 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 
 ## [Não publicado] — branch `deploy`
 
-Trabalho da branch de deploy, sobre a `main` já integrada.
-
 ### Adicionado
+
+- **Folhas de ataque na arena** (`{slug}-ataque-sheet.png` e
+  `{slug}-ataque-costas-sheet.png`, 6 frames). No golpe, a arena troca o idle
+  por uma reprodução em `steps()`; quem ainda não tem folha continua com o
+  lunge em CSS. Geração: `profdex-front/scripts/make-ataque-sheets.ps1`.
 
 - **Landing page em `/landing`** (`profdex-landing/`). A vitrine pública do
   ProfDex, que vivia num repositório e num deploy Vercel separados

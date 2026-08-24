@@ -36,7 +36,7 @@ function createSubject() {
     professor: {
       findMany: jest
         .fn()
-        .mockResolvedValue([{ id: 'p-1', name: 'Marcos', slug: 'marcos' }]),
+        .mockResolvedValue([{ id: 'p-1', name: 'Eron', slug: 'eron' }]),
     },
   };
   const metrics = { record: jest.fn() };
@@ -170,7 +170,7 @@ describe('QuizService', () => {
 
     const resultado = await service.answer('admin-1', aberta.sessionId, 0);
 
-    // "marcos" é de banco na tabela de tipos — é para ele que o aluno vai.
-    expect(resultado.professores).toEqual([{ name: 'Marcos', slug: 'marcos' }]);
+    // Ninguém do elenco do evento é de banco — o tema não aponta professor.
+    expect(resultado.professores).toEqual([]);
   });
 });

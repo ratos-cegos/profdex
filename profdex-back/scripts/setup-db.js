@@ -29,6 +29,27 @@ const PROFESSORS = [
     marker1Index: 4,
     marker2Index: 5,
   },
+  {
+    id: 'prof-joao',
+    name: 'João',
+    slug: 'joao',
+    marker1Index: 6,
+    marker2Index: 7,
+  },
+  {
+    id: 'prof-simone',
+    name: 'Simone',
+    slug: 'simone',
+    marker1Index: 8,
+    marker2Index: 9,
+  },
+  {
+    id: 'prof-t-camis',
+    name: 'Tânia',
+    slug: 't-camis',
+    marker1Index: 10,
+    marker2Index: 11,
+  },
 ]
 
 async function main() {

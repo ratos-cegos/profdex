@@ -1,10 +1,7 @@
 // Tipos de cada professor (planilha "Tipos-Professores").
 //
-// A batalha usa até DOIS tipos por professor (Tipo 1 / Tipo 2). Decisões de
-// mapeamento tomadas com o time:
-//  · "Programação" → lógica (não há movepool de Programação).
-//  · "Segurança"   → descartada (não há movepool); quem a tinha fica só com o
-//                    outro tipo — Marcos e Edson viram mono Banco de Dados.
+// A batalha usa até DOIS tipos por professor (Tipo 1 / Tipo 2).
+// Elenco do evento: Gustavo, Eron, Mário, João, Simone, Tânia.
 //  · Gustavo é o boneco que o jogador controla.
 //
 // Chave = nome normalizado (sem acento, minúsculo, espaços→hífen). O helper
@@ -15,20 +12,12 @@ import { getType, typeIdFromSeed } from './types.js'
 export const PROFESSOR_TYPES = {
   gustavo: ['arquitetura'], // jogador
   mario: ['algoritmos'],
-  'ricardo-petri': ['ia-ml'],
-  ricardo: ['ia-ml'],
   simone: ['npi'],
   eron: ['arquitetura', 'ia-ml'],
   't-camis': ['calculo', 'logica'],
   camis: ['calculo', 'logica'],
+  tania: ['calculo', 'logica'],
   joao: ['logica', 'algoritmos'],
-  marcelo: ['logica'], // Programação → Lógica
-  guilherme: ['logica'],
-  renata: ['npi'],
-  serginho: ['ia-ml'],
-  marcos: ['banco'], // Banco (+Segurança descartada)
-  igor: ['robotica', 'redes'],
-  edson: ['banco'], // Segurança descartada → Banco
 }
 
 // Nome de exibição do jogador e seus tipos.

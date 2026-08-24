@@ -2,17 +2,8 @@
 //
 // FONTE: profdex-front/src/data/{professorTypes,professorSprites,professorModels}.js.
 //
-// ⚠️ Correção em relação ao LANDING-PAGE.md §3, que fala em "16 professores
-// mapeados": o PROFESSOR_TYPES tem 16 CHAVES, não 16 pessoas. Duas são pares de
-// apelido — o mapa registra slug e nome porque `typesForProfessor` tenta os
-// dois ao casar o que vem da API:
-//
-//     'ricardo-petri' ≡ 'ricardo'   (ambos ['ia-ml'])
-//     't-camis'       ≡ 'camis'     (ambos ['calculo', 'logica'])
-//
-// Logo: 14 professores distintos, 3 com arte. A landing NUNCA digita esses
-// números — eles saem de `TOTAL_PROFESSORS` e `LOCKED_COUNT`, derivados daqui.
-// Um professor novo com arte é uma linha nesta lista, e a página se ajusta.
+// Elenco do evento: 6 pessoas (Gustavo, Eron, Mário, João, Simone, Tânia).
+// `t-camis` ≡ `camis` ≡ `tania` (todos ['calculo', 'logica']).
 
 // Import relativo, e não pelo alias `@`: este módulo também é lido pelo
 // scripts/check-asset-budget.mjs, que roda no Node puro — e o `@` só existe
@@ -90,19 +81,7 @@ export const BY_SLUG = Object.fromEntries(CAPTURABLE.map((p) => [p.slug, p]))
  * Pokédex com entradas por descobrir. Os tipos vêm do PROFESSOR_TYPES; o
  * primeiro tipo de cada um é o que colore a silhueta.
  */
-export const LOCKED = [
-  { types: ['ia-ml'] }, // Ricardo Petri
-  { types: ['npi'] }, // Simone
-  { types: ['calculo', 'logica'] }, // T. Camis
-  { types: ['logica', 'algoritmos'] }, // João
-  { types: ['logica'] }, // Marcelo — "Programação" virou Lógica
-  { types: ['logica'] }, // Guilherme
-  { types: ['npi'] }, // Renata
-  { types: ['ia-ml'] }, // Serginho
-  { types: ['banco'] }, // Marcos — "Segurança" foi descartada
-  { types: ['robotica', 'redes'] }, // Igor
-  { types: ['banco'] }, // Edson — idem Marcos
-]
+export const LOCKED = []
 
 export const TOTAL_PROFESSORS = CAPTURABLE.length + LOCKED.length
 export const LOCKED_COUNT = LOCKED.length

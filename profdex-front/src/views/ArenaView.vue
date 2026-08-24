@@ -1,7 +1,8 @@
 <script setup>
 import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import BattleHpBar from '../components/BattleHpBar.vue'
+import BattleAtaqueSprite from '../components/BattleAtaqueSprite.vue'
 import { useBattle } from '../composables/useBattle.js'
 import { openBackCamera } from '../composables/useBackCamera.js'
 import { useProfessorsStore } from '../stores/professors'
@@ -16,31 +17,24 @@ import {
   ehPixelArt,
   PLAYER_SPRITE_URL,
   spriteUrlForProfessor,
+  ataqueSheetUrlForProfessor,
+  ataqueCostasSheetUrlForProfessor,
 } from '../data/professorSprites.js'
 
 const MAX_HP = 120
 
 const router = useRouter()
+const route = useRoute()
 const store = useProfessorsStore()
 
-// Professor inimigo: FIXO no Gustavo por enquanto — a arena sempre abre a
-// batalha contra ele, independente do professor que veio em /arena/:id. É o
-// único com pixel art nas duas orientações, então é ele que a tela de teste
-// mostra: de frente ao fundo (oponente) e de costas em primeiro plano (jogador).
-// Para voltar a usar o professor da rota, troque o `ENEMY_KEY` por
-// `route.params.id` (o findByKey aceita UUID, slug e nome) e restaure o
-// `useRoute()` no import de vue-router.
-//
-// O `beforeEnter` da rota já carregou a lista, então dá para resolver aqui no
-// setup — a batalha inteira (tipos, golpes, modelo) deriva deste objeto, e por
-// isso ele precisa estar correto ANTES de useBattle() montar os combatentes.
-// O literal é o fallback de quando a lista não veio (backend fora do ar): os
-// dados que a batalha usa são slug e nome, então ela roda igual.
-const ENEMY_KEY = 'gustavo'
+// Inimigo = professor da rota (`/arena/eron`, UUID ou nome). A lista já veio
+// no `beforeEnter`. Fallback: literal com o próprio param, para a batalha
+// rodar mesmo com o backend fora do ar (slug/nome bastam para sprite e tipos).
+const ENEMY_KEY = String(route.params.id || '')
 const enemyProfessor = store.findByKey(ENEMY_KEY) || {
-  id: ENEMY_KEY,
-  name: 'Gustavo',
-  slug: ENEMY_KEY,
+  id: ENEMY_KEY || 'gustavo',
+  name: ENEMY_KEY || 'Gustavo',
+  slug: ENEMY_KEY || 'gustavo',
 }
 
 // ── Realidade aumentada: DESATIVADA por enquanto. O combate acontece sempre
@@ -133,6 +127,8 @@ onMounted(start)
 // Ver docs/BUG-BATALHA-TRAVANDO.md.
 const enemySpriteSrc = spriteUrlForProfessor(enemyProfessor)
 const playerSpriteSrc = PLAYER_SPRITE_URL
+const enemyAtaqueSheet = ataqueSheetUrlForProfessor(enemyProfessor)
+const playerAtaqueSheet = ataqueCostasSheetUrlForProfessor({ slug: PLAYER_KEY })
 
 // AR ancorado (WebXR) e AR Quick Look (iOS) DESATIVADOS por enquanto — a arena
 // roda só no cenário 3D. O código foi removido; ver histórico do git para
@@ -156,13 +152,12 @@ function goBack() {
         playsinline
         muted
       />
-      <!-- Fundo: ginásio UNIFIL (PNG 1×, sem WebGL). O túnel binário ficou
-           em /tunel-binario. Troque o arquivo em public/arena/ginasio-unifil.png
-           pela arte 16-bit final quando estiver pronta. -->
+      <!-- Fundo: ginásio UNIFIL (PNG, sem WebGL). O túnel binário ficou
+           em /tunel-binario. -->
       <div v-if="!arEnabled" class="arena__scenario" aria-hidden="true">
         <img
           class="arena__ginasio"
-          src="/arena/ginasio-unifil.png"
+          src="/arena/unifil-gina.png"
           alt=""
           decoding="async"
         />
@@ -172,32 +167,34 @@ function goBack() {
            no mesmo elemento se anulam. -->
       <div
         class="arena__fighter arena__fighter--enemy"
-        :class="{ 'arena__fighter--attack': enemyAttack }"
+        :class="{
+          'arena__fighter--attack': enemyAttack,
+          'arena__fighter--folha': enemyAttack && enemyAtaqueSheet,
+        }"
       >
-        <img
-          class="arena__model arena__model--enemy"
-          :class="{
-            'arena__model--hit': enemyHit,
-            'arena__model--pixel': ehPixelArt(enemySpriteSrc),
-          }"
+        <BattleAtaqueSprite
           :src="enemySpriteSrc"
+          :sheet-src="enemyAtaqueSheet"
+          :attacking="enemyAttack"
+          :pixel="ehPixelArt(enemySpriteSrc)"
+          :img-class="`arena__model arena__model--enemy${enemyHit ? ' arena__model--hit' : ''}${ehPixelArt(enemySpriteSrc) ? ' arena__model--pixel' : ''}`"
           :alt="`Prof. ${enemyProfessor.name} em batalha`"
-          decoding="async"
         />
       </div>
       <div
         class="arena__fighter arena__fighter--player"
-        :class="{ 'arena__fighter--attack': playerAttack }"
+        :class="{
+          'arena__fighter--attack': playerAttack,
+          'arena__fighter--folha': playerAttack && playerAtaqueSheet,
+        }"
       >
-        <img
-          class="arena__model arena__model--player"
-          :class="{
-            'arena__model--hit': playerHit,
-            'arena__model--pixel': ehPixelArt(playerSpriteSrc),
-          }"
+        <BattleAtaqueSprite
           :src="playerSpriteSrc"
+          :sheet-src="playerAtaqueSheet"
+          :attacking="playerAttack"
+          :pixel="ehPixelArt(playerSpriteSrc)"
+          :img-class="`arena__model arena__model--player${playerHit ? ' arena__model--hit' : ''}${ehPixelArt(playerSpriteSrc) ? ' arena__model--pixel' : ''}`"
           alt="Seu personagem"
-          decoding="async"
         />
       </div>
     </div>
@@ -313,7 +310,7 @@ function goBack() {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 62%;
+  object-position: center 55%;
   image-rendering: pixelated;
 }
 
@@ -324,6 +321,9 @@ function goBack() {
   pointer-events: none;
   transform-origin: 50% 100%;
   animation: idle-respira 2.4s ease-in-out infinite;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
 }
 
 .arena__fighter--enemy {
@@ -343,22 +343,29 @@ function goBack() {
   animation-delay: 1.2s;
 }
 
-.arena__fighter--attack.arena__fighter--enemy {
+.arena__fighter--attack.arena__fighter--enemy:not(.arena__fighter--folha) {
   animation: arena-ataque-foe 0.45s ease-out;
 }
 
-.arena__fighter--attack.arena__fighter--player {
+.arena__fighter--attack.arena__fighter--player:not(.arena__fighter--folha) {
   animation: arena-ataque-you 0.45s ease-out;
 }
 
-/* Sprites 2D dos combatentes. Ocupam o mesmo lugar dos antigos <model-viewer>;
-   `contain` preserva a proporção da arte dentro daquela caixa. */
+.arena__fighter--folha {
+  animation: none;
+}
+
+/* Sprites 2D. A caixa do lutador define a ALTURA; a largura segue a
+   proporção do PNG. Assim o Gustavo (35×64) e o Eron/Mário (~3×) ficam
+   do mesmo tamanho na tela sem reamostrar o arquivo. */
 .arena__model {
   display: block;
-  width: 100%;
   height: 100%;
+  width: auto;
+  max-width: 100%;
   pointer-events: none;
   object-fit: contain;
+  object-position: bottom center;
 }
 
 /* Pixel art ampliada sem suavização; `object-fit: contain` acima já preserva a

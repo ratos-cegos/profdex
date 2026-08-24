@@ -2,8 +2,15 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import BattleHpBar from '../components/BattleHpBar.vue'
+import BattleAtaqueSprite from '../components/BattleAtaqueSprite.vue'
 import { useBattleStore } from '../stores/battle'
-import { spriteUrlForProfessor, ehPixelArt } from '../data/professorSprites'
+import {
+  spriteUrlForProfessor,
+  spriteCostasUrlForProfessor,
+  ataqueSheetUrlForProfessor,
+  ataqueCostasSheetUrlForProfessor,
+  ehPixelArt,
+} from '../data/professorSprites'
 import { getType } from '../data/types'
 
 // Arena PvP: o servidor resolve tudo; esta tela só envia a intenção de golpe
@@ -63,8 +70,12 @@ const canAct = computed(
 // Sprites 2D, não .glb: dois modelos de dezenas de MB por partida faziam o
 // Safari do iPhone descartar a aba no meio da batalha.
 // Ver docs/BUG-BATALHA-TRAVANDO.md.
-const youSprite = computed(() => spriteUrlForProfessor(pvp.value?.you?.professor))
+const youSprite = computed(() => spriteCostasUrlForProfessor(pvp.value?.you?.professor))
 const foeSprite = computed(() => spriteUrlForProfessor(pvp.value?.foe?.professor))
+const youAtaqueSheet = computed(() =>
+  ataqueCostasSheetUrlForProfessor(pvp.value?.you?.professor),
+)
+const foeAtaqueSheet = computed(() => ataqueSheetUrlForProfessor(pvp.value?.foe?.professor))
 
 const resultText = computed(() => {
   const r = pvp.value?.result
@@ -214,7 +225,7 @@ onUnmounted(() => clock && clearInterval(clock))
     <div class="pvp-arena__bg" aria-hidden="true">
       <img
         class="pvp-arena__ginasio"
-        src="/arena/ginasio-unifil.png"
+        src="/arena/unifil-gina.png"
         alt=""
         decoding="async"
       />
@@ -229,17 +240,18 @@ onUnmounted(() => clock && clearInterval(clock))
       />
       <div
         class="pvp-arena__sprite pvp-arena__sprite--foe"
-        :class="{ 'pvp-arena__sprite--attack': foeAttack }"
+        :class="{
+          'pvp-arena__sprite--attack': foeAttack,
+          'pvp-arena__sprite--folha': foeAttack && foeAtaqueSheet,
+        }"
       >
-        <img
-          class="pvp-arena__model pvp-arena__model--foe"
-          :class="{
-            'pvp-arena__model--hit': foeHit,
-            'pvp-arena__model--pixel': ehPixelArt(foeSprite),
-          }"
+        <BattleAtaqueSprite
           :src="foeSprite"
+          :sheet-src="foeAtaqueSheet"
+          :attacking="foeAttack"
+          :pixel="ehPixelArt(foeSprite)"
+          :img-class="`pvp-arena__model pvp-arena__model--foe${foeHit ? ' pvp-arena__model--hit' : ''}${ehPixelArt(foeSprite) ? ' pvp-arena__model--pixel' : ''}`"
           :alt="`Prof. ${pvp.foe.professor?.name ?? pvp.opponent.name}`"
-          decoding="async"
         />
       </div>
     </div>
@@ -248,17 +260,18 @@ onUnmounted(() => clock && clearInterval(clock))
     <div class="pvp-arena__you">
       <div
         class="pvp-arena__sprite"
-        :class="{ 'pvp-arena__sprite--attack': youAttack }"
+        :class="{
+          'pvp-arena__sprite--attack': youAttack,
+          'pvp-arena__sprite--folha': youAttack && youAtaqueSheet,
+        }"
       >
-        <img
-          class="pvp-arena__model"
-          :class="{
-            'pvp-arena__model--hit': youHit,
-            'pvp-arena__model--pixel': ehPixelArt(youSprite),
-          }"
+        <BattleAtaqueSprite
           :src="youSprite"
+          :sheet-src="youAtaqueSheet"
+          :attacking="youAttack"
+          :pixel="ehPixelArt(youSprite)"
+          :img-class="`pvp-arena__model${youHit ? ' pvp-arena__model--hit' : ''}${ehPixelArt(youSprite) ? ' pvp-arena__model--pixel' : ''}`"
           :alt="pvp.you.professor?.name ?? 'Seu professor'"
-          decoding="async"
         />
       </div>
       <BattleHpBar :name="pvp.you.professor?.name ?? 'Você'" :hp="youHp" :max-hp="pvp.you.maxHp" />
@@ -339,7 +352,7 @@ onUnmounted(() => clock && clearInterval(clock))
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center center;
+  object-position: center 55%;
   image-rendering: pixelated;
 }
 
@@ -370,33 +383,38 @@ onUnmounted(() => clock && clearInterval(clock))
   flex: 1;
   min-height: 0;
   display: flex;
+  align-items: flex-end;
+  justify-content: center;
   transform-origin: 50% 100%;
   animation: idle-respira 2.4s ease-in-out 1.2s infinite;
 }
 
 .pvp-arena__sprite--foe {
   align-self: flex-start;
+  align-items: flex-start;
   animation-delay: 0s;
 }
 
-.pvp-arena__sprite--attack {
+.pvp-arena__sprite--attack:not(.pvp-arena__sprite--folha) {
   animation: pvp-ataque-you 0.45s ease-out;
 }
 
-.pvp-arena__sprite--foe.pvp-arena__sprite--attack {
+.pvp-arena__sprite--foe.pvp-arena__sprite--attack:not(.pvp-arena__sprite--folha) {
   animation: pvp-ataque-foe 0.45s ease-out;
 }
 
+.pvp-arena__sprite--folha {
+  animation: none;
+}
+
 .pvp-arena__model {
-  width: 100%;
   height: 100%;
+  width: auto;
+  max-width: 100%;
   min-height: 0;
-  /* `contain` mantém o sprite inteiro no quadro que antes era do model-viewer,
-     sem esticar a arte quando a tela é estreita. */
   object-fit: contain;
   object-position: bottom center;
   background: transparent;
-  /* Sombra no lugar da que o model-viewer projetava. */
   filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.45));
 }
 

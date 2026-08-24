@@ -7,20 +7,12 @@ import { typeIdFromSeed } from './types';
 export const PROFESSOR_TYPES: Record<string, string[]> = {
   gustavo: ['arquitetura'],
   mario: ['algoritmos'],
-  'ricardo-petri': ['ia-ml'],
-  ricardo: ['ia-ml'],
   simone: ['npi'],
   eron: ['arquitetura', 'ia-ml'],
   't-camis': ['calculo', 'logica'],
   camis: ['calculo', 'logica'],
+  tania: ['calculo', 'logica'],
   joao: ['logica', 'algoritmos'],
-  marcelo: ['logica'], // Programação → Lógica
-  guilherme: ['logica'],
-  renata: ['npi'],
-  serginho: ['ia-ml'],
-  marcos: ['banco'], // Banco (+Segurança descartada)
-  igor: ['robotica', 'redes'],
-  edson: ['banco'], // Segurança descartada → Banco
 };
 
 // Normaliza um texto para chave: sem acentos, minúsculo, espaços→hífen.
