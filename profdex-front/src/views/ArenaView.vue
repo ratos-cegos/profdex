@@ -157,7 +157,7 @@ function goBack() {
       <div v-if="!arEnabled" class="arena__scenario" aria-hidden="true">
         <img
           class="arena__ginasio"
-          src="/arena/unifil-gina.png"
+          src="/arena/unifil-ginasio.png"
           alt=""
           decoding="async"
         />

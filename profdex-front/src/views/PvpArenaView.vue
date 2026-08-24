@@ -225,7 +225,7 @@ onUnmounted(() => clock && clearInterval(clock))
     <div class="pvp-arena__bg" aria-hidden="true">
       <img
         class="pvp-arena__ginasio"
-        src="/arena/unifil-gina.png"
+        src="/arena/unifil-ginasio.png"
         alt=""
         decoding="async"
       />

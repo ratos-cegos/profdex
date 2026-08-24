@@ -6,6 +6,23 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 `Adicionado` para novidades, `Alterado` para mudanças de comportamento existente,
 `Corrigido` para defeitos e `Removido` para o que saiu.
 
+## [Não publicado] — branch `feat/sprites-2d-e-ginasio`
+
+### Alterado
+
+- **Ginásio da arena:** PvE e PvP usam `public/arena/unifil-ginasio.png` como fundo.
+  A marca UNIFIL já vem na arte, então o overlay do logo foi retirado.
+
+- **Elenco do evento:** seed, tipos e sprites passam a ter só Tânia (`t-camis`),
+  João, Eron, Gustavo, Simone e Mário. Quem não está nessa lista some da Pokédex
+  e das arenas.
+
+### Removido
+
+- Professores fora do elenco (Marcelo, Renata, Serginho e os demais mapeados
+  só em tipo) saíram do seed e dos mapas de sprite. Os PNGs locais não foram
+  apagados, só deixaram de ser versionados.
+
 ## [Não publicado] — branch `deploy`
 
 ### Adicionado

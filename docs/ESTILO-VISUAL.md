@@ -168,7 +168,7 @@ export const PROFESSOR_SPRITES_COSTAS = {
 // Incluir TODOS os novos em SPRITES_PIXEL_ART (Set interno).
 ```
 
-**Ginásio:** `profdex-front/public/arena/unifil-gina.png`.
+**Ginásio:** `profdex-front/public/arena/unifil-ginasio.png`.
 
 ---
 
@@ -243,7 +243,7 @@ para bater grade e paleta do Gustavo.
 
 ### Ginásio (2.4)
 
-- [x] Arte `public/arena/unifil-gina.png` nas arenas PvE e PvP (marca já na arte).
+- [x] Arte `public/arena/unifil-ginasio.png` nas arenas PvE e PvP (marca já na arte).
 - [x] Substituir `<BinaryTunnelScene>` nas arenas; manter `/tunel-binario` como lab.
 - [x] Lutadores apoiados no chão (caixas CSS alinhadas aos ovais).
 - [ ] Validar marca UNIFIL com comunicação institucional, se ainda precisar.
@@ -252,7 +252,7 @@ para bater grade e paleta do Gustavo.
 
 - [ ] Remover `ENEMY_KEY = 'gustavo'` fixo quando o escopo tiver frente+costas
       suficientes (ver tarefa 8.2).
-- [ ] Atualizar `CHANGELOG.md` na entrega.
+- [x] Atualizar `CHANGELOG.md` na entrega.
 
 ---
 
@@ -260,7 +260,7 @@ para bater grade e paleta do Gustavo.
 
 1. ✅ Este documento (`docs/ESTILO-VISUAL.md`).
 2. Sprites **Eron** e **Mário** (frente + costas) + registro no código.
-3. ✅ Ginásio nas arenas (`unifil-gina.png`).
+3. ✅ Ginásio nas arenas (`unifil-ginasio.png`).
 4. ✅ Idle CSS + lunge de ataque no evento `damage`.
 5. Folhas `-ataque-sheet.png` + professores das 3 vagas restantes (quando confirmados).
 
