@@ -1,6 +1,9 @@
 <script setup>
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { battle } from '@/content/copy.js'
 import { BY_SLUG } from '@/data/professors.js'
+import { BATTLES, PLAYER_MOVES, PLAYER_SLUG } from '@/data/battle-demo.js'
+import { typeMultiplier } from '@/data/types.js'
 import SectionShell from '@/components/SectionShell.vue'
 import TypeBadge from '@/components/TypeBadge.vue'
 import { useReveal } from '@/composables/useReveal.js'
@@ -16,32 +19,215 @@ import { useReveal } from '@/composables/useReveal.js'
 // O adversário aparece de FRENTE (ele encara você) e o seu, de COSTAS em
 // primeiro plano — a câmera está atrás do seu ombro. É o enquadramento que todo
 // mundo reconhece sem legenda, e é o que o app faz.
-const enemy = BY_SLUG.mario
-const player = BY_SLUG.gustavo
+const player = BY_SLUG[PLAYER_SLUG]
 
-// A barra do adversário desce quando a seção entra na tela. É CSS puro
-// (transition de width com steps): não vale carregar uma engine de animação
-// para drenar uma barra.
+const enemy = ref(BY_SLUG[BATTLES[0].enemy])
+const enemyHp = ref(100)
+const playerHp = ref(100)
+const enemyFainted = ref(false)
+
+// O menu de golpes: `cursor` é onde a setinha está, `picked` é o golpe que
+// acabou de sair (piscada curta). -1 = nenhum.
+const cursor = ref(0)
+const picked = ref(-1)
+const message = ref('')
+
 const { el } = useReveal({ threshold: 0.4 })
+
+/**
+ * A mensagem de efetividade NÃO é escrita no roteiro: sai do `typeMultiplier`,
+ * a mesma função que a batalha de verdade usa. Se a roda de tipos mudar, isto
+ * acompanha em vez de virar legenda mentirosa. Ver data/battle-demo.js.
+ */
+function effectivenessNote(moveType, defenderTypes) {
+  const m = typeMultiplier(moveType, defenderTypes)
+  if (m >= 4) return 'Dano quádruplo!'
+  if (m >= 2) return 'É super-eficaz!'
+  if (m <= 0.25) return 'Quase não arranha…'
+  if (m <= 0.5) return 'Pouco eficaz…'
+  return ''
+}
+
+// ── Roteiro em loop ─────────────────────────────────────────────────────────
+//
+// Um `async` com `await espera(ms)` em vez de uma pilha de setTimeout aninhados:
+// a sequência lê na vertical, na mesma ordem em que acontece na tela.
+//
+// O cancelamento é por TOKEN, e não por clearTimeout: cada execução guarda o
+// número dela e confere depois de cada espera se ainda é a execução vigente.
+// Sem isso, sair e voltar à seção deixaria duas linhas do tempo rodando ao mesmo
+// tempo, brigando pelas mesmas refs.
+const HOP = 150 // salto da setinha de um golpe para o outro
+const SETTLE = 380 // pausa em cima do golpe escolhido
+const HIT = 900 // golpe anunciado → barra descendo
+const READ = 1100 // tempo de leitura de uma mensagem
+const FAINT = 1700 // "desmaiou" antes de entrar o próximo professor
+
+let token = 0
+let timer = null
+
+const espera = (ms) =>
+  new Promise((resolve) => {
+    timer = setTimeout(resolve, ms)
+  })
+
+async function jogar() {
+  const meu = ++token
+  const vigente = () => meu === token
+
+  while (vigente()) {
+    for (const luta of BATTLES) {
+      enemy.value = BY_SLUG[luta.enemy]
+      enemyHp.value = 100
+      playerHp.value = 100
+      enemyFainted.value = false
+      picked.value = -1
+      message.value = `${enemy.value.name} entrou na arena!`
+      await espera(READ)
+      if (!vigente()) return
+
+      for (const turno of luta.turns) {
+        if (turno.enemyMove) {
+          message.value = `${enemy.value.name} usou ${turno.enemyMove}!`
+          await espera(HIT)
+          if (!vigente()) return
+
+          playerHp.value = turno.playerHp
+          await espera(READ)
+          if (!vigente()) return
+          continue
+        }
+
+        // Varre o menu inteiro antes de parar no golpe do roteiro. A varredura
+        // é o que faz a cena parecer ALGUÉM escolhendo, e não uma barra
+        // descendo sozinha.
+        message.value = 'Escolha um golpe.'
+        for (let i = 0; i < PLAYER_MOVES.length; i++) {
+          cursor.value = i
+          await espera(HOP)
+          if (!vigente()) return
+        }
+
+        cursor.value = turno.move
+        await espera(SETTLE)
+        if (!vigente()) return
+
+        picked.value = turno.move
+        const golpe = PLAYER_MOVES[turno.move]
+        message.value = `${player.name} usou ${golpe.name}!`
+        await espera(HIT)
+        if (!vigente()) return
+
+        if (turno.enemyHp !== undefined) {
+          enemyHp.value = turno.enemyHp
+          const nota = effectivenessNote(golpe.type, enemy.value.types)
+          if (nota) {
+            await espera(HIT)
+            if (!vigente()) return
+            message.value = nota
+          }
+        } else if (turno.note) {
+          message.value = turno.note
+        }
+
+        await espera(READ)
+        if (!vigente()) return
+        picked.value = -1
+      }
+
+      enemyFainted.value = true
+      message.value = `${enemy.value.name} desmaiou. ${player.name} venceu!`
+      await espera(FAINT)
+      if (!vigente()) return
+    }
+  }
+}
+
+/** Estado parado, para quem pediu menos movimento — um quadro no meio da luta. */
+function quadroEstatico() {
+  enemy.value = BY_SLUG[BATTLES[0].enemy]
+  enemyHp.value = 68
+  playerHp.value = 82
+  cursor.value = 0
+  picked.value = 0
+  message.value = `${player.name} usou ${PLAYER_MOVES[0].name}!`
+}
+
+let observador = null
+
+onMounted(() => {
+  const node = el.value
+  if (!node) return
+
+  const semMovimento =
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  if (semMovimento || typeof IntersectionObserver === 'undefined') {
+    quadroEstatico()
+    return
+  }
+
+  // A luta só corre com a seção à vista: um loop infinito girando enquanto o
+  // visitante lê outra parte da página é bateria de celular gasta à toa. Sair
+  // e voltar reinicia a luta do começo, que é o comportamento certo aqui —
+  // ninguém volta querendo pegar o meio de um turno.
+  observador = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) jogar()
+        else token++
+      }
+    },
+    { threshold: 0.35 },
+  )
+
+  observador.observe(node)
+})
+
+onBeforeUnmount(() => {
+  token++
+  clearTimeout(timer)
+  observador?.disconnect()
+  observador = null
+})
 </script>
 
 <template>
   <SectionShell :kicker="battle.kicker" :title="battle.title">
     <template #lede>{{ battle.desc }}</template>
 
+    <!-- A demo é uma vitrine que se repete sozinha: para leitor de tela ela não
+         é navegável nem informativa turno a turno (seria uma live region
+         tagarelando para sempre). O equivalente textual abaixo diz o que a cena
+         mostra, de uma vez, e o campo fica `aria-hidden`. -->
+    <p class="sr-only">
+      Demonstração automática de uma batalha: {{ player.name }} enfrenta
+      {{ BATTLES.map((b) => BY_SLUG[b.enemy].name).join(' e ') }}, escolhendo golpes de um
+      menu de quatro e vencendo as duas lutas. A cena se repete em loop.
+    </p>
+
     <div ref="el" class="arena gba-frame">
-      <div class="arena__field">
+      <div class="arena__field" aria-hidden="true">
         <div class="arena__row arena__row--enemy">
           <div class="hp-window hp-window--enemy">
             <p class="hp-window__name">{{ enemy.name }}</p>
-            <div class="hp-window__track" role="img" :aria-label="`Adversário ${enemy.name} com 42% de HP`">
-              <span class="hp-window__fill hp-window__fill--enemy" />
+            <div class="hp-window__track">
+              <span
+                class="hp-window__fill hp-window__fill--enemy"
+                :style="{ width: `${enemyHp}%` }"
+              />
             </div>
             <ul class="hp-window__types">
               <li v-for="t in enemy.types" :key="t"><TypeBadge :type-id="t" size="sm" /></li>
             </ul>
           </div>
-          <figure class="fighter fighter--enemy">
+
+          <!-- Ocupa o vão do meio no desktop; no celular quebra para a linha de
+               baixo (ver `.arena__log` no CSS). -->
+          <p class="arena__log">{{ message }}</p>
+
+          <figure class="fighter fighter--enemy" :class="{ 'fighter--fainted': enemyFainted }">
             <img
               class="pixelated"
               :src="enemy.sprite"
@@ -54,7 +240,7 @@ const { el } = useReveal({ threshold: 0.4 })
           </figure>
         </div>
 
-        <p class="arena__vs" aria-hidden="true">VS</p>
+        <p class="arena__vs">VS</p>
 
         <div class="arena__row arena__row--player">
           <figure class="fighter fighter--player">
@@ -68,10 +254,30 @@ const { el } = useReveal({ threshold: 0.4 })
               decoding="async"
             />
           </figure>
+
+          <!-- O menu de golpes mora no vão entre o seu boneco e o seu HUD, que
+               é onde uma tela de batalha o coloca — e, no desktop, era
+               justamente o espaço que sobrava vazio. -->
+          <ul class="move-menu">
+            <li
+              v-for="(m, i) in PLAYER_MOVES"
+              :key="m.name"
+              class="move"
+              :class="{ 'move--cursor': cursor === i, 'move--picked': picked === i }"
+            >
+              <span class="move__cursor">▶</span>
+              <span class="move__name">{{ m.name }}</span>
+              <span class="move__cat">{{ m.category }}</span>
+            </li>
+          </ul>
+
           <div class="hp-window hp-window--player">
             <p class="hp-window__name">{{ player.name }}</p>
-            <div class="hp-window__track" role="img" :aria-label="`${player.name} com 88% de HP`">
-              <span class="hp-window__fill hp-window__fill--player" />
+            <div class="hp-window__track">
+              <span
+                class="hp-window__fill hp-window__fill--player"
+                :style="{ width: `${playerHp}%` }"
+              />
             </div>
             <ul class="hp-window__types">
               <li v-for="t in player.types" :key="t"><TypeBadge :type-id="t" size="sm" /></li>
@@ -133,6 +339,9 @@ const { el } = useReveal({ threshold: 0.4 })
      personagem, que é como todo jogo de Pokémon encaixa a dupla. */
   align-items: flex-start;
   gap: var(--space-2);
+  /* Permite que o log e o menu de golpes caiam para a própria linha no
+     celular. Ver os `flex-basis: 100%` deles abaixo. */
+  flex-wrap: wrap;
 }
 
 .arena__row--player {
@@ -153,6 +362,118 @@ const { el } = useReveal({ threshold: 0.4 })
   color: var(--unifil-gold);
   opacity: 0.6;
   letter-spacing: 2px;
+}
+
+/* ── Narração e menu: o que preenche o vão do desktop ───────────────────────
+   No celular as fileiras já ficam apertadas e não sobra espaço nenhum — por
+   isso os dois nascem com `flex-basis: 100%` e `order` alto, o que os joga
+   para uma linha própria abaixo do boneco e do HUD. Só a partir de 900px,
+   quando o vão do meio realmente aparece, eles voltam para dentro da fileira. */
+.arena__log,
+.move-menu {
+  flex: 1 1 100%;
+  order: 1;
+}
+
+.arena__log {
+  font-family: var(--font-pixel);
+  font-size: var(--fs-body-sm);
+  line-height: 1.7;
+  color: var(--text-primary);
+  background: var(--bg-deep);
+  border: 2px solid var(--surface-border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  /* Duas linhas reservadas: a mensagem troca o tempo todo e, sem altura
+     mínima, o campo inteiro pulava a cada turno. */
+  min-height: calc(var(--space-2) * 2 + 2.6em);
+}
+
+.move-menu {
+  display: grid;
+  /* 2×2, como o menu de golpes de um GBA. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+  list-style: none;
+  background: var(--bg-deep);
+  border: 3px solid var(--surface-border);
+  box-shadow: inset 0 0 0 1px var(--unifil-gold);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+}
+
+.move {
+  display: grid;
+  grid-template-columns: 1em minmax(0, 1fr);
+  align-items: baseline;
+  gap: 2px var(--space-1);
+  padding: 4px 6px;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.move__cursor {
+  /* Ocupa o lugar mesmo apagada: sem isto o nome do golpe dança para o lado
+     toda vez que a setinha chega nele. */
+  opacity: 0;
+  color: var(--unifil-gold);
+}
+
+.move__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.move__cat {
+  grid-column: 2;
+  font-size: 8px;
+  color: var(--unifil-orange);
+  opacity: 0.75;
+}
+
+.move--cursor {
+  border-color: var(--unifil-gold);
+  color: var(--text-primary);
+}
+
+.move--cursor .move__cursor {
+  opacity: 1;
+}
+
+/* O golpe que saiu: piscada de "confirmado", o mesmo gesto do menu de um GBA
+   quando você aperta A. */
+.move--picked {
+  background: var(--unifil-orange);
+  border-color: var(--unifil-gold);
+  color: var(--text-primary);
+}
+
+.move--picked .move__cat {
+  color: var(--text-primary);
+  opacity: 0.9;
+}
+
+@media (min-width: 900px) {
+  .arena__log,
+  .move-menu {
+    flex: 1 1 auto;
+    order: 0;
+  }
+
+  .arena__log {
+    /* Alinha o balão com o topo da janela de HP do adversário, em vez de
+       esticar por toda a altura da fileira. */
+    align-self: flex-start;
+    max-width: 340px;
+  }
+
+  .move-menu {
+    max-width: 300px;
+  }
 }
 
 /* A largura vira variável porque o respiro de baixo é DERIVADO dela: 0,091 é
@@ -233,10 +554,24 @@ const { el } = useReveal({ threshold: 0.4 })
 
 .fighter--enemy {
   --disco: var(--error);
+  /* Empurra o adversário para a borda direita do quadro: com o log no meio ele
+     já iria para lá, mas o `auto` mantém a composição inteira quando o log
+     quebra de linha no celular. */
+  margin-left: auto;
 }
 
 .fighter--player {
   --disco: var(--ds-blue);
+}
+
+/* Derrota: o boneco apaga e escorrega para baixo, como um sprite que sai de
+   cena. Curto de propósito — o próximo professor entra logo em seguida. */
+.fighter--fainted {
+  opacity: 0;
+  translate: 0 12px;
+  transition:
+    opacity 0.5s var(--ease-pixel),
+    translate 0.5s var(--ease-pixel);
 }
 
 /* O seu combatente está em PRIMEIRO PLANO: a câmera está atrás do ombro dele.
@@ -313,10 +648,9 @@ const { el } = useReveal({ threshold: 0.4 })
 .hp-window__fill {
   display: block;
   height: 100%;
-  width: 100%;
   /* `steps()` faz a barra descer aos pulos, como numa tela de 8 bits, em vez de
-     deslizar suavemente. */
-  transition: width 1.2s var(--ease-pixel);
+     deslizar suavemente. A largura vem do roteiro, por `:style`. */
+  transition: width 0.8s var(--ease-pixel);
 }
 
 .hp-window__fill--enemy {
@@ -325,16 +659,6 @@ const { el } = useReveal({ threshold: 0.4 })
 
 .hp-window__fill--player {
   background: var(--success-text);
-}
-
-/* O drenar só acontece quando a seção aparece — antes disso as barras ficam
-   cheias, que é o estado correto para quem tem movimento reduzido. */
-[data-reveal='shown'] .hp-window__fill--enemy {
-  width: 42%;
-}
-
-[data-reveal='shown'] .hp-window__fill--player {
-  width: 88%;
 }
 
 .hp-window__types {
@@ -452,7 +776,8 @@ const { el } = useReveal({ threshold: 0.4 })
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hp-window__fill {
+  .hp-window__fill,
+  .fighter--fainted {
     transition: none;
   }
 
