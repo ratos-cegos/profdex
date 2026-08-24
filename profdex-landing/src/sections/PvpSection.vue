@@ -14,8 +14,6 @@ const pad = (n) => String(n).padStart(2, '0')
 
 <template>
   <SectionShell :kicker="pvp.kicker" :title="pvp.title">
-    <template #lede>{{ pvp.desc }}</template>
-
     <ol ref="flowEl" class="flow reveal-stagger">
       <li
         v-for="(step, i) in pvp.steps"

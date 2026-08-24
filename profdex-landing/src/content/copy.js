@@ -88,7 +88,6 @@ export const quiz = {
     { label: 'Banco de questões', value: '10 por tema (4 fáceis · 3 médias · 3 difíceis)' },
     { label: 'Alternativas', value: 'Embaralhadas a cada aplicação' },
   ],
-  note: 'O gabarito não sai do servidor antes da hora.',
 }
 
 export const typeWheel = {
@@ -146,10 +145,6 @@ export const battleVideo = {
 export const pvp = {
   kicker: 'PvP ranqueado',
   title: 'Aluno contra aluno, em tempo real',
-  // Antes esta frase falava de "backend", "cliente" e "DevTools". A ideia que
-  // interessa ao aluno é só uma: quem decide a partida é o servidor, então não
-  // dá para trapacear. O resto era arquitetura interna numa página de evento.
-  desc: 'Quem resolve cada rodada é o servidor, não o seu aparelho. Ou seja: não tem como trapacear.',
   steps: [
     { title: 'Lobby', desc: 'Você vê quem está online agora.' },
     { title: 'Convite', desc: 'Chama alguém para a briga. O convite expira em 60 segundos.' },
@@ -159,7 +154,7 @@ export const pvp = {
     },
     {
       title: 'Turnos de 60s',
-      desc: 'Escolha simultânea, estilo Pokémon Showdown. O servidor resolve a rodada.',
+      desc: 'Escolha simultânea.',
     },
     { title: 'Elo', desc: 'HP zerou, o rating muda e o ranking se mexe.' },
   ],
@@ -181,7 +176,7 @@ export const pvp = {
 export const score = {
   kicker: 'Ranking',
   title: 'Sair da cadeira vale mais',
-  desc: 'Há dois placares: o Elo do PvP e uma pontuação de engajamento, que mede participação no evento. A régua é ponderada de propósito.',
+  desc: 'Há dois placares: o Elo do PvP e uma pontuação de engajamento, que mede participação no evento.',
   rows: [
     { action: 'Primeira sessão do dia', points: 5 },
     { action: 'Minuto ativo (teto de 60 por dia)', points: 1 },
@@ -194,7 +189,7 @@ export const score = {
     { action: 'Quiz respondido na bancada', points: 10 },
     { action: 'Quiz acertado', points: 25, prefix: '+' },
   ],
-  note: 'Tempo só conta com a aba visível, e o servidor limita o valor pelo tempo real decorrido. Deixar o app aberto a noite toda não rende nada.',
+  note: 'Tempo só conta com a aba visível. Deixar o app aberto a noite toda não rende nada.',
 }
 
 export const professors = {
@@ -242,8 +237,8 @@ export const finalCta = {
     { domain: '@edu.unifil.br', role: 'aluno — joga, captura e batalha' },
     { domain: '@unifil.br', role: 'organização do evento' },
   ],
-  // Guarda factual: é web, não app de loja.
-  platformNote: 'Roda no navegador do celular. Não tem app para baixar.',
+  // Guarda factual: é web.
+  platformNote: 'Roda no navegador do celular.',
 }
 
 export const credits = {

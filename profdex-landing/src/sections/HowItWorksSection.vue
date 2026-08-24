@@ -43,8 +43,6 @@ const pad = (n) => String(n).padStart(2, '0')
             <dd>{{ fact.value }}</dd>
           </div>
         </dl>
-
-        <p class="quiz__note">{{ quiz.note }}</p>
       </aside>
     </div>
   </SectionShell>
@@ -188,11 +186,4 @@ const pad = (n) => String(n).padStart(2, '0')
   color: var(--text-primary);
 }
 
-.quiz__note {
-  font-family: var(--font-pixel);
-  font-size: var(--fs-body-sm);
-  line-height: 1.7;
-  color: var(--text-muted);
-  font-style: italic;
-}
 </style>
