@@ -244,7 +244,17 @@ export class RollupService implements OnModuleInit, OnModuleDestroy {
       respostas AS (
         SELECT date_trunc('hour', e.occurred_at)      AS bucket,
                e.metadata->>'theme'                   AS tema,
-               (e.metadata->>'correct')::boolean      AS acertou
+               -- Comparação de string, NÃO ::boolean. metadata é livre --
+               -- este é o único evento de quiz que o cliente pode declarar
+               -- (não está em SERVER_ONLY_EVENTS) e o DTO só valida
+               -- IsObject, sem checar o formato de dentro. Um
+               -- correct: "qualquer coisa" faria ::boolean lancar excecao
+               -- no meio da passada, e como esta fora do persist(),
+               -- travaria TODAS as metricas daquela janela, nao so esta, ate
+               -- a linha sair das 2h. Comparacao nunca lanca: qualquer coisa
+               -- que nao seja exatamente 'true' vira falso -- pior caso e uma
+               -- linha subcontada, nunca o rollup inteiro parado.
+               (e.metadata->>'correct') = 'true'      AS acertou
         FROM app_events e
         JOIN temas t ON t.tema = e.metadata->>'theme'
         WHERE e.type = 'quiz_practice_answered'
