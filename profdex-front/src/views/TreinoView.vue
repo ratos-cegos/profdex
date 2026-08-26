@@ -27,6 +27,20 @@ function practice() {
     <main class="training__main page">
       <TopTabs />
       <section>
+        <h2 class="pixel">QUIZ DE TREINO</h2>
+        <p>
+          Pratique as perguntas do curso quantas vezes quiser, sem o cronômetro do operador. Não
+          vale ponto nem QR de captura — as questões daqui não são as da bancada.
+        </p>
+        <button
+          class="btn btn-primary pixel"
+          type="button"
+          @click="router.push({ name: 'quiz-treino' })"
+        >
+          COMEÇAR QUIZ
+        </button>
+      </section>
+      <section>
         <h2 class="pixel">PRATICAR BATALHA</h2>
         <p>
           Teste golpes, tipos e estratégias contra o <strong>Prof. {{ oponente }}</strong

@@ -74,9 +74,7 @@ const visibleOpponents = computed(() => battle.opponents)
 
 // Quantos ficaram de fora da página atual — só faz sentido sem busca ativa.
 const hiddenCount = computed(() =>
-  lobbySearch.value.trim()
-    ? 0
-    : Math.max(0, battle.opponentCount - battle.opponents.length),
+  lobbySearch.value.trim() ? 0 : Math.max(0, battle.opponentCount - battle.opponents.length),
 )
 
 async function openLobby() {
@@ -124,28 +122,6 @@ const selectedProfessor = computed(() => {
   )
 })
 
-// O parâmetro da rota usa o slug (legível e compartilhável: /arena/eron); o
-// store resolve tanto slug quanto o UUID do banco.
-function routeToCharacter(name) {
-  const professor = selectedProfessor.value
-  router.push({
-    name,
-    params: { id: professor?.slug || professor?.id || 'modelo-padrao' },
-    state: {
-      character: {
-        id: professor?.id || 'modelo-padrao',
-        name: professor?.name || 'Professor',
-        slug: professor?.slug || 'professor',
-        modelUrl: professor?.modelUrl,
-      },
-    },
-  })
-}
-
-function goToArena() {
-  routeToCharacter('arena')
-}
-
 function openBattleGuide() {
   router.push({ name: 'battle-guide' })
 }
@@ -158,18 +134,16 @@ function goBack() {
 <template>
   <div class="batalha">
     <AppHeader :title="selectedProfessor ? 'Professores' : 'BATALHA'" subtitle="ÁREA DE BATALHA">
-      <template #left><button class="back-btn" type="button" @click="goBack">← Voltar</button></template>
+      <template #left
+        ><button class="back-btn" type="button" @click="goBack">← Voltar</button></template
+      >
     </AppHeader>
 
     <main class="batalha__main page">
       <TopTabs />
 
       <!-- Convites recebidos: lista rolável com contagem regressiva (em qualquer aba) -->
-      <section
-        v-if="battle.incomingInvites.length"
-        class="invites"
-        aria-live="polite"
-      >
+      <section v-if="battle.incomingInvites.length" class="invites" aria-live="polite">
         <header class="invites__header">
           <span class="pixel invites__title">
             {{ battle.incomingInvites.length === 1 ? 'DESAFIO!' : 'DESAFIOS' }}
@@ -259,33 +233,11 @@ function goBack() {
           </span>
         </button>
 
-        <button
-          class="battle-option battle-option--primary"
-          type="button"
-          @click="goToArena"
-        >
-          <span class="option-icon option-icon--arte">
-            <img class="option-icon__img" src="/icons/batalha.png" alt="" aria-hidden="true" />
-          </span>
-          <span class="pixel option-label">Batalha</span>
-        </button>
+        <!-- Batalha contra o bot e Quiz Treino saíram daqui: os dois são treino
+             e agora moram na aba Treino (ver TopTabs). Misturados nesta lista,
+             ficavam no meio do fluxo ranqueado, sugerindo que valiam Elo. -->
 
-        <button
-          class="battle-option"
-          type="button"
-          @click="router.push({ name: 'quiz-treino' })"
-        >
-          <span class="option-icon option-icon--arte">
-            <img class="option-icon__img" src="/icons/quiz.png" alt="" aria-hidden="true" />
-          </span>
-          <span class="pixel option-label">Quiz Treino</span>
-        </button>
-
-        <button
-          class="battle-option battle-option--guide"
-          type="button"
-          @click="openBattleGuide"
-        >
+        <button class="battle-option battle-option--guide" type="button" @click="openBattleGuide">
           <span class="option-icon">📖</span>
           <span class="pixel option-label">Instruções de Batalha</span>
         </button>
@@ -317,9 +269,7 @@ function goBack() {
     >
       <div class="modal__panel">
         <header class="modal__header">
-          <span class="pixel modal__title">
-            JOGADORES ONLINE ({{ battle.opponentCount }})
-          </span>
+          <span class="pixel modal__title"> JOGADORES ONLINE ({{ battle.opponentCount }}) </span>
           <button class="modal__close" type="button" aria-label="Fechar" @click="closeLobby">
             ✕
           </button>
@@ -782,7 +732,9 @@ function goBack() {
   background: var(--bg-card);
   color: var(--text);
   border: 2px solid var(--border);
-  transition: transform 0.15s, border-color 0.15s;
+  transition:
+    transform 0.15s,
+    border-color 0.15s;
   cursor: pointer;
 }
 
@@ -837,5 +789,4 @@ function goBack() {
   font-size: 12px;
   text-align: left;
 }
-
 </style>
