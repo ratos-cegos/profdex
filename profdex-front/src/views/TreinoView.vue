@@ -5,12 +5,18 @@ import AppHeader from '../components/AppHeader.vue'
 import BottomNav from '../components/BottomNav.vue'
 import TopTabs from '../components/TopTabs.vue'
 import { useProfessorsStore } from '../stores/professors.js'
+import { TREINO_ENEMY_FALLBACK_NAME, TREINO_ENEMY_KEY } from '../data/treino.js'
 const router = useRouter()
 const professors = useProfessorsStore()
-const firstCaptured = computed(() => professors.professors.find((item) => item.captured))
+
+// O oponente do treino é fixo (ver src/data/treino.js). Anunciar o nome aqui
+// evita a promessa vazia de "escolha um professor" que a arena não cumpre.
+const oponente = computed(
+  () => professors.findByKey(TREINO_ENEMY_KEY)?.name ?? TREINO_ENEMY_FALLBACK_NAME,
+)
+
 function practice() {
-  const target = firstCaptured.value ?? professors.professors[0]
-  if (target) router.push({ name: 'arena', params: { id: target.slug ?? target.id } })
+  router.push({ name: 'arena', params: { id: TREINO_ENEMY_KEY } })
 }
 </script>
 <template>
@@ -22,13 +28,11 @@ function practice() {
       <TopTabs />
       <section>
         <h2 class="pixel">PRATICAR BATALHA</h2>
-        <p>Teste golpes, tipos e estratégias contra o bot sem alterar seu Elo.</p>
-        <button
-          class="btn btn-primary pixel"
-          type="button"
-          :disabled="!firstCaptured && !professors.professors.length"
-          @click="practice"
-        >
+        <p>
+          Teste golpes, tipos e estratégias contra o <strong>Prof. {{ oponente }}</strong
+          >. Nada aqui altera seu Elo, suas vitórias ou sua coleção.
+        </p>
+        <button class="btn btn-primary pixel" type="button" @click="practice">
           INICIAR TREINO
         </button>
       </section>
