@@ -1,6 +1,7 @@
 import { createCombatant, effectiveStat, performMove, turnOrder, upkeep, IV_BONUS_MAX, ivBonus } from './engine';
 import { buildMoveset } from './moves';
-import type { BattleState, Move } from './engine';
+import type { Move } from './moves';
+import type { BattleState } from './engine';
 
 /**
  * Guarda de balanceamento dos IVs no PvP ranqueado.
