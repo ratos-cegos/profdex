@@ -1,13 +1,15 @@
 const OUTPUT_MIN_WIDTH = 1080
 
 export function photoSlug(value) {
-  return String(value ?? 'professor')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'professor'
+  return (
+    String(value ?? 'professor')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'professor'
+  )
 }
 
 export function photoFileName(name) {
@@ -44,6 +46,28 @@ function canvasBlob(canvas) {
   })
 }
 
+/**
+ * Garante que a fonte pixel esteja pronta ANTES de desenhar no canvas.
+ *
+ * `ctx.font` não espera o carregamento: se a Press Start 2P ainda não estiver
+ * disponível, o canvas cai silenciosamente para `monospace` e a foto — que é
+ * peça de divulgação — sai sem a identidade visual do projeto. Como é sempre a
+ * primeira foto da sessão que corre esse risco, o sintoma seria intermitente e
+ * difícil de reproduzir.
+ *
+ * Falhar aqui não pode impedir a foto: sem a fonte, a moldura sai em monospace,
+ * que é melhor do que erro.
+ */
+async function ensurePixelFont(sizePx) {
+  if (!document.fonts?.load) return
+  try {
+    await document.fonts.load(`700 ${Math.round(sizePx)}px "Press Start 2P"`)
+  } catch {
+    // Navegador sem CSS Font Loading API ou fonte indisponível: segue com o
+    // fallback do próprio canvas.
+  }
+}
+
 export async function frameArPhoto(sourceBlob, { name, types = [], date = new Date() }) {
   const image = await loadImage(sourceBlob)
   const sourceWidth = image.width || image.naturalWidth
@@ -77,6 +101,9 @@ export async function frameArPhoto(sourceBlob, { name, types = [], date = new Da
   ctx.lineWidth = 4 * unit
   ctx.strokeRect(24 * unit, 24 * unit, width - 48 * unit, height - 48 * unit)
 
+  // Os dois tamanhos em que a fonte pixel é usada abaixo (46 e 42).
+  await Promise.all([ensurePixelFont(46 * unit), ensurePixelFont(42 * unit)])
+
   ctx.textBaseline = 'middle'
   ctx.fillStyle = '#ffffff'
   ctx.font = `700 ${46 * unit}px "Press Start 2P", monospace`
@@ -85,8 +112,15 @@ export async function frameArPhoto(sourceBlob, { name, types = [], date = new Da
   const brand = await loadAssetImage('/marca/logotipo-branco.png').catch(() => null)
   if (brand) {
     const brandWidth = 270 * unit
-    const brandHeight = brandWidth / ((brand.width || brand.naturalWidth) / (brand.height || brand.naturalHeight))
-    ctx.drawImage(brand, width - inset - brandWidth, (topHeight - brandHeight) / 2, brandWidth, brandHeight)
+    const brandHeight =
+      brandWidth / ((brand.width || brand.naturalWidth) / (brand.height || brand.naturalHeight))
+    ctx.drawImage(
+      brand,
+      width - inset - brandWidth,
+      (topHeight - brandHeight) / 2,
+      brandWidth,
+      brandHeight,
+    )
     brand.close?.()
   } else {
     ctx.fillStyle = '#ffd166'

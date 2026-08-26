@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createCombatant, turnOrder, IV_BONUS_MAX, ivBonus } from '../src/composables/battleEngine.js'
+import {
+  createCombatant,
+  effectiveStat,
+  turnOrder,
+  IV_BONUS_MAX,
+  ivBonus,
+} from '../src/composables/battleEngine.js'
 
 // O motor tem duas cópias (aqui e em profdex-back/src/battle/engine/engine.ts).
 // Estes testes fixam os números que as DUAS precisam produzir: se alguém mexer
@@ -34,13 +40,18 @@ test('velocidade pesa a moeda da ordem de turno, não decide sozinha', () => {
     enemy: createCombatant({ name: 'B', types: ['logica'] }),
   }
 
-  let primeiroDoJogador = 0
-  for (let i = 0; i < 4000; i++) {
-    if (turnOrder(state, null, null)[0].key === 'player') primeiroDoJogador++
-  }
-  const taxa = primeiroDoJogador / 4000
+  // Determinístico: a probabilidade é a regra. Amostrar aqui deixaria o teste
+  // instável, porque o valor esperado (~0,512) fica a menos de 2 desvios de
+  // um limite em 0,5.
+  const ps = effectiveStat(state.player, 'raciocinio')
+  const es = effectiveStat(state.enemy, 'raciocinio')
+  const probabilidade = ps / (ps + es)
 
-  // Vantagem real, mas longe do 100% de antes.
-  assert.ok(taxa > 0.5, `esperado acima de 0,5, veio ${taxa}`)
-  assert.ok(taxa < 0.56, `esperado abaixo de 0,56, veio ${taxa}`)
+  assert.ok(probabilidade > 0.5, `esperado acima de 0,5, veio ${probabilidade}`)
+  assert.ok(probabilidade < 0.53, `esperado abaixo de 0,53, veio ${probabilidade}`)
+
+  // Guarda de fumaça, com margem larga: a ordem realmente varia entre os dois.
+  const lados = new Set()
+  for (let i = 0; i < 200; i++) lados.add(turnOrder(state, null, null)[0].key)
+  assert.deepEqual([...lados].sort(), ['enemy', 'player'])
 })

@@ -5,7 +5,7 @@ defineProps({ moves: { type: Array, default: () => [] } })
 <template>
   <div class="pool">
     <p>Movepool disponível para os tipos deste professor.</p>
-    <MoveButton v-for="move in moves" :key="move.id" :move="move" @select="() => {}" />
+    <MoveButton v-for="move in moves" :key="move.id" :move="move" readonly />
   </div>
 </template>
 <style scoped>

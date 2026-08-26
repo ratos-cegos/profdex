@@ -93,16 +93,35 @@ describe('balanceamento dos IVs', () => {
       enemy: createCombatant({ name: 'B', types: ['logica'], ivs: ZERO }),
     } as BattleState;
 
+    // Determinístico de propósito: a probabilidade É a regra, e conferi-la
+    // por amostragem tornaria o teste instável (com n=2000 e esperado 0,512,
+    // um limite em 0,5 falharia sozinho de vez em quando).
+    const ps = effectiveStat(state.player, 'raciocinio');
+    const es = effectiveStat(state.enemy, 'raciocinio');
+    const probabilidade = ps / (ps + es);
+
+    // Vantagem real (acima de 50%) e limitada (bem longe dos 100% de antes).
+    expect(probabilidade).toBeGreaterThan(0.5);
+    expect(probabilidade).toBeLessThan(0.53);
+    // E os estágios continuam pesando mais que o IV, como deve ser.
+    expect(ps).toBeLessThan(1.06);
+  });
+
+  it('turnOrder de fato sorteia com essa probabilidade', () => {
+    // Guarda de fumaça: garante que a probabilidade acima é mesmo usada, e não
+    // apenas calculável. Margem larga, para não virar teste instável.
+    const state = {
+      player: createCombatant({ name: 'A', types: ['logica'], ivs: { ...ZERO, ivRaciocinio: 15 } }),
+      enemy: createCombatant({ name: 'B', types: ['logica'], ivs: ZERO }),
+    } as BattleState;
+
     let primeiroDoA = 0;
-    for (let i = 0; i < 2000; i++) {
+    for (let i = 0; i < 4000; i++) {
       if (turnOrder(state, null, null)[0].key === 'player') primeiroDoA++;
     }
 
-    // Vantagem real (acima de 50%) e limitada (bem abaixo de 100%).
-    expect(primeiroDoA / 2000).toBeGreaterThan(0.5);
-    expect(primeiroDoA / 2000).toBeLessThan(0.56);
-    // E os estágios continuam pesando mais que o IV, como deve ser.
-    expect(effectiveStat(state.player, 'raciocinio')).toBeLessThan(1.06);
+    expect(primeiroDoA / 4000).toBeGreaterThan(0.45);
+    expect(primeiroDoA / 4000).toBeLessThan(0.58);
   });
 
   it('no pior caso (15/15/15/15 vs 0/0/0/0) o IV não decide a partida', () => {

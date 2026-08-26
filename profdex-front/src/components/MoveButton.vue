@@ -8,8 +8,19 @@ const props = defineProps({
   move: { type: Object, required: true },
   opponentTypes: { type: Array, default: () => [] },
   disabled: Boolean,
+  /**
+   * Modo consulta: não há batalha em curso, então escolher o golpe não
+   * significa nada. Usado na ficha do professor, onde o movepool é catálogo.
+   * O toque abre o detalhe em vez de emitir um `select` que ninguém escuta.
+   */
+  readonly: Boolean,
 })
 const emit = defineEmits(['select'])
+
+function onPrimary() {
+  if (props.readonly) detailsOpen.value = true
+  else emit('select', props.move)
+}
 const detailsOpen = ref(false)
 const type = computed(() => getType(props.move.type))
 const multiplier = computed(() => typeMultiplier(props.move.type, props.opponentTypes))
@@ -69,8 +80,9 @@ function effectText(effect) {
       class="move"
       type="button"
       :disabled="disabled"
+      :aria-label="readonly ? `Detalhes de ${move.name}` : undefined"
       :style="{ '--move-color': type?.color ?? 'var(--border)' }"
-      @click="emit('select', move)"
+      @click="onPrimary"
     >
       <span class="move__head">
         <span class="pixel move__name">{{ move.name }}</span>
