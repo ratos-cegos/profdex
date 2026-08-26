@@ -274,6 +274,11 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
             <strong>{{ questaoAtual.options[questaoAtual.correctIndex] }}</strong>
           </template>
         </p>
+
+        <!-- É o treino: entender por que errou vale mais do que o placar. -->
+        <p v-if="respondida && questaoAtual.explanation" class="explicacao">
+          {{ questaoAtual.explanation }}
+        </p>
       </section>
 
       <!-- 3. Fim da rodada -->
@@ -574,6 +579,17 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
   line-height: 1.6;
   text-align: center;
   color: var(--text-primary);
+}
+
+.explicacao {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--bg-deep);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
 }
 
 /* ── Fim ────────────────────────────────────────────────────────────────── */
