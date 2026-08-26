@@ -23,6 +23,13 @@ const QUESTOES_POR_RODADA = 10;
  * 3. **O gabarito vai junto com a questão.** No treino não há ponto, captura nem
  *    cooldown — não existe o que burlar, e devolver o índice correto de uma vez
  *    é o que permite corrigir na hora, sem round-trip a cada alternativa.
+ *
+ * O item 3 é justamente o que obriga o item zero: este serviço lê de
+ * `training_questions`, **nunca** de `quiz_questions`. São bancos físicos
+ * separados porque uma rota que devolve o gabarito não pode, em hipótese
+ * alguma, alcançar a questão que vale captura no evento — um `where` esquecido
+ * bastaria para acabar com o quiz da bancada. Ver `docs/QUIZ.md` e o teste
+ * `quiz-practice.isolation.spec.ts`, que existe só para garantir isso.
  */
 @Injectable()
 export class QuizPracticeService {
@@ -30,7 +37,7 @@ export class QuizPracticeService {
 
   /** Os 9 temas com quantas questões cada um tem disponível para treinar. */
   async temas() {
-    const contagens = await this.prisma.quizQuestion.groupBy({
+    const contagens = await this.prisma.trainingQuestion.groupBy({
       by: ['theme'],
       where: { active: true },
       _count: { _all: true },
@@ -50,7 +57,7 @@ export class QuizPracticeService {
    * para a ordem exibida.
    */
   async questoes(theme: string, limit?: number) {
-    const questoes = await this.prisma.quizQuestion.findMany({
+    const questoes = await this.prisma.trainingQuestion.findMany({
       where: { theme, active: true },
       select: {
         id: true,
@@ -59,6 +66,7 @@ export class QuizPracticeService {
         prompt: true,
         options: true,
         answer: true,
+        explanation: true,
       },
     });
 
@@ -85,6 +93,7 @@ export class QuizPracticeService {
           prompt: q.prompt,
           options,
           correctIndex,
+          explanation: q.explanation,
         };
       }),
     };
