@@ -115,10 +115,57 @@ acertando, `quiz_correct` (+25 pontos). Ambos são **registrados pelo
 servidor** — estão na lista de eventos que a ingestão do app recusa, ver
 [METRICAS.md](./METRICAS.md).
 
+## Quiz Treino: dois bancos, separados de propósito
+
+O aluno também pode praticar sozinho no celular, em `/quiz/treino`. O treino
+**não pontua, não captura e não entra no cooldown** — e é justamente por isso
+que ele pode devolver o gabarito junto com a pergunta, corrigindo no aparelho
+sem ida ao servidor.
+
+Isso só é seguro porque os dois bancos são **tabelas fisicamente separadas**:
+
+| | Bancada (oficial) | Treino |
+|---|---|---|
+| Tabela | `quiz_questions` | `training_questions` |
+| Arquivo-fonte | `prisma/quiz-questions.ts` | `prisma/training-questions.ts` |
+| Seed | `npm run db:seed-quiz` | `npm run db:seed-quiz-treino` |
+| Gabarito sai do servidor? | **Nunca** antes da hora | Sim, junto com a questão |
+| Registra tentativa | `quiz_attempts` | Nada |
+| Revisão do conteúdo | Humana, questão por questão | Por amostragem |
+
+⚠️ **A separação é a única coisa que protege o quiz do evento.** Se uma questão
+oficial saísse pela rota de treino, qualquer aluno logado baixaria o gabarito
+inteiro em 9 requisições e acertaria tudo na bancada sem saber o conteúdo — que
+é exatamente o que o embaralhamento das alternativas já tenta evitar.
+
+Por isso não existe coluna `origin` numa tabela só: um `where` esquecido em
+qualquer consulta futura reabriria o buraco. Com tabelas distintas, não há
+questão oficial ao alcance da rota de treino para vazar.
+
+Três testes guardam isso, e não devem ser afrouxados:
+
+- `quiz-practice.service.spec.ts` — a rota de treino nunca toca `quizQuestion`,
+  e um tema sem questões de treino dá 404 em vez de cair no banco oficial;
+- `quiz.service.spec.ts` — a bancada nunca sorteia de `trainingQuestion`;
+- `training-questions.spec.ts` — nenhum enunciado do banco de treino coincide
+  com um do oficial (a unicidade do Prisma é por tabela, então essa colisão
+  passaria em silêncio no seed).
+
+Para ampliar o banco de treino:
+
+```bash
+ANTHROPIC_API_KEY=... npm run gen:quiz-treino               # todos os temas
+ANTHROPIC_API_KEY=... npm run gen:quiz-treino -- --tema=redes --quantidade=20
+```
+
+O script (`scripts/gerar-questoes-treino.ts`) valida formato, recusa duplicatas
+e escreve `prisma/training-questions.ts`. Revise por amostragem antes de semear.
+
 ## Operação
 
 ```bash
-npm run db:seed-quiz      # popula/atualiza as 90 questões (idempotente)
+npm run db:seed-quiz            # popula/atualiza as 90 questões oficiais (idempotente)
+npm run db:seed-quiz-treino     # popula/atualiza as 135 questões de treino
 npm run db:set-admin -- <matricula>   # quem pode abrir a bancada
 ```
 

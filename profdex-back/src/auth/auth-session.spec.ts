@@ -7,15 +7,25 @@ import {
 
 describe('auth session', () => {
   it('uses an HttpOnly, SameSite cookie and requires HTTPS in production', () => {
+    // `sameSite` difere por ambiente de propósito (ver o comentário em
+    // auth-session.ts): produção usa 'none', que exige `secure: true`; dev usa
+    // 'lax' porque não há HTTPS local garantido.
     expect(getSessionCookieOptions(true)).toEqual(
       expect.objectContaining({
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: 'none',
         secure: true,
         path: '/api',
       }),
     );
-    expect(getSessionCookieOptions(false)).toHaveProperty('secure', false);
+    expect(getSessionCookieOptions(false)).toEqual(
+      expect.objectContaining({
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: false,
+        path: '/api',
+      }),
+    );
   });
 
   it('extracts only the named session cookie', () => {
