@@ -17,16 +17,31 @@ const label = computed(() => `${rating.value.toLocaleString('pt-BR')} de 5 estre
         'stars__item--half': rating === index - 0.5,
       }"
       aria-hidden="true"
-    >★</span>
+      >★</span
+    >
   </span>
 </template>
 
 <style scoped>
-.stars { display: inline-flex; gap: 2px; color: var(--surface-border); }
-.stars__item { position: relative; font-size: 18px; line-height: 1; }
-.stars__item--full { color: var(--unifil-gold); }
+.stars {
+  display: inline-flex;
+  gap: 2px;
+  color: var(--surface-border);
+}
+.stars__item {
+  position: relative;
+  font-size: 18px;
+  line-height: 1;
+}
+.stars__item--full {
+  color: var(--unifil-gold);
+}
 .stars__item--half::after {
-  content: '★'; position: absolute; inset: 0; width: 50%; overflow: hidden;
+  content: '★';
+  position: absolute;
+  inset: 0;
+  width: 50%;
+  overflow: hidden;
   color: var(--unifil-gold);
 }
 </style>
