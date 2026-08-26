@@ -9,8 +9,9 @@ import { useRoute } from 'vue-router'
 // página de ranking diferente, com dados estáticos. Agora há um ranking só, numa
 // rota só, e esta aba é o único acesso a ele.
 const ABAS = [
-  { rota: 'batalha', rotulo: 'Batalha', icone: '/icons/batalha.png' },
+  { rota: 'batalha', rotulo: 'Jogar', icone: '/icons/batalha.png' },
   { rota: 'ranking', rotulo: 'Ranking', icone: '/icons/ranking.png' },
+  { rota: 'treino', rotulo: 'Treino', emoji: '🎯' },
 ]
 
 const route = useRoute()
@@ -28,7 +29,8 @@ const abaAtiva = computed(() => route.name)
       role="tab"
       :aria-selected="abaAtiva === aba.rota"
     >
-      <img class="tabs__icone" :src="aba.icone" alt="" aria-hidden="true" />
+      <img v-if="aba.icone" class="tabs__icone" :src="aba.icone" alt="" aria-hidden="true" />
+      <span v-else class="tabs__emoji" aria-hidden="true">{{ aba.emoji }}</span>
       {{ aba.rotulo }}
     </RouterLink>
   </div>
@@ -38,7 +40,7 @@ const abaAtiva = computed(() => route.name)
 .tabs {
   width: 100%;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
@@ -72,6 +74,8 @@ const abaAtiva = computed(() => route.name)
   transition: opacity 0.15s ease;
   pointer-events: none;
 }
+.tabs__emoji { font-size: 22px; opacity: .65; }
+.tabs__btn--ativa .tabs__emoji { opacity: 1; }
 
 .tabs__btn--ativa {
   border-color: var(--yellow);

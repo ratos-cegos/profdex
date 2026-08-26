@@ -33,7 +33,7 @@ import { asset } from '@/config/asset.js'
         <p class="hero__lede">{{ hero.lede }}</p>
 
         <div class="hero__cta">
-          <PixelButton :href="APP_LOGIN_URL" external>{{ hero.cta }}</PixelButton>
+          <PixelButton :href="APP_LOGIN_URL">{{ hero.cta }}</PixelButton>
           <p class="hero__cta-hint">{{ hero.ctaHint }}</p>
         </div>
       </div>

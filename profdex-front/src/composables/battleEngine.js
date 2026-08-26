@@ -33,16 +33,22 @@ export function statusLabel(status) {
 }
 
 // ── Combatente ──────────────────────────────────────────────────────────────
-export function createCombatant({ name, type, types, maxHp = DEFAULT_MAX_HP, moves = [] }) {
+export function createCombatant({ name, type, types, maxHp, moves = [], ivs = {} }) {
   // Aceita `types` (1–2) ou `type` (string) por compatibilidade.
   const typeList = (Array.isArray(types) ? types : types ? [types] : type ? [type] : []).filter(Boolean)
+  const resolvedMaxHp = maxHp ?? DEFAULT_MAX_HP + (ivs.ivHp ?? 0)
   return {
     name,
     types: typeList,
-    maxHp,
-    hp: maxHp,
+    maxHp: resolvedMaxHp,
+    hp: resolvedMaxHp,
     moves,
     stages: { rigor: 0, didatica: 0, raciocinio: 0 },
+    baseStats: {
+      rigor: 100 + (ivs.ivRigor ?? 0),
+      didatica: 100 + (ivs.ivDidatica ?? 0),
+      raciocinio: 100 + (ivs.ivRaciocinio ?? 0),
+    },
     status: null, // { kind, turns, power? }
     shields: [], // { mode:'block'|'reduce'|'reflect'|'evade', amount, turns }
     timedBuffs: [], // { stat, delta, turns } — revertem ao expirar
@@ -51,7 +57,7 @@ export function createCombatant({ name, type, types, maxHp = DEFAULT_MAX_HP, mov
     forceMiss: false, // próximo ataque deste combatente erra
     usage: {}, // moveId -> nº de usos (grow/accuracyGain)
     lastAttackId: null, // último ataque (repeatLast)
-    hpAtTurnStart: maxHp, // p/ undoDamage
+    hpAtTurnStart: resolvedMaxHp, // p/ undoDamage
   }
 }
 
@@ -64,7 +70,7 @@ function stageMultiplier(stage) {
 }
 
 export function effectiveStat(combatant, stat) {
-  return stageMultiplier(combatant.stages[stat])
+  return ((combatant.baseStats?.[stat] ?? 100) / 100) * stageMultiplier(combatant.stages[stat])
 }
 
 const rand = (min, max) => min + Math.random() * (max - min)
@@ -280,9 +286,9 @@ function resolveAttack(state, atkKey, move, events) {
   // Efetividade combinada contra os (1–2) tipos do defensor + STAB.
   const eff = typeMultiplier(move.type, defender.types)
   const stab = attacker.types.includes(move.type) ? STAB : 1
-  const atkMult = stageMultiplier(attacker.stages.rigor)
+  const atkMult = effectiveStat(attacker, STAT.RIGOR)
   const ignoreDef = move.effects.some((e) => e.kind === EFFECT.IGNORE_DEFENSE)
-  const defMult = ignoreDef ? 1 : stageMultiplier(defender.stages.didatica)
+  const defMult = ignoreDef ? 1 : effectiveStat(defender, STAT.DIDATICA)
 
   let bonus = stab
   if (move.effects.some((e) => e.kind === EFFECT.COMBO_BONUS) && hasFieldEffect(state)) {

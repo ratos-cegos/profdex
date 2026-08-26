@@ -69,6 +69,10 @@ describe('CapturesService', () => {
             id: `capture-${criadas.length + 1}`,
             capturedAt: new Date(),
             moves: data.moves,
+            ivHp: data.ivHp,
+            ivRigor: data.ivRigor,
+            ivDidatica: data.ivDidatica,
+            ivRaciocinio: data.ivRaciocinio,
             professor,
             variant: {
               id: variant.id,
@@ -96,7 +100,7 @@ describe('CapturesService', () => {
   }
 
   const build = (prisma: unknown) =>
-    new CapturesService(prisma as PrismaService, metricsStub());
+    new CapturesService(prisma as PrismaService, metricsStub(), () => 0.5);
 
   it('rejects a token that has no matching ficha', async () => {
     const { prisma } = fakeDb();
@@ -146,6 +150,10 @@ describe('CapturesService', () => {
       }),
     );
     expect(criadas[0].data.moves).toHaveLength(4);
+    expect(criadas[0].data).toEqual(expect.objectContaining({
+      ivHp: 8, ivRigor: 8, ivDidatica: 8, ivRaciocinio: 8,
+    }));
+    expect(result.stars).toBe(2.5);
 
     // Golpes hidratados e pertencentes aos tipos da variante.
     expect(result.moves).toHaveLength(4);
@@ -185,6 +193,10 @@ describe('CapturesService', () => {
             id: 'capture-1',
             capturedAt: new Date(),
             moves: [...moves, 'golpe-que-nao-existe-mais'],
+            ivHp: 15,
+            ivRigor: 15,
+            ivDidatica: 15,
+            ivRaciocinio: 15,
             professor,
             variant: {
               id: variant.id,
@@ -206,6 +218,7 @@ describe('CapturesService', () => {
     );
     expect(capture.professor).toEqual(professor);
     expect(capture.types).toEqual(variant.types);
+    expect(capture.stars).toBe(5);
     // Id órfão (golpe removido do jogo) não vira `null` na lista do aluno.
     expect(capture.moves.map((m) => m.id)).toEqual(
       moves.filter((id) => getMoveById(id)),

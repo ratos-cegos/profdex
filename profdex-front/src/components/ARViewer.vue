@@ -52,6 +52,40 @@
       </div>
     </model-viewer>
 
+    <div v-if="photoMeta" class="ar-photo-actions" aria-label="Opções da foto em realidade aumentada">
+      <button
+        class="ar-photo-button"
+        type="button"
+        :disabled="isLoading || isCapturing"
+        aria-label="Tirar foto"
+        @click="capturePhoto(false)"
+      >
+        <span aria-hidden="true">📷</span>
+        <span>{{ isCapturing ? 'Gerando…' : preparedPhoto ? 'Nova foto' : 'Foto' }}</span>
+      </button>
+      <button
+        v-if="preparedPhoto"
+        class="ar-photo-button ar-photo-button--share"
+        type="button"
+        :disabled="isCapturing"
+        aria-label="Compartilhar foto"
+        @click="deliverPreparedPhoto(false)"
+      >
+        <span aria-hidden="true">↗</span>
+        <span>Compartilhar</span>
+      </button>
+      <button
+        class="ar-photo-button ar-photo-button--download"
+        type="button"
+        :disabled="isLoading || isCapturing"
+        aria-label="Tirar foto e baixar"
+        @click="downloadPhoto"
+      >
+        <span aria-hidden="true">↓</span>
+        <span>Baixar</span>
+      </button>
+    </div>
+
     <div v-if="errorMessage" class="ar-message ar-message--error" role="alert">
       {{ errorMessage }}
     </div>
@@ -59,6 +93,10 @@
     <div v-else-if="!isLoading && arStatus === 'not-supported'" class="ar-message">
       O modelo 3D está disponível, mas este navegador não oferece realidade aumentada.
     </div>
+
+    <p v-if="photoFeedback" class="ar-photo-feedback" aria-live="polite">
+      {{ photoFeedback }}
+    </p>
 
     <!-- Badge que aparece quando a câmera AR está ativa -->
     <Transition name="fade">
@@ -72,7 +110,10 @@
 
 <script setup>
 import '@google/model-viewer'
+import { ref } from 'vue'
 import { useModelViewer } from '@/composables/useModelViewer.js'
+import { deliverArPhoto, frameArPhoto } from '@/services/ar-photo.js'
+import { useMetricsStore } from '@/stores/metrics.js'
 
 const props = defineProps({
   config: {
@@ -80,8 +121,14 @@ const props = defineProps({
     required: true,
     // config espera: { src, iosSrc?, poster?, alt?, arPlacement?,
     //                  autoRotate?, cameraControls?, hotspots? }
-  }
+  },
+  photoMeta: { type: Object, default: null },
 })
+
+const metrics = useMetricsStore()
+const isCapturing = ref(false)
+const photoFeedback = ref('')
+const preparedPhoto = ref(null)
 
 const {
   viewerRef,
@@ -93,6 +140,53 @@ const {
   openHotspot,
   closeHotspot,
 } = useModelViewer(props.config)
+
+async function capturePhoto(forceDownload) {
+  const viewer = viewerRef.value
+  if (!viewer?.toBlob || isCapturing.value || !props.photoMeta) return
+
+  isCapturing.value = true
+  photoFeedback.value = ''
+  try {
+    const source = await viewer.toBlob({ idealAspect: true, mimeType: 'image/png' })
+    const framed = await frameArPhoto(source, props.photoMeta)
+    preparedPhoto.value = framed
+    if (forceDownload) {
+      await deliverPreparedPhoto(true)
+    } else {
+      photoFeedback.value = 'Foto pronta! Agora compartilhe ou baixe.'
+    }
+  } catch (error) {
+    photoFeedback.value = error?.message ?? 'Não foi possível tirar a foto.'
+  } finally {
+    isCapturing.value = false
+  }
+}
+
+async function deliverPreparedPhoto(forceDownload) {
+  if (!preparedPhoto.value || isCapturing.value) return
+
+  photoFeedback.value = ''
+  try {
+    // Esta função nasce diretamente do clique em "Compartilhar". Assim a
+    // chamada a navigator.share acontece com ativação transitória válida,
+    // inclusive no Safari/iOS, apesar da captura do canvas ser assíncrona.
+    const outcome = await deliverArPhoto(preparedPhoto.value, {
+      name: props.photoMeta.name,
+      forceDownload,
+    })
+    if (outcome === 'shared') photoFeedback.value = 'Foto enviada para compartilhar!'
+    if (outcome === 'downloaded') photoFeedback.value = 'Foto baixada com sucesso!'
+    if (outcome !== 'cancelled') metrics.track('foto_ar', { metadata: { delivery: outcome } })
+  } catch (error) {
+    photoFeedback.value = error?.message ?? 'Não foi possível entregar a foto.'
+  }
+}
+
+function downloadPhoto() {
+  if (preparedPhoto.value) return deliverPreparedPhoto(true)
+  return capturePhoto(true)
+}
 </script>
 
 <style scoped>
@@ -109,6 +203,62 @@ const {
   width: 100%;
   height: 100%;
   --poster-color: transparent;
+}
+
+.ar-photo-actions {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ar-photo-button {
+  min-width: 108px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 2px solid var(--unifil-gold);
+  border-radius: 999px;
+  background: rgba(18, 20, 24, 0.9);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.ar-photo-button--download {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.ar-photo-button--share {
+  border-color: #8ce99a;
+}
+
+.ar-photo-button:disabled {
+  opacity: 0.55;
+}
+
+.ar-photo-feedback {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  z-index: 8;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--unifil-gold);
+  border-radius: 10px;
+  background: rgba(18, 20, 24, 0.92);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .ar-loading {

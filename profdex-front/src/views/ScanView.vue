@@ -2,6 +2,8 @@
 import jsQR from 'jsqr'
 import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
+import BottomSheet from '../components/BottomSheet.vue'
+import { COMO_FUNCIONA_QR } from '../data/comoFunciona.js'
 import { useProfessorsStore } from '../stores/professors'
 import { openBackCamera } from '../composables/useBackCamera'
 
@@ -18,6 +20,7 @@ const capturing = ref(false)
 const captured = ref(false)
 const captureAvatarError = ref(false)
 const aviso = ref(null)
+const helpOpen = ref(false)
 
 let stream = null
 let animFrame = null
@@ -287,12 +290,25 @@ onUnmounted(() => {
               <p class="hint-subtitle">
                 {{ aviso ?? 'Mantenha o código inteiro dentro da mira.' }}
               </p>
+              <p v-if="!aviso" class="hint-origin">
+                O QR aparece quando você acerta uma questão na bancada do ProfDex, na Semana Tecnológica.
+              </p>
+              <button v-if="!aviso" class="hint-help" type="button" @click="helpOpen = true">
+                Como conseguir um QR?
+              </button>
             </div>
           </div>
         </div>
 
       </template>
     </div>
+    <BottomSheet v-if="helpOpen" title="COMO CONSEGUIR UM QR" @close="helpOpen = false">
+      <ol class="qr-steps">
+        <li v-for="(step, index) in COMO_FUNCIONA_QR" :key="step">
+          <span class="pixel">{{ index + 1 }}</span>{{ step }}
+        </li>
+      </ol>
+    </BottomSheet>
   </div>
 </template>
 
@@ -336,9 +352,9 @@ onUnmounted(() => {
 
 /* ── Topbar ── */
 .scan-topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   min-height: 64px;
   padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
@@ -360,6 +376,7 @@ onUnmounted(() => {
   font-size: 13px;
   pointer-events: auto;
   touch-action: manipulation;
+  justify-self: start;
 }
 .back-btn > span:first-child {
   font-size: 26px;
@@ -371,6 +388,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 5px;
+  justify-self: center;
 }
 .scan-title {
   font-size: 11px;
@@ -392,7 +410,7 @@ onUnmounted(() => {
   background: var(--success-text);
   box-shadow: 0 0 0 3px rgba(130, 209, 107, 0.18);
 }
-.topbar-spacer { width: 82px; }
+.topbar-spacer { justify-self: stretch; }
 
 /* ── Centro ── */
 .scan-center {
@@ -546,6 +564,11 @@ onUnmounted(() => {
 .hint-title { margin-bottom: 6px; font-size: 8px; color: var(--yellow); }
 .hint-title--warn { color: var(--red-light); }
 .hint-subtitle { font-size: 12px; color: white; line-height: 1.45; text-wrap: pretty; }
+.hint-origin { margin-top: 5px; font-size: 10px; color: rgba(255,255,255,.78); line-height: 1.35; }
+.hint-help { min-height: 32px; margin-top: 5px; padding: 2px 0; background: transparent; color: var(--yellow); font-size: 10px; text-decoration: underline; text-underline-offset: 3px; }
+.qr-steps { display: grid; gap: 14px; list-style: none; }
+.qr-steps li { display: grid; grid-template-columns: 34px 1fr; align-items: start; gap: 10px; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+.qr-steps span { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--unifil-orange); color: white; font-size: 8px; }
 
 /* ── Descoberto (slug QR) ── */
 .scan-bottom {
@@ -634,10 +657,11 @@ onUnmounted(() => {
 @media (max-width: 360px), (max-height: 680px) {
   .scan-topbar { padding-inline: 10px; }
   .back-btn { min-width: 72px; padding-right: 8px; }
-  .topbar-spacer { width: 72px; }
   .viewfinder { --scan-size: min(62vw, 222px); }
   .scan-hint { gap: 16px; }
   .hint-content { padding: 10px; }
+  .hint-status { display: none; }
+  .hint-origin { font-size: 9px; }
   .capture-card { gap: 10px; padding: 18px 16px; }
   .capture-avatar, .capture-img, .capture-fallback { width: 76px; height: 76px; }
   .capture-name { font-size: 18px; }

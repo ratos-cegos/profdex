@@ -5,6 +5,7 @@ import { useBattleStore } from '../stores/battle'
 import { useCapturesStore } from '../stores/captures'
 import { useProfessorsStore } from '../stores/professors'
 import { typeInfos } from '../data/professorTypes'
+import StarRating from '../components/StarRating.vue'
 
 // Seleção às cegas em duas etapas, dentro dos mesmos 60s: primeiro QUEM, depois
 // QUAL EXEMPLAR — o mesmo professor pode estar na coleção em combinações de
@@ -166,6 +167,7 @@ async function choose(exemplar) {
             <span class="exemplar-card__head">
               <span class="pixel exemplar-card__idx">{{ i + 1 }}</span>
               <span class="exemplar-card__hint">Levar para a arena</span>
+              <StarRating class="exemplar-card__stars" :value="exemplar.stars" />
             </span>
             <span class="exemplar-card__moves">
               <span v-for="m in exemplar.moves" :key="m.id" class="exemplar-card__move">
@@ -422,6 +424,7 @@ async function choose(exemplar) {
   font-size: 11px;
   color: var(--text-muted);
 }
+.exemplar-card__stars { margin-left: auto; }
 
 .exemplar-card__moves {
   display: flex;

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,6 +10,8 @@ import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PUBLIC_PROFESSOR_SELECT } from '../professors/public-professor.select';
 import { hashCaptureToken } from './capture-token';
+import { CAPTURE_RNG, rollCaptureIvs, starsFromIvs } from './capture-ivs';
+import type { RandomSource } from './capture-ivs';
 
 // Tudo que descreve um exemplar: quem é, com que combinação de tipos veio e
 // quais golpes saíram no sorteio da captura.
@@ -16,6 +19,10 @@ const CAPTURE_SELECT = {
   id: true,
   capturedAt: true,
   moves: true,
+  ivHp: true,
+  ivRigor: true,
+  ivDidatica: true,
+  ivRaciocinio: true,
   professor: { select: PUBLIC_PROFESSOR_SELECT },
   variant: { select: { id: true, typeKey: true, types: true } },
 } satisfies Prisma.CaptureSelect;
@@ -27,6 +34,7 @@ export class CapturesService {
   constructor(
     private prisma: PrismaService,
     private metrics: MetricsService,
+    @Inject(CAPTURE_RNG) private readonly random: RandomSource,
   ) {}
 
   /**
@@ -93,7 +101,8 @@ export class CapturesService {
             professorId: variant.professorId,
             variantId: variant.id,
             tokenId: ficha.id,
-            moves: buildMoveset(variant.types).map((move) => move.id),
+            moves: buildMoveset(variant.types, 4, this.random).map((move) => move.id),
+            ...rollCaptureIvs(this.random),
           },
           select: CAPTURE_SELECT,
         });
@@ -170,12 +179,20 @@ export class CapturesService {
    * manter uma cópia da tabela só para exibir nome e poder.
    */
   private toView(capture: CaptureRow) {
+    const ivs = {
+      ivHp: capture.ivHp,
+      ivRigor: capture.ivRigor,
+      ivDidatica: capture.ivDidatica,
+      ivRaciocinio: capture.ivRaciocinio,
+    };
     return {
       id: capture.id,
       capturedAt: capture.capturedAt,
       professor: capture.professor,
       variant: capture.variant,
       types: capture.variant?.types ?? [],
+      ...ivs,
+      stars: starsFromIvs(ivs),
       moves: capture.moves
         .map((id) => getMoveById(id))
         .filter((move) => move !== null),

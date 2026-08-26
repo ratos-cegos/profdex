@@ -1,6 +1,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import InstitutionalSignature from '../components/InstitutionalSignature.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -67,12 +68,13 @@ const steps = [
         </button>
       </div>
     </div>
+
+    <InstitutionalSignature class="home__signature" />
   </div>
 </template>
 
 <style scoped>
 /* Importando a fonte no lugar correto (fora do template) */
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
 .pk-pixel {
   font-family: 'Press Start 2P', monospace !important;
@@ -142,6 +144,10 @@ const steps = [
     inset 0 0 0 2px var(--unifil-gold),
     inset 0 0 0 4px var(--surface);
   border-radius: 4px;
+}
+
+.home__signature {
+  margin: -4px auto 20px;
 }
 
 .home__section-title {

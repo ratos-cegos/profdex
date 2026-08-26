@@ -293,6 +293,10 @@ model Capture {
   variantId   String?           @map("variant_id")
   tokenId     String?           @unique @map("token_id")
   moves       String[]
+  ivHp        Int               @default(0) @map("iv_hp")
+  ivRigor     Int               @default(0) @map("iv_rigor")
+  ivDidatica  Int               @default(0) @map("iv_didatica")
+  ivRaciocinio Int              @default(0) @map("iv_raciocinio")
   capturedAt  DateTime          @default(now()) @map("captured_at")
   user        User              @relation(fields: [userId], references: [id])
   professor   Professor         @relation(fields: [professorId], references: [id])

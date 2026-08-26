@@ -12,7 +12,11 @@
  * `VITE_APP_URL` é o escape hatch para publicar esta pasta fora do domínio do
  * app (ex.: um projeto Vercel próprio); aí o CTA precisa ser absoluto.
  */
-export const APP_URL = import.meta.env.VITE_APP_URL ?? ''
+const LOCAL_APP_URL = import.meta.env.DEV && typeof window !== 'undefined'
+  ? `${window.location.protocol}//${window.location.hostname}:5173`
+  : ''
+
+export const APP_URL = import.meta.env.VITE_APP_URL ?? LOCAL_APP_URL
 
 /**
  * Destino do CTA.

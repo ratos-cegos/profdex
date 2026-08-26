@@ -29,6 +29,16 @@ describe('engine (port do battleEngine.js)', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
+  it('applies capture IVs to HP and battle stats', () => {
+    const combatant = createCombatant({
+      name: 'IV',
+      types: ['logica'],
+      ivs: { ivHp: 15, ivRigor: 12, ivDidatica: 8, ivRaciocinio: 4 },
+    });
+    expect(combatant.maxHp).toBe(135);
+    expect(combatant.baseStats).toEqual({ rigor: 112, didatica: 108, raciocinio: 104 });
+  });
+
   it('deals deterministic damage with STAB and neutral effectiveness', () => {
     jest.spyOn(Math, 'random').mockReturnValue(0.999); // variance ~1, sem crit de status
     const state = makeState();

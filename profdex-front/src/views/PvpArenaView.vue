@@ -3,9 +3,10 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import BattleHpBar from '../components/BattleHpBar.vue'
 import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
+import DamagePopup from '../components/DamagePopup.vue'
+import MoveButton from '../components/MoveButton.vue'
 import { useBattleStore } from '../stores/battle'
 import { spriteUrlForProfessor } from '../data/professorSprites'
-import { getType } from '../data/types'
 
 // Arena PvP: o servidor resolve tudo; esta tela só envia a intenção de golpe
 // e ANIMA a fila de eventos de cada rodada (mesma linguagem do useBattle.js).
@@ -20,8 +21,21 @@ const foeHp = ref(0)
 const message = ref('')
 const youHit = ref(false)
 const foeHit = ref(false)
+const youFainted = ref(false)
+const foeFainted = ref(false)
 const animating = ref(false)
 const showResult = ref(false)
+const youFeedback = ref([])
+const foeFeedback = ref([])
+let feedbackId = 0
+let lastDamageTarget = 'enemy'
+
+function showFeedback(target, feedback) {
+  const list = target === 'player' ? youFeedback : foeFeedback
+  const item = { id: ++feedbackId, offset: (feedbackId % 5 - 2) * 12, ...feedback }
+  list.value.push(item)
+  setTimeout(() => { list.value = list.value.filter((entry) => entry.id !== item.id) }, 1000)
+}
 
 const now = ref(Date.now())
 let clock = null
@@ -68,14 +82,17 @@ const foeSprite = computed(() => spriteUrlForProfessor(pvp.value?.foe?.professor
 const resultText = computed(() => {
   const r = pvp.value?.result
   if (!r) return ''
-  if (r.result === 'win') return 'VITÓRIA!'
-  if (r.result === 'loss') return 'DERROTA…'
+  if (r.result === 'win') return 'VOCÊ VENCEU!'
+  if (r.result === 'loss') return 'VOCÊ FOI DERROTADO'
   return 'EMPATE!'
 })
 
-function moveTypeColor(move) {
-  return getType(move.type)?.color || 'var(--bg-surface)'
-}
+const resultKind = computed(() => pvp.value?.result?.result ?? '')
+const ratingDeltaText = computed(() => {
+  const delta = pvp.value?.result?.rating?.delta
+  if (!Number.isFinite(delta)) return ''
+  return `ELO ${delta >= 0 ? '+' : ''}${delta}`
+})
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -89,11 +106,15 @@ async function play(events) {
         await delay(850)
         break
       case 'damage': {
+        lastDamageTarget = ev.target
+        showFeedback(ev.target, { amount: ev.amount, kind: 'dano' })
         const isYou = ev.target === 'player'
         const flag = isYou ? youHit : foeHit
         flag.value = true
         if (isYou) youHp.value = Math.max(0, youHp.value - ev.amount)
         else foeHp.value = Math.max(0, foeHp.value - ev.amount)
+        if (isYou && youHp.value <= 0) youFainted.value = true
+        if (!isYou && foeHp.value <= 0) foeFainted.value = true
         await delay(450)
         flag.value = false
         message.value = `Causou ${ev.amount} de dano!`
@@ -101,6 +122,7 @@ async function play(events) {
         break
       }
       case 'heal': {
+        showFeedback(ev.target, { amount: ev.amount, kind: 'cura' })
         if (ev.target === 'player') youHp.value += ev.amount
         else foeHp.value += ev.amount
         await delay(600)
@@ -110,6 +132,10 @@ async function play(events) {
         await delay(300)
         break
       case 'effectiveness':
+        showFeedback(lastDamageTarget, {
+          kind: ev.level.startsWith('super') ? 'critico' : 'dano',
+          label: { super4: 'DEVASTADOR! ×4', super: 'SUPER EFICAZ!', weak: 'POUCO EFICAZ…', weak4: 'RESISTIU ×¼' }[ev.level],
+        })
         message.value =
           {
             super4: 'Foi devastador! (×4)',
@@ -120,6 +146,8 @@ async function play(events) {
         await delay(800)
         break
       case 'faint':
+        if (ev.target === 'player') youFainted.value = true
+        if (ev.target === 'enemy') foeFainted.value = true
         await delay(300)
         break
       default:
@@ -142,6 +170,8 @@ function syncFromServer() {
   if (!pvp.value?.you) return
   youHp.value = pvp.value.you.hp
   foeHp.value = pvp.value.foe.hp
+  if (youHp.value <= 0) youFainted.value = true
+  if (foeHp.value <= 0) foeFainted.value = true
 }
 
 async function useMove(move) {
@@ -206,10 +236,18 @@ onUnmounted(() => clock && clearInterval(clock))
 </script>
 
 <template>
-  <div v-if="pvp?.you" class="pvp-arena">
+  <div
+    v-if="pvp?.you"
+    class="pvp-arena"
+    :class="{
+      'pvp-arena--defeat': youFainted || resultKind === 'loss',
+      'pvp-arena--victory': foeFainted || resultKind === 'win',
+    }"
+  >
     <div class="pvp-arena__bg">
       <BinaryTunnelScene :speed="5" color="#ff2bc4" />
     </div>
+    <img class="pvp-arena__brand" src="/marca/logotipo-branco.png" alt="UNIFIL" />
 
     <!-- Rival (topo) -->
     <div class="pvp-arena__foe">
@@ -220,22 +258,24 @@ onUnmounted(() => clock && clearInterval(clock))
       />
       <img
         class="pvp-arena__model pvp-arena__model--foe"
-        :class="{ 'pvp-arena__model--hit': foeHit }"
+        :class="{ 'pvp-arena__model--hit': foeHit, 'pvp-arena__model--fainted': foeFainted }"
         :src="foeSprite"
         :alt="`Prof. ${pvp.foe.professor?.name ?? pvp.opponent.name}`"
         decoding="async"
       />
+      <DamagePopup v-for="item in foeFeedback" :key="item.id" v-bind="item" />
     </div>
 
     <!-- Você (base) -->
     <div class="pvp-arena__you">
       <img
         class="pvp-arena__model"
-        :class="{ 'pvp-arena__model--hit': youHit }"
+        :class="{ 'pvp-arena__model--hit': youHit, 'pvp-arena__model--fainted': youFainted }"
         :src="youSprite"
         :alt="pvp.you.professor?.name ?? 'Seu professor'"
         decoding="async"
       />
+      <DamagePopup v-for="item in youFeedback" :key="item.id" v-bind="item" />
       <BattleHpBar :name="pvp.you.professor?.name ?? 'Você'" :hp="youHp" :max-hp="pvp.you.maxHp" />
     </div>
 
@@ -253,20 +293,14 @@ onUnmounted(() => clock && clearInterval(clock))
       </div>
 
       <div class="pvp-arena__moves">
-        <button
+        <MoveButton
           v-for="move in pvp.you.moves"
           :key="move.id"
-          class="pvp-move"
-          type="button"
+          :move="move"
+          :opponent-types="pvp.foe.types"
           :disabled="!canAct"
-          :style="{ borderColor: moveTypeColor(move) }"
-          @click="useMove(move)"
-        >
-          <span class="pixel pvp-move__name">{{ move.name }}</span>
-          <span class="pvp-move__meta">
-            {{ getType(move.type)?.icon }} {{ move.power ? `${move.power}` : move.raw }}
-          </span>
-        </button>
+          @select="useMove"
+        />
       </div>
 
       <p v-if="pvp.youMoved && pvp.phase === 'active' && !animating" class="pvp-arena__waiting">
@@ -276,14 +310,22 @@ onUnmounted(() => clock && clearInterval(clock))
 
     <!-- Resultado -->
     <div v-if="showResult" class="pvp-result">
-      <div class="pvp-result__card">
+      <div
+        class="pvp-result__card"
+        :class="{
+          'pvp-result__card--defeat': resultKind === 'loss',
+          'pvp-result__card--victory': resultKind === 'win',
+        }"
+      >
         <p class="pixel pvp-result__title">{{ resultText }}</p>
         <p class="pvp-result__reason">
           {{ pvp.result?.reason === 'abandono' ? 'Por abandono' : 'Por nocaute' }}
         </p>
         <p v-if="pvp.result?.rating" class="pixel pvp-result__rating">
-          {{ pvp.result.rating.delta >= 0 ? '+' : '' }}{{ pvp.result.rating.delta }} pts
-          → {{ pvp.result.rating.rating }} · {{ pvp.result.rating.tier }}
+          {{ ratingDeltaText }}
+        </p>
+        <p v-if="pvp.result?.rating" class="pvp-result__rating-detail">
+          Novo Elo: {{ pvp.result.rating.rating }} · {{ pvp.result.rating.tier }}
         </p>
         <button class="pixel pvp-result__btn" type="button" @click="backToLobby">
           VOLTAR AO LOBBY
@@ -301,6 +343,41 @@ onUnmounted(() => clock && clearInterval(clock))
   background: #08000f;
   display: flex;
   flex-direction: column;
+}
+
+.pvp-arena::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.pvp-arena__brand {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  right: 16px;
+  z-index: 1;
+  width: clamp(64px, 19vw, 112px);
+  height: auto;
+  opacity: 0.64;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+}
+
+.pvp-arena--defeat::after {
+  background: radial-gradient(circle at center, transparent 34%, rgba(205, 32, 32, 0.46) 100%);
+  box-shadow: inset 0 0 90px rgba(255, 48, 48, 0.5);
+  animation: pvp-result-pulse 2.4s ease-in-out infinite;
+}
+
+.pvp-arena--victory::after {
+  background: radial-gradient(circle at center, transparent 42%, rgba(255, 209, 102, 0.2) 100%);
+  box-shadow: inset 0 0 80px rgba(255, 209, 102, 0.22);
+  animation: pvp-result-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes pvp-result-pulse {
+  50% { opacity: 0.62; }
 }
 
 .pvp-arena__bg {
@@ -342,6 +419,7 @@ onUnmounted(() => clock && clearInterval(clock))
   background: transparent;
   /* Sombra no lugar da que o model-viewer projetava. */
   filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.45));
+  transition: filter 0.6s ease, opacity 0.6s ease, transform 0.6s ease;
 }
 
 .pvp-arena__model--foe {
@@ -351,6 +429,14 @@ onUnmounted(() => clock && clearInterval(clock))
 
 .pvp-arena__model--hit {
   animation: pvp-hit 0.45s steps(3);
+}
+
+.pvp-arena__model--fainted,
+.pvp-arena__model--fainted.pvp-arena__model--hit {
+  animation: none;
+  filter: grayscale(1) brightness(0.6);
+  opacity: 0.75;
+  transform: translateY(8%) rotate(12deg);
 }
 
 @keyframes pvp-hit {
@@ -469,9 +555,24 @@ onUnmounted(() => clock && clearInterval(clock))
   padding: 26px 30px;
 }
 
+.pvp-result__card--defeat {
+  border-color: #ff7676;
+  box-shadow: 0 0 34px rgba(255, 64, 64, 0.28);
+}
+
+.pvp-result__card--victory {
+  border-color: #ffd166;
+  box-shadow: 0 0 34px rgba(255, 209, 102, 0.22);
+}
+
 .pvp-result__title {
   font-size: 20px;
   color: var(--yellow);
+}
+
+.pvp-result__card--defeat .pvp-result__title,
+.pvp-result__card--defeat .pvp-result__rating {
+  color: #ff9b9b;
 }
 
 .pvp-result__reason {
@@ -486,6 +587,12 @@ onUnmounted(() => clock && clearInterval(clock))
   color: var(--ds-green);
 }
 
+.pvp-result__rating-detail {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .pvp-result__btn {
   margin-top: 6px;
   min-height: 44px;
@@ -496,5 +603,16 @@ onUnmounted(() => clock && clearInterval(clock))
   border: 1px solid var(--red-light);
   color: white;
   cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pvp-arena--defeat::after,
+  .pvp-arena--victory::after,
+  .pvp-arena__model,
+  .pvp-arena__model--hit,
+  .pvp-arena__timer--low {
+    animation: none;
+    transition: none;
+  }
 }
 </style>

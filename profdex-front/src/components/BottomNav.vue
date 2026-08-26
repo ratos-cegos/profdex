@@ -14,8 +14,9 @@ import { useRoute } from 'vue-router'
 // bisel na cor DS correspondente, não de um fundo colorido que apagaria o ícone.
 const ITENS = [
   { rota: 'profdex', rotulo: 'ProfDex', icone: '/icons/profdex.png', cor: 'laranja' },
-  { rota: 'scan', rotulo: 'Scanear', icone: '/icons/scanner.png', cor: 'azul' },
+  { rota: 'scan', rotulo: 'Capturar', icone: '/icons/scanner.png', cor: 'azul' },
   { rota: 'batalha', rotulo: 'Batalha', icone: '/icons/batalha.png', cor: 'verde' },
+  { rota: 'perfil', rotulo: 'Perfil', emoji: '👤', cor: 'laranja' },
 ]
 
 const route = useRoute()
@@ -23,7 +24,9 @@ const route = useRoute()
 // A rota de ranking vive "dentro" da área de batalha (chega-se a ela pela aba
 // superior), então o item Batalha continua destacado enquanto se está lá.
 const rotaAtiva = computed(() =>
-  route.name === 'ranking' ? 'batalha' : route.name,
+  ['ranking', 'treino', 'battle-guide', 'pvp-pick', 'pvp-arena', 'arena'].includes(route.name)
+    ? 'batalha'
+    : route.name,
 )
 </script>
 
@@ -40,7 +43,8 @@ const rotaAtiva = computed(() =>
       :to="{ name: item.rota }"
       :aria-current="rotaAtiva === item.rota ? 'page' : undefined"
     >
-      <img class="bottom-nav__icone" :src="item.icone" alt="" aria-hidden="true" />
+      <img v-if="item.icone" class="bottom-nav__icone" :src="item.icone" alt="" aria-hidden="true" />
+      <span v-else class="bottom-nav__emoji" aria-hidden="true">{{ item.emoji }}</span>
       <span class="pixel bottom-nav__rotulo">{{ item.rotulo }}</span>
     </RouterLink>
   </nav>
@@ -121,6 +125,8 @@ const rotaAtiva = computed(() =>
   user-select: none;
   pointer-events: none;
 }
+.bottom-nav__emoji { height: var(--nav-icon); display: grid; place-items: center; font-size: 25px; opacity: .65; }
+.bottom-nav__btn--ativo .bottom-nav__emoji { opacity: 1; }
 
 .bottom-nav__btn--ativo .bottom-nav__icone {
   opacity: 1;

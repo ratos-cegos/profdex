@@ -32,6 +32,7 @@ interface RoomPlayer {
   captureId?: string;
   types?: string[];
   moves?: Move[];
+  ivs?: { ivHp: number; ivRigor: number; ivDidatica: number; ivRaciocinio: number };
   missedTurns: number;
 }
 
@@ -155,6 +156,10 @@ export class BattleRoomService implements OnModuleDestroy {
       select: {
         id: true,
         moves: true,
+        ivHp: true,
+        ivRigor: true,
+        ivDidatica: true,
+        ivRaciocinio: true,
         professor: { select: { id: true, slug: true, name: true } },
         variant: { select: { types: true } },
       },
@@ -179,6 +184,12 @@ export class BattleRoomService implements OnModuleDestroy {
     me.captureId = capture.id;
     me.types = types;
     me.moves = moves.length ? moves : buildMoveset(types);
+    me.ivs = {
+      ivHp: capture.ivHp,
+      ivRigor: capture.ivRigor,
+      ivDidatica: capture.ivDidatica,
+      ivRaciocinio: capture.ivRaciocinio,
+    };
     // O oponente sabe QUE você escolheu, nunca QUAL (pick às cegas).
     this.emitToOther(room, me.key, 'battle:pick:opponent', {});
 
@@ -204,6 +215,7 @@ export class BattleRoomService implements OnModuleDestroy {
         name: slot.professor!.name,
         types: slot.types!,
         moves: slot.moves!,
+        ivs: slot.ivs,
       });
     }
     room.state = { player: combatants.player, enemy: combatants.enemy };

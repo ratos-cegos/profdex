@@ -57,6 +57,13 @@ Trabalho da branch `refactor/frontend`, ainda não integrado à `main`.
 
 ### Adicionado
 
+- **Revisão de UI/UX da tarefa 6:** navegação principal com Perfil e Treino,
+  scanner com ajuda contextual, ficha de professor em painéis deslizantes,
+  cards de golpe completos e números flutuantes de dano/cura em PvE e PvP.
+- **IVs reais por exemplar:** quatro atributos persistidos, nota de 0–5 estrelas,
+  filtros e fraquezas na coleção, backfill determinístico e bônus moderado nas
+  batalhas ranqueadas.
+
 - **Conversor de sprites Aseprite (`.ase`) em Node**
   (`profdex-front/scripts/ase2png.cjs`). Decodifica o container binário —
   cabeçalho, chunks de camada e de cel, pixels comprimidos em zlib — e compõe as

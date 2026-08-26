@@ -3,10 +3,9 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
-import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode }) => {
   // `loadEnv` com prefixo vazio lê também variáveis sem `VITE_` (que não são
   // expostas ao navegador), como o alvo do proxy abaixo.
   const env = loadEnv(mode, process.cwd(), '')
@@ -36,10 +35,13 @@ export default defineConfig(({ mode }) => {
   // O certificado é autoassinado, então o navegador do celular mostra um aviso
   // na primeira visita. Basta avançar ("Avançado" → "Ir para o site").
   const useHttps = env.HTTPS === '1'
+  const sslPlugins = useHttps
+    ? [(await import('@vitejs/plugin-basic-ssl')).default()]
+    : []
 
   return {
     plugins: [
-      ...(useHttps ? [basicSsl()] : []),
+      ...sslPlugins,
       vue({
         template: {
           compilerOptions: {
