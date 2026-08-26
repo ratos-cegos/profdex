@@ -127,6 +127,37 @@ Igual ao Showdown/chess.com, simplificado para uma semana de evento:
 
 Com K acima, um jogador ativo alcança Ouro/Platina numa semana; Mestre fica raro — como deve ser.
 
+### IVs por exemplar e o reset do Elo
+
+Desde a introdução dos IVs (status por exemplar, sorteados no resgate), duas
+capturas do mesmo professor podem ter atributos diferentes, e isso entra na
+conta da batalha. Como o Elo compara partidas ao longo do tempo, **partidas de
+antes e depois dessa virada são de jogos diferentes** — misturá-las no mesmo
+ranking é somar réguas distintas.
+
+**Decisão: o Elo é zerado na virada** (`npm run db:reset-ranking`), junto com o
+deploy que traz os IVs. Poucas partidas ranqueadas existiam até aqui, e começar
+limpo custa menos que explicar por que o ranking mede duas coisas.
+
+O peso dos IVs foi calibrado para que a captura **influencie sem decidir**:
+
+- o banco guarda 0–15 por atributo (é essa faixa que vira as estrelas de 0 a 5
+  na coleção), mas o combate reescala para **0–5** (`IV_BONUS_MAX` no motor);
+- a velocidade **pesa a moeda** da ordem de turno, em vez de definir quem age
+  primeiro — antes, 1 ponto de diferença dava a iniciativa em todos os turnos
+  da partida, o que sozinho valia ~69% de vitória;
+- medido com o motor real, em espelho perfeito: entre dois jogadores com IVs
+  aleatórios, o exemplar de IV total maior vence ~53% das partidas (era 64%).
+
+`iv-balance.spec.ts` roda essa simulação no CI e falha se o número voltar a
+subir. Mexer em `IV_BONUS_MAX` ou na ordem de turno exige rever esse teste — e,
+se o balanceamento mudar de novo, a mesma pergunta sobre zerar o Elo volta.
+
+⚠️ O motor tem duas cópias (`profdex-back/src/battle/engine/engine.ts` e
+`profdex-front/src/composables/battleEngine.js`). Elas precisam continuar
+idênticas nessas regras: divergir aqui faz a batalha de treino ensinar um jogo
+que não é o ranqueado.
+
 ## Contratos
 
 ### Eventos WebSocket (namespace `/battle`)
