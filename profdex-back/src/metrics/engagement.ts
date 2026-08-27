@@ -21,6 +21,7 @@ export const EVENT_TYPES = [
   'collection_completed',
   'quiz_answered',
   'quiz_correct',
+  'quiz_practice_answered',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -40,6 +41,11 @@ export function isEventType(value: string): value is EventType {
  * nascem de fatos que o servidor conhece: a captura validada, o fim da
  * batalha, a resposta do quiz na bancada.
  */
+//
+// `quiz_practice_answered` NÃO entra aqui de propósito: o treino é corrigido no
+// próprio aparelho do aluno, então o servidor nunca saberia que houve resposta —
+// como server-only, o evento simplesmente nunca seria registrado. Forjá-lo não
+// rende nada: vale 0 ponto e 0 interação.
 const SERVER_ONLY_EVENTS: ReadonlySet<EventType> = new Set([
   'professor_discovered',
   'professor_captured',
@@ -72,6 +78,9 @@ export const ENGAGEMENT_POINTS: Record<EventType, number> = {
   collection_completed: 200,
   quiz_answered: 10, // encarar a bancada já vale, mesmo errando
   quiz_correct: 25, // somado ao quiz_answered
+  // Treinar não pontua: é ilimitado e sem supervisão, então qualquer valor
+  // acima de zero faria o placar medir quem deixou o dedo no botão.
+  quiz_practice_answered: 0,
 };
 
 /** Bônus por iniciar a primeira sessão do dia. */
@@ -120,6 +129,7 @@ export const INTERACTION_WEIGHTS: Record<EventType, number> = {
   collection_completed: 50,
   quiz_answered: 10,
   quiz_correct: 0, // já contado no quiz_answered
+  quiz_practice_answered: 0, // treino é volume livre, não atividade do evento
 };
 
 /** Tamanho do bloco de tempo de uso convertido em interações. */
@@ -152,4 +162,5 @@ export const INTERACTION_SOURCE_LABELS: Record<EventType, string> = {
   collection_completed: 'Coleções completadas',
   quiz_answered: 'Quiz respondido na bancada',
   quiz_correct: 'Quiz acertado',
+  quiz_practice_answered: 'Quiz de treino respondido',
 };

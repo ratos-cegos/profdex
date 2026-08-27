@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useBattleStore } from '../stores/battle'
 import { useCapturesStore } from '../stores/captures'
 import { useProfessorsStore } from '../stores/professors'
+import TypeIcon from '../components/TypeIcon.vue'
 import { typeInfos } from '../data/professorTypes'
 
 // Seleção às cegas em duas etapas, dentro dos mesmos 60s: primeiro QUEM, depois
@@ -124,7 +125,8 @@ async function choose(exemplar) {
                   class="pick-card__type"
                   :style="{ background: t.color }"
                 >
-                  {{ t.icon }} {{ t.label }}
+                  <TypeIcon :type="t.id" :size="12" />
+                  {{ t.label }}
                 </span>
               </span>
             </button>
@@ -151,7 +153,8 @@ async function choose(exemplar) {
               class="pick-card__type"
               :style="{ background: t.color }"
             >
-              {{ t.icon }} {{ t.label }}
+              <TypeIcon :type="t.id" :size="12" />
+              {{ t.label }}
             </span>
           </div>
 
@@ -332,6 +335,11 @@ async function choose(exemplar) {
 }
 
 .pick-card__type {
+  /* Era texto solto ao lado do label; agora o icone e um elemento proprio,
+     entao a pill precisa alinhar os dois na linha de base visual. */
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 10px;
   color: white;
   border-radius: 999px;

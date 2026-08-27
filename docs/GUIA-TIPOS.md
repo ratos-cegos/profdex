@@ -28,14 +28,36 @@ São **9 tipos** numa roda cíclica. **A ordem do array `TYPE_CYCLE` É a roda**
 **derivados da posição em runtime**, não digitados à mão.
 
 Ordem atual (horário):
-`Lógica → Cálculo → IA/ML → Robótica → Arquitetura → Segurança → Redes → Banco de Dados → Algoritmos →` (volta a Lógica)
+`Lógica → Cálculo → IA/ML → Robótica → Arquitetura → NPI → Redes → Banco de Dados → Algoritmos →` (volta a Lógica)
 
 Regra:
 - **Super-eficaz (2×)** contra os **2 tipos seguintes** (horário).
 - **Fraco (0,5×)** contra os **2 tipos anteriores**.
 - **Neutro (1×)** contra o resto.
 
-Cada tipo tem `{ id, label, icon (emoji), color (hex), description }`.
+Cada tipo tem `{ id, label, icon, color (hex), description }`.
+
+⚠️ **O campo `icon` (emoji) é legado.** As telas desenham `TypeIcon.vue` — a
+arte oficial vetorial dos 9 tipos, trazida da landing page (outro repositório,
+por isso o componente é copiado e não importado). O componente indexa pelo
+mesmo `id`, então não há tabela de tradução.
+
+Os ícones herdam `currentColor`, e é isso que faz cada um sair na cor do seu
+tipo — por isso não são arquivos `.svg`: servidos por `<img>` não poderiam ser
+recoloridos. Quem renderiza escolhe a cor com um dos dois helpers de
+`types.js`:
+
+- `onColor(hex)` — preto ou branco **sobre** a cor do tipo (roda de vantagens,
+  onde o ícone fica em cima do círculo preenchido).
+- `legibleColor(hex)` — a cor do tipo clareada até 4,5:1 **no** fundo escuro.
+  Sem ele o NPI (`#495057`) daria 1,7:1 e o ícone sumiria.
+
+São vetor, não pixel art: **não** aplicar `image-rendering: pixelated` (a
+convenção dos PNGs de `/icons`), que só serrilharia as curvas.
+
+O emoji continua no arquivo de propósito: um `{{ t.icon }}` esquecido em alguma
+tela não quebraria o build — renderizaria vazio, em silêncio. Mantido, degrada
+para o emoji antigo em vez de deixar um buraco.
 
 API exportada:
 - `TYPE_CYCLE` — o array/roda.

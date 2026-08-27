@@ -1,11 +1,19 @@
 <script setup>
 import { computed } from 'vue'
+import TypeIcon from './TypeIcon.vue'
 
 const props = defineProps({
   name: { type: String, required: true },
   hp: { type: Number, required: true },
   maxHp: { type: Number, required: true },
   avatarSrc: { type: String, default: '' },
+  // Ids dos tipos do combatente, desenhados antes do nome.
+  //
+  // Antes os icones eram emoji concatenados DENTRO de `name` pelo chamador
+  // (`${icones} Prof. ${nome}`). Um componente nao sobrevive a um `.join('')`,
+  // entao os tipos passaram a ser prop propria. Default vazio: quem nao passa
+  // `types` renderiza exatamente como antes.
+  types: { type: Array, default: () => [] },
 })
 
 const percent = computed(() =>
@@ -31,6 +39,9 @@ function hideBrokenImage(event) {
     </div>
     <div class="hp-panel__info">
       <div class="hp-panel__row">
+        <span v-if="types.length" class="hp-panel__types">
+          <TypeIcon v-for="id in types" :key="id" :type="id" :size="12" />
+        </span>
         <span class="pixel hp-panel__name">{{ name }}</span>
       </div>
       <div class="hp-panel__bar" role="progressbar" :aria-valuenow="hp" :aria-valuemax="maxHp"
@@ -84,9 +95,20 @@ function hideBrokenImage(event) {
 
 .hp-panel__row {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
+  /* Era `space-between` com um filho so (portanto equivalente a `flex-start`).
+     Com os icones de tipo ao lado do nome, `space-between` jogaria os dois para
+     extremos opostos do painel. */
+  justify-content: flex-start;
+  align-items: center;
+  gap: 6px;
+}
+
+.hp-panel__types {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  color: var(--text-primary);
 }
 
 .hp-panel__name {

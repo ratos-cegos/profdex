@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { QUIZ_THEMES } from '../quiz/quiz.constants';
 import {
   INTERACTION_WEIGHTS,
   INTERACTIONS_PER_TIME_BLOCK,
@@ -72,6 +73,7 @@ export class RollupService implements OnModuleInit, OnModuleDestroy {
         ...(await this.activeMinutes(from)),
         ...(await this.eventCounts(from)),
         ...(await this.interactions(from)),
+        ...(await this.practiceQuiz(from)),
       ];
       await this.persist(rows);
     } catch (error) {
@@ -204,6 +206,71 @@ export class RollupService implements OnModuleInit, OnModuleDestroy {
       SELECT bucket, 'interactions'::text AS metric, SUM(value)::int AS value
       FROM (SELECT * FROM eventos UNION ALL SELECT * FROM tempo) AS todas
       GROUP BY bucket
+    `;
+  }
+
+  /**
+   * Quiz Treino, quebrado por tema e por acerto.
+   *
+   * `eventCounts` já produz `event_quiz_practice_answered` (o total), mas o
+   * tema e o acerto vivem no `metadata` de cada evento, e o painel não pode ler
+   * `app_events` — é a regra da casa (ver o comentário do modelo no schema): o
+   * painel é aberto justamente durante o evento, quando o servidor tem menos
+   * folga, e varrer a trilha de auditoria inteira a cada abertura não escala.
+   *
+   * Então o recorte é pré-agregado aqui, na mesma passada de 2 horas das
+   * outras métricas, e vira duas chaves por tema:
+   *
+   *   practice_answered_<tema>  — respostas
+   *   practice_correct_<tema>   — acertos
+   *
+   * O par permite calcular a taxa de acerto sem guardar uma terceira chave que
+   * poderia divergir das outras duas.
+   *
+   * O filtro por `type` usa o índice `(type, occurred_at)` que já existe, e a
+   * janela de 2h mantém a varredura pequena — nenhum índice novo é necessário.
+   *
+   * `metadata->>'theme'` é comparado contra a lista canônica de temas: um
+   * evento forjado com tema inventado (o cliente pode declarar este evento)
+   * criaria uma chave nova em `metrics_hourly` e sujaria o painel para sempre.
+   */
+  private practiceQuiz(from: Date): Promise<Row[]> {
+    const temas = Prisma.join(
+      QUIZ_THEMES.map((t) => Prisma.sql`(${t}::text)`),
+    );
+
+    return this.prisma.$queryRaw<Row[]>`
+      WITH temas (tema) AS (VALUES ${temas}),
+      respostas AS (
+        SELECT date_trunc('hour', e.occurred_at)      AS bucket,
+               e.metadata->>'theme'                   AS tema,
+               -- Comparação de string, NÃO ::boolean. metadata é livre --
+               -- este é o único evento de quiz que o cliente pode declarar
+               -- (não está em SERVER_ONLY_EVENTS) e o DTO só valida
+               -- IsObject, sem checar o formato de dentro. Um
+               -- correct: "qualquer coisa" faria ::boolean lancar excecao
+               -- no meio da passada, e como esta fora do persist(),
+               -- travaria TODAS as metricas daquela janela, nao so esta, ate
+               -- a linha sair das 2h. Comparacao nunca lanca: qualquer coisa
+               -- que nao seja exatamente 'true' vira falso -- pior caso e uma
+               -- linha subcontada, nunca o rollup inteiro parado.
+               (e.metadata->>'correct') = 'true'      AS acertou
+        FROM app_events e
+        JOIN temas t ON t.tema = e.metadata->>'theme'
+        WHERE e.type = 'quiz_practice_answered'
+          AND e.occurred_at >= ${from}
+      )
+      SELECT bucket,
+             'practice_answered_' || tema AS metric,
+             COUNT(*)::int                AS value
+      FROM respostas
+      GROUP BY bucket, tema
+      UNION ALL
+      SELECT bucket,
+             'practice_correct_' || tema  AS metric,
+             COUNT(*) FILTER (WHERE acertou)::int AS value
+      FROM respostas
+      GROUP BY bucket, tema
     `;
   }
 

@@ -58,6 +58,18 @@ export class AdminMetricsController {
     return this.metrics.engagement(limit);
   }
 
+  /**
+   * Métricas do Quiz Treino. Rota separada de propósito: o treino não pontua,
+   * não captura e não entra no ranking, então não pode dividir payload com as
+   * métricas oficiais do evento.
+   */
+  @Get('practice-quiz')
+  practiceQuiz(
+    @Query('days', new DefaultValuePipe(7), ParseIntPipe) days: number,
+  ) {
+    return this.metrics.practiceQuiz(days);
+  }
+
   @Get('retention')
   retention() {
     return this.metrics.retentionD1();

@@ -9,7 +9,6 @@ import { useProfessorsStore } from '../stores/professors'
 import { buildMoveset } from '../data/moves.js'
 import {
   typesForProfessor,
-  typeInfos,
   PROFESSOR_TYPES,
   PLAYER_KEY,
 } from '../data/professorTypes.js'
@@ -89,8 +88,9 @@ onUnmounted(stopCamera)
 const enemyTypes = typesForProfessor(enemyProfessor)
 const playerTypes = PROFESSOR_TYPES[PLAYER_KEY]
 
-const enemyTypeIcons = typeInfos(enemyTypes).map((t) => t.icon).join('')
-const playerTypeIcons = typeInfos(playerTypes).map((t) => t.icon).join('')
+// Os icones de tipo vao como prop `types` do BattleHpBar, nao concatenados no
+// `name`: sao componentes SVG e nao sobrevivem a virar string. De quebra, o
+// `aria-label` da barra de HP deixa de ler emoji em voz alta.
 
 // Cada lado recebe um deck de 4 golpes, misturando seus tipos.
 const playerMoves = buildMoveset(playerTypes)
@@ -186,7 +186,8 @@ function goBack() {
       <!-- Barra do inimigo (topo esquerdo, como no esboço) -->
       <BattleHpBar
         class="arena__enemy-bar"
-        :name="`${enemyTypeIcons} Prof. ${enemy.name}`"
+        :name="`Prof. ${enemy.name}`"
+        :types="enemyTypes"
         :hp="enemyHp"
         :max-hp="enemy.maxHp"
         :avatar-src="`/professors/${enemyProfessor.slug}-cartoon.png`"
@@ -198,7 +199,8 @@ function goBack() {
       <!-- Barra do jogador (acima do painel de comandos) -->
       <BattleHpBar
         class="arena__player-bar"
-        :name="`${playerTypeIcons} ${player.name}`"
+        :name="player.name"
+        :types="playerTypes"
         :hp="playerHp"
         :max-hp="player.maxHp"
       />

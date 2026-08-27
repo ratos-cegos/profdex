@@ -130,6 +130,37 @@ model QuizQuestion {
   @@map("quiz_questions")
 }
 
+// Banco do Quiz Treino — o aluno praticando sozinho, no próprio celular.
+//
+// É uma TABELA à parte, não uma coluna `origin` em `quiz_questions`, e a razão
+// é o que a rota de treino faz: ela devolve o gabarito junto com a pergunta,
+// porque no treino não há ponto, captura nem cooldown, e corrigir no aparelho
+// evita um round-trip por alternativa.
+//
+// Com as duas questões na mesma tabela, bastaria UMA consulta esquecer o
+// filtro para o gabarito da bancada vazar por uma rota de aluno — e aí o quiz
+// do evento acaba, porque quem sabe a resposta ganha QR e captura. Tabelas
+// separadas tornam esse erro impossível de escrever: não existe questão
+// oficial aqui para vazar.
+//
+// Sem relação com QuizAttempt de propósito: treino não gera tentativa, não
+// entra no cooldown de 10 min e não aparece no relatório do evento.
+model TrainingQuestion {
+  id          String   @id @default(uuid())
+  theme       String // mesma roda de tipos do quiz oficial (QUIZ_THEMES)
+  difficulty  String // facil | media | dificil
+  prompt      String
+  options     Json // string[] com as alternativas
+  answer      Int // índice da correta em `options`
+  explanation String? // uma frase explicando a resposta, mostrada no feedback
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([prompt])
+  @@index([theme, active])
+  @@map("training_questions")
+}
+
 // Tentativa registrada na bancada.
 //
 // Guardada mesmo quando erra ou o tempo estoura — é ela que sustenta o

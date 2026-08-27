@@ -14,9 +14,12 @@ function abrirBancada() {
   window.open(url, '_blank', 'noopener')
 }
 
+// "Quiz da Bancada" e "Quiz Treino" nomeados por extenso: com dois quizzes no
+// painel, uma aba chamada só "Quiz" viraria adivinhação.
 const abas = [
   { name: 'admin-metricas', label: 'Métricas' },
-  { name: 'admin-quiz', label: 'Quiz' },
+  { name: 'admin-quiz', label: 'Quiz da Bancada' },
+  { name: 'admin-quiz-treino', label: 'Quiz Treino' },
 ]
 
 const atual = computed(() => route.name)

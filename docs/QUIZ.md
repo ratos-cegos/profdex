@@ -8,6 +8,32 @@ tema; errou (ou estourou o tempo), volta em 10 minutos.
 Tudo passa por rota administrativa: `/admin/quiz/*` no servidor,
 `/admin/quiz/bancada` no app.
 
+## Os quatro passos, do ponto de vista do aluno
+
+É assim que o percurso é anunciado no app (tela inicial, "Como Funciona"):
+
+1. **Encontre o estande ProfDex** — a mesa do time no evento. É onde a bancada
+   fica aberta o dia inteiro.
+2. **Rode o quiz com perguntas sobre o curso** — uma pergunta, respondida na
+   bancada com um administrador ao lado. Acertou, ganhou.
+3. **Receba o QR** — no acerto, um QR de captura é sorteado da pilha do estande.
+4. **Capture!** — o aluno lê o QR no scanner do app, e a prova é validada pelo
+   servidor antes de a captura valer.
+
+Do lado de dentro, esses quatro passos correspondem às quatro etapas da tela da
+bancada: **matrícula → tema → questão de 60s → resultado** (ver
+`AdminQuizBoothView.vue`), com a matrícula pedida a cada rodada porque quem
+responde muda o tempo todo.
+
+> ⚠️ **Divergência a resolver.** O passo 3 acima descreve o QR como **sorteado
+> da pilha, podendo sair qualquer professor de qualquer tipo**. O servidor, no
+> entanto, devolve em `POST /admin/quiz/answer` a lista `professores` **filtrada
+> pelo tema da questão** (`professoresDoTema`), e o resto deste documento parte
+> dessa premissa — inclusive a seção "Por que tema". As duas coisas não podem
+> valer ao mesmo tempo: ou o QR é do tema, ou é sorteado. Enquanto a decisão de
+> produto não for tomada, vale o que o operador faz na mesa — o gate é humano e
+> o servidor não amarra a captura ao acerto de qualquer forma.
+
 ## Por que "tema"
 
 Os temas do quiz **são** os tipos da roda de batalha
@@ -89,10 +115,57 @@ acertando, `quiz_correct` (+25 pontos). Ambos são **registrados pelo
 servidor** — estão na lista de eventos que a ingestão do app recusa, ver
 [METRICAS.md](./METRICAS.md).
 
+## Quiz Treino: dois bancos, separados de propósito
+
+O aluno também pode praticar sozinho no celular, em `/quiz/treino`. O treino
+**não pontua, não captura e não entra no cooldown** — e é justamente por isso
+que ele pode devolver o gabarito junto com a pergunta, corrigindo no aparelho
+sem ida ao servidor.
+
+Isso só é seguro porque os dois bancos são **tabelas fisicamente separadas**:
+
+| | Bancada (oficial) | Treino |
+|---|---|---|
+| Tabela | `quiz_questions` | `training_questions` |
+| Arquivo-fonte | `prisma/quiz-questions.ts` | `prisma/training-questions.ts` |
+| Seed | `npm run db:seed-quiz` | `npm run db:seed-quiz-treino` |
+| Gabarito sai do servidor? | **Nunca** antes da hora | Sim, junto com a questão |
+| Registra tentativa | `quiz_attempts` | Nada |
+| Revisão do conteúdo | Humana, questão por questão | Por amostragem |
+
+⚠️ **A separação é a única coisa que protege o quiz do evento.** Se uma questão
+oficial saísse pela rota de treino, qualquer aluno logado baixaria o gabarito
+inteiro em 9 requisições e acertaria tudo na bancada sem saber o conteúdo — que
+é exatamente o que o embaralhamento das alternativas já tenta evitar.
+
+Por isso não existe coluna `origin` numa tabela só: um `where` esquecido em
+qualquer consulta futura reabriria o buraco. Com tabelas distintas, não há
+questão oficial ao alcance da rota de treino para vazar.
+
+Três testes guardam isso, e não devem ser afrouxados:
+
+- `quiz-practice.service.spec.ts` — a rota de treino nunca toca `quizQuestion`,
+  e um tema sem questões de treino dá 404 em vez de cair no banco oficial;
+- `quiz.service.spec.ts` — a bancada nunca sorteia de `trainingQuestion`;
+- `training-questions.spec.ts` — nenhum enunciado do banco de treino coincide
+  com um do oficial (a unicidade do Prisma é por tabela, então essa colisão
+  passaria em silêncio no seed).
+
+Para ampliar o banco de treino:
+
+```bash
+ANTHROPIC_API_KEY=... npm run gen:quiz-treino               # todos os temas
+ANTHROPIC_API_KEY=... npm run gen:quiz-treino -- --tema=redes --quantidade=20
+```
+
+O script (`scripts/gerar-questoes-treino.ts`) valida formato, recusa duplicatas
+e escreve `prisma/training-questions.ts`. Revise por amostragem antes de semear.
+
 ## Operação
 
 ```bash
-npm run db:seed-quiz      # popula/atualiza as 90 questões (idempotente)
+npm run db:seed-quiz            # popula/atualiza as 90 questões oficiais (idempotente)
+npm run db:seed-quiz-treino     # popula/atualiza as 135 questões de treino
 npm run db:set-admin -- <matricula>   # quem pode abrir a bancada
 ```
 

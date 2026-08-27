@@ -26,6 +26,12 @@ function createSubject() {
       findMany: jest.fn().mockResolvedValue([QUESTION]),
       groupBy: jest.fn().mockResolvedValue([]),
     },
+    // Espelho do mock do treino: se a bancada algum dia ler daqui, o aluno que
+    // treinou reconhece a pergunta e o efeito é o mesmo de vazar o gabarito.
+    trainingQuestion: {
+      findMany: jest.fn().mockResolvedValue([]),
+      groupBy: jest.fn().mockResolvedValue([]),
+    },
     quizAttempt: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
@@ -48,6 +54,17 @@ function createSubject() {
 }
 
 describe('QuizService', () => {
+  it('nunca sorteia questão do banco de treino', async () => {
+    // O treino é livre e sem supervisão: se a bancada puder cair numa questão
+    // de treino, o aluno que praticou já viu a pergunta e a resposta.
+    const { prisma, service } = createSubject();
+
+    await service.start('202312345', 'banco');
+
+    expect(prisma.trainingQuestion.findMany).not.toHaveBeenCalled();
+    expect(prisma.quizQuestion.findMany).toHaveBeenCalled();
+  });
+
   it('never sends the answer key with the question', async () => {
     const { service } = createSubject();
 

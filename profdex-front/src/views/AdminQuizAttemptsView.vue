@@ -2,7 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
-import { TYPE_CYCLE, getType } from '../data/types'
+import TypeIcon from '../components/TypeIcon.vue'
+import { TYPE_CYCLE, getType, legibleColor } from '../data/types'
 
 const router = useRouter()
 
@@ -80,8 +81,8 @@ const porTema = computed(() => {
   return TYPE_CYCLE.map((t) => ({
     id: t.id,
     label: t.label,
-    icon: t.icon,
     color: t.color,
+    corIcone: legibleColor(t.color),
     ...(mapa.get(t.id) ?? { tentativas: 0, acertos: 0, taxa: null }),
   }))
 })
@@ -153,9 +154,9 @@ const quando = (iso) =>
             v-for="t in porTema"
             :key="t.id"
             class="tema"
-            :style="{ '--cor': t.color }"
+            :style="{ '--cor': t.color, '--cor-icone': t.corIcone }"
           >
-            <span class="tema__icone">{{ t.icon }}</span>
+            <TypeIcon class="tema__icone" :type="t.id" :size="18" />
             <span class="tema__nome">{{ t.label }}</span>
             <span class="tema__num">
               {{ t.acertos }}/{{ t.tentativas }}
@@ -420,7 +421,8 @@ const quando = (iso) =>
 }
 
 .tema__icone {
-  font-size: 16px;
+  color: var(--cor-icone);
+  flex-shrink: 0;
 }
 
 .tema__nome {

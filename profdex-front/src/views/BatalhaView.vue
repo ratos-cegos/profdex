@@ -276,9 +276,15 @@ function goBack() {
           <span class="pixel option-label">Batalha</span>
         </button>
 
-        <button class="battle-option" type="button">
-          <span class="option-icon">QZ</span>
-          <span class="pixel option-label">Quiz</span>
+        <button
+          class="battle-option"
+          type="button"
+          @click="router.push({ name: 'quiz-treino' })"
+        >
+          <span class="option-icon option-icon--arte">
+            <img class="option-icon__img" src="/icons/quiz.png" alt="" aria-hidden="true" />
+          </span>
+          <span class="pixel option-label">Quiz Treino</span>
         </button>
 
         <button

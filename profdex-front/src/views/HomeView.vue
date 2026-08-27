@@ -15,24 +15,24 @@ function start() {
 
 const steps = [
   {
-    icon: '📍',
-    title: 'Encontre os Professores',
-    desc: 'Explore o evento e encontre os professores participantes.',
+    icon: '/icons/passo1.png',
+    title: 'Encontre o Estande ProfDex',
+    desc: 'Procure a mesa do time ProfDex no evento. É de lá que sai tudo.',
   },
   {
-    icon: '🎓',
-    title: 'Ache o Professor',
-    desc: 'O app te diz quem é o professor. Encontre-o pessoalmente e responda uma pergunta corretamente.',
+    icon: '/icons/passo2.png',
+    title: 'Rode o Quiz do Curso',
+    desc: 'Na bancada, responda uma pergunta sobre o curso. Acertou, ganhou.',
   },
   {
-    icon: '🃏',
+    icon: '/icons/passo3.png',
     title: 'Receba o QR',
-    desc: 'Acertou? O professor apresenta o QR de captura protegido.',
+    desc: 'No acerto, um QR é sorteado da pilha — pode vir qualquer professor, de qualquer tipo.',
   },
   {
-    icon: '✨',
+    icon: '/icons/passo4.png',
     title: 'Capture!',
-    desc: 'Leia o QR no scanner. A prova é validada pelo servidor antes da captura.',
+    desc: 'Leia o QR no scanner do app e o professor entra na sua coleção.',
   },
 ]
 </script>
@@ -52,7 +52,7 @@ const steps = [
 
       <div class="home__steps">
         <div v-for="(step, i) in steps" :key="i" class="step-box animate-fade-in">
-          <div class="step-box__icon">{{ step.icon }}</div>
+          <img class="step-box__icon" :src="step.icon" alt="" aria-hidden="true" />
           <div class="step-box__body">
             <div class="step-box__num">{{ String(i + 1).padStart(2, '0') }}</div>
             <div class="step-box__title">{{ step.title }}</div>
@@ -103,8 +103,8 @@ const steps = [
 
 /* Eagle Ball pixel art */
 .home__ball {
-  width: 76px;
-  height: 76px;
+  width: 88px;
+  height: 88px;
 }
 
 /* Títulos do Hero */
@@ -158,9 +158,11 @@ const steps = [
 
 .step-box {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding-bottom: 12px;
+  /* Centralizado: com o icone a 56px e a coluna de texto em ~64px, ancorar no
+     topo deixava o desenho "subindo" em relacao ao bloco de texto. */
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
   border-bottom: 2px dashed var(--surface-border);
 }
 
@@ -168,9 +170,21 @@ const steps = [
   border-bottom: none;
 }
 
+/* Caixa de tamanho FIXO com `object-fit: contain`, e nao largura livre.
+   As quatro artes vao de 0.73 a 1.34 de proporcao: com a largura solta, o
+   passo4 ocupava ~41px e o passo2 ~75px, e a coluna de texto comecava 34px
+   mais a direita em umas linhas do que em outras — visivel numa lista
+   vertical. A caixa fixa alinha o texto; o `contain` garante que nenhuma arte
+   seja esticada ou cortada, so centralizada dentro dela.
+   76x56 comporta a mais larga na altura cheia. */
 .step-box__icon {
-  font-size: 24px;
+  width: 76px;
+  height: 56px;
   flex-shrink: 0;
+  object-fit: contain;
+  image-rendering: pixelated;
+  user-select: none;
+  pointer-events: none;
 }
 
 .step-box__num {
@@ -192,6 +206,20 @@ const steps = [
   font-size: 9px;
   color: var(--text-muted);
   line-height: 1.6;
+}
+
+/* Aparelhos estreitos (abaixo do iPhone SE/mini): o icone cede alguns pixels
+   para a descricao nao quebrar em linhas de duas palavras. */
+@media (max-width: 359px) {
+  .step-box__icon {
+    width: 64px;
+    height: 48px;
+  }
+
+  .home__ball {
+    width: 76px;
+    height: 76px;
+  }
 }
 
 /* Botão Vermelho */

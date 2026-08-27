@@ -473,7 +473,7 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
  * viraria "[object Object]" como alternativa na tela da bancada, e o operador
  * descobriria isso na frente do aluno.
  */
-function lerAlternativas(value: Prisma.JsonValue): string[] {
+export function lerAlternativas(value: Prisma.JsonValue): string[] {
   if (
     !Array.isArray(value) ||
     value.length < 2 ||
@@ -490,7 +490,7 @@ function lerAlternativas(value: Prisma.JsonValue): string[] {
  * A fila da bancada vê a mesma questão várias vezes ao longo do dia; sem
  * embaralhar, decorar "é a segunda" resolveria o quiz sem saber o conteúdo.
  */
-function embaralhar(
+export function embaralhar(
   options: string[],
   answer: number,
 ): { options: string[]; correctIndex: number } {

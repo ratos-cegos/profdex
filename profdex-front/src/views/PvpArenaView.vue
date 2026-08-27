@@ -5,6 +5,7 @@ import BattleHpBar from '../components/BattleHpBar.vue'
 import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
 import { useBattleStore } from '../stores/battle'
 import { spriteUrlForProfessor } from '../data/professorSprites'
+import TypeIcon from '../components/TypeIcon.vue'
 import { getType } from '../data/types'
 
 // Arena PvP: o servidor resolve tudo; esta tela só envia a intenção de golpe
@@ -264,7 +265,8 @@ onUnmounted(() => clock && clearInterval(clock))
         >
           <span class="pixel pvp-move__name">{{ move.name }}</span>
           <span class="pvp-move__meta">
-            {{ getType(move.type)?.icon }} {{ move.power ? `${move.power}` : move.raw }}
+            <TypeIcon :type="move.type" :size="12" />
+            {{ move.power ? `${move.power}` : move.raw }}
           </span>
         </button>
       </div>
@@ -437,6 +439,11 @@ onUnmounted(() => clock && clearInterval(clock))
 }
 
 .pvp-move__meta {
+  /* O icone virou elemento e precisa alinhar com o numero ao lado. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   font-size: 11px;
   color: var(--text-muted);
 }
