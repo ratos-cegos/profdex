@@ -55,6 +55,7 @@ export default defineConfig({
     // duas sobem juntas em `npm run dev:all` na raiz do monorepo. O app repassa
     // /landing para cá em dev (ver profdex-front/vite.config.js).
     port: 5174,
+    host: true,
     open: false,
   },
   build: {

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import api from '../services/api'
 import BottomNav from '../components/BottomNav.vue'
+import AppHeader from '../components/AppHeader.vue'
 import PointsLeaderboard from '../components/PointsLeaderboard.vue'
 import TopTabs from '../components/TopTabs.vue'
 
@@ -66,10 +67,7 @@ onMounted(() => carregar(1))
 
 <template>
   <div class="ranking-screen">
-    <header class="ranking-header">
-      <span class="pixel ranking-header__label">TOP TREINADORES</span>
-      <p class="pixel ranking-header__title">RANKING</p>
-    </header>
+    <AppHeader title="RANKING" subtitle="TOP TREINADORES"><template #left><span aria-hidden="true">🏆</span></template></AppHeader>
 
     <main class="ranking-page page">
       <TopTabs />

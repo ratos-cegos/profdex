@@ -45,7 +45,7 @@ const { active: creditsActive } = useSectionActive('creditos')
           {{ nav.credits }}
         </a>
 
-        <PixelButton :href="APP_LOGIN_URL" external>{{ nav.cta }}</PixelButton>
+        <PixelButton :href="APP_LOGIN_URL">{{ nav.cta }}</PixelButton>
       </div>
     </nav>
   </header>

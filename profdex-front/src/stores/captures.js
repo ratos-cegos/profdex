@@ -63,6 +63,9 @@ export const useCapturesStore = defineStore('captures', () => {
     }
 
     // Combinações mais simples primeiro, como na tiragem dos QRs.
+    for (const group of grupos.values()) {
+      group.items.sort((a, b) => (b.stars ?? 0) - (a.stars ?? 0))
+    }
     return [...grupos.values()].sort(
       (a, b) => a.types.length - b.types.length || a.typeKey.localeCompare(b.typeKey),
     )

@@ -27,8 +27,23 @@ export function useBattle({ player, enemy }) {
 
   const enemyHit = ref(false)
   const playerHit = ref(false)
+  const playerFainted = ref(false)
+  const enemyFainted = ref(false)
   const playerStatus = ref('')
   const enemyStatus = ref('')
+  const playerFeedback = ref([])
+  const enemyFeedback = ref([])
+  let feedbackId = 0
+  let lastDamageTarget = 'enemy'
+
+  function showFeedback(target, feedback) {
+    const list = target === 'player' ? playerFeedback : enemyFeedback
+    const item = { id: ++feedbackId, offset: (feedbackId % 5 - 2) * 12, ...feedback }
+    list.value.push(item)
+    setTimeout(() => {
+      list.value = list.value.filter((entry) => entry.id !== item.id)
+    }, 1000)
+  }
 
   const isOver = computed(() => ['victory', 'defeat', 'fled'].includes(phase.value))
 
@@ -52,9 +67,13 @@ export function useBattle({ player, enemy }) {
           await delay(850)
           break
         case 'damage': {
+          lastDamageTarget = ev.target
+          showFeedback(ev.target, { amount: ev.amount, kind: 'dano' })
           const flag = hitFlag(ev.target)
           flag.value = true
           syncHp()
+          if (ev.target === 'player' && playerHp.value <= 0) playerFainted.value = true
+          if (ev.target === 'enemy' && enemyHp.value <= 0) enemyFainted.value = true
           await delay(450)
           flag.value = false
           message.value = `Causou ${ev.amount} de dano!`
@@ -62,6 +81,7 @@ export function useBattle({ player, enemy }) {
           break
         }
         case 'heal':
+          showFeedback(ev.target, { amount: ev.amount, kind: 'cura' })
           syncHp()
           await delay(600)
           break
@@ -70,6 +90,13 @@ export function useBattle({ player, enemy }) {
           await delay(300)
           break
         case 'effectiveness':
+          showFeedback(lastDamageTarget, {
+            kind: ev.level.startsWith('super') ? 'critico' : 'dano',
+            label: {
+              super4: 'DEVASTADOR! ×4', super: 'SUPER EFICAZ!',
+              weak: 'POUCO EFICAZ…', weak4: 'RESISTIU ×¼',
+            }[ev.level],
+          })
           message.value = {
             super4: 'Foi devastador! (×4)',
             super: 'Foi super eficaz!',
@@ -79,6 +106,8 @@ export function useBattle({ player, enemy }) {
           await delay(800)
           break
         case 'faint':
+          if (ev.target === 'player') playerFainted.value = true
+          if (ev.target === 'enemy') enemyFainted.value = true
           syncHp()
           await delay(300)
           break
@@ -104,6 +133,8 @@ export function useBattle({ player, enemy }) {
   }
 
   function start() {
+    playerFainted.value = false
+    enemyFainted.value = false
     phase.value = 'intro'
     message.value = `${enemy.name} apareceu para o duelo!`
     setTimeout(() => {
@@ -153,8 +184,12 @@ export function useBattle({ player, enemy }) {
     message,
     enemyHit,
     playerHit,
+    playerFainted,
+    enemyFainted,
     playerStatus,
     enemyStatus,
+    playerFeedback,
+    enemyFeedback,
     isOver,
     start,
     useMove,

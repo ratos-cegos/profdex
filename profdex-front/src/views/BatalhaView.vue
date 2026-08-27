@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
+import AppHeader from '../components/AppHeader.vue'
 import TopTabs from '../components/TopTabs.vue'
 import { useAuthStore } from '../stores/auth'
 import { useProfessorsStore } from '../stores/professors'
@@ -156,16 +157,9 @@ function goBack() {
 
 <template>
   <div class="batalha">
-    <header class="batalha__header">
-      <button class="back-btn" type="button" @click="goBack">← Voltar</button>
-      <div class="header__info">
-        <span class="pixel eyebrow">ÁREA DE BATALHA</span>
-        <h1 class="pixel header__title">
-          <!-- {{ selectedProfessor ? `Prof. ${selectedProfessor.name}` : 'BATALHA' }} -->
-            {{ selectedProfessor ? `Professores` : 'BATALHA' }}
-        </h1>
-      </div>
-    </header>
+    <AppHeader :title="selectedProfessor ? 'Professores' : 'BATALHA'" subtitle="ÁREA DE BATALHA">
+      <template #left><button class="back-btn" type="button" @click="goBack">← Voltar</button></template>
+    </AppHeader>
 
     <main class="batalha__main page">
       <TopTabs />

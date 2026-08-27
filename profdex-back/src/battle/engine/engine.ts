@@ -79,6 +79,7 @@ export interface Combatant {
   hp: number;
   moves: Move[];
   stages: Record<Stat, number>;
+  baseStats: Record<Stat, number>;
   status: CombatantStatus | null;
   shields: Shield[];
   timedBuffs: TimedBuff[]; // revertem ao expirar
@@ -95,6 +96,28 @@ export interface BattleState {
   enemy: Combatant;
 }
 
+/**
+ * Teto do bônus que um IV concede em combate.
+ *
+ * O banco guarda 0–15 por atributo (e as estrelas usam essa faixa cheia), mas
+ * o que entra na conta da batalha é reescalado para 0–IV_BONUS_MAX. Guardar a
+ * faixa larga e converter aqui deixa o balanceamento ajustável por uma
+ * constante, sem migration nem backfill.
+ *
+ * Por que 5 e não 15: o PvP é ranqueado por Elo, e a diferença entre dois
+ * jogadores tem de continuar sendo decisão, não sorte de captura. Medido com
+ * o motor real, em espelho perfeito e escolha de golpe aleatória (n=6000):
+ * com teto 15, o exemplar de IV total maior vencia 64% das partidas; com
+ * teto 5 e a ordem de turno proporcional (ver `turnOrder`), cai para ~53%.
+ * Ver `iv-balance.spec.ts`, que falha se esse número voltar a subir.
+ */
+export const IV_BONUS_MAX = 5;
+
+/** Converte um IV bruto (0–15) no bônus efetivo de combate (0–IV_BONUS_MAX). */
+export function ivBonus(iv: number | undefined): number {
+  return ((iv ?? 0) / 15) * IV_BONUS_MAX;
+}
+
 // ── Combatente ──────────────────────────────────────────────────────────────
 export function createCombatant(init: {
   name: string;
@@ -102,8 +125,10 @@ export function createCombatant(init: {
   types?: string | string[];
   maxHp?: number;
   moves?: Move[];
+  ivs?: { ivHp?: number; ivRigor?: number; ivDidatica?: number; ivRaciocinio?: number };
 }): Combatant {
-  const { name, type, types, maxHp = DEFAULT_MAX_HP, moves = [] } = init;
+  const { name, type, types, moves = [], ivs = {} } = init;
+  const maxHp = init.maxHp ?? DEFAULT_MAX_HP + Math.round(ivBonus(ivs.ivHp));
   // Aceita `types` (1–2) ou `type` (string) por compatibilidade.
   const typeList = (
     Array.isArray(types) ? types : types ? [types] : type ? [type] : []
@@ -115,6 +140,11 @@ export function createCombatant(init: {
     hp: maxHp,
     moves,
     stages: { rigor: 0, didatica: 0, raciocinio: 0 },
+    baseStats: {
+      rigor: 100 + ivBonus(ivs.ivRigor),
+      didatica: 100 + ivBonus(ivs.ivDidatica),
+      raciocinio: 100 + ivBonus(ivs.ivRaciocinio),
+    },
     status: null,
     shields: [],
     timedBuffs: [],
@@ -136,7 +166,7 @@ function stageMultiplier(stage: number): number {
 }
 
 export function effectiveStat(combatant: Combatant, stat: Stat): number {
-  return stageMultiplier(combatant.stages[stat]);
+  return ((combatant.baseStats[stat] ?? 100) / 100) * stageMultiplier(combatant.stages[stat]);
 }
 
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
@@ -148,7 +178,19 @@ export interface TurnEntry {
   move: Move | null;
 }
 
-// ── Ordem do turno: maior velocidade age primeiro (empate → cara ou coroa) ──
+// ── Ordem do turno: a velocidade PESA a moeda, não decide sozinha ───────────
+//
+// A versão anterior era um degrau (`ps > es`): quem tivesse 1 ponto a mais de
+// raciocínio agia primeiro em TODOS os turnos da partida. Como `ivRaciocinio`
+// é uniforme em 0–15, dois jogadores empatam em só 1 caso em 16 — ou seja, em
+// ~94% das partidas ranqueadas um dos lados ganhava a iniciativa permanente no
+// sorteio da captura. Medido com o motor real, isso sozinho valia 69% de
+// vitória para o lado mais rápido, com 1 único ponto de diferença.
+//
+// Como peso de moeda, a mesma diferença de 1 ponto vale ~50,7%: o atributo
+// continua importando (e os buffs/debuffs de estágio passam a importar mais,
+// porque mexem na probabilidade em vez de já estarem saturados), sem que a
+// sorte da captura decida a partida.
 export function turnOrder(
   state: BattleState,
   playerMove: Move | null,
@@ -156,7 +198,7 @@ export function turnOrder(
 ): TurnEntry[] {
   const ps = effectiveStat(state.player, STAT.RACIOCINIO);
   const es = effectiveStat(state.enemy, STAT.RACIOCINIO);
-  const playerFirst = ps === es ? chance(0.5) : ps > es;
+  const playerFirst = chance(ps / (ps + es));
   const p: TurnEntry = { key: 'player', move: playerMove };
   const e: TurnEntry = { key: 'enemy', move: enemyMove };
   return playerFirst ? [p, e] : [e, p];
@@ -406,9 +448,9 @@ function resolveAttack(
   // Efetividade combinada contra os (1–2) tipos do defensor + STAB.
   const eff = typeMultiplier(move.type, defender.types);
   const stab = attacker.types.includes(move.type) ? STAB : 1;
-  const atkMult = stageMultiplier(attacker.stages.rigor);
+  const atkMult = effectiveStat(attacker, STAT.RIGOR);
   const ignoreDef = move.effects.some((e) => e.kind === EFFECT.IGNORE_DEFENSE);
-  const defMult = ignoreDef ? 1 : stageMultiplier(defender.stages.didatica);
+  const defMult = ignoreDef ? 1 : effectiveStat(defender, STAT.DIDATICA);
 
   let bonus = stab;
   const combo = move.effects.find((e) => e.kind === EFFECT.COMBO_BONUS);

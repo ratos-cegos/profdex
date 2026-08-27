@@ -142,6 +142,21 @@ export function typeMultiplier(attackType, defenderTypes) {
   return list.reduce((mult, d) => mult * effectiveness(attackType, d), 1)
 }
 
+// Agrupa todos os tipos ofensivos pela efetividade contra uma combinação de
+// tipos. A função é pura para que cards, seletor de batalha e testes usem a
+// mesma regra da arena.
+export function fraquezasDe(defenderTypes) {
+  const groups = { fraco4: [], fraco2: [], resiste2: [], resiste4: [] }
+  for (const type of TYPE_CYCLE) {
+    const multiplier = typeMultiplier(type.id, defenderTypes)
+    if (multiplier >= 4) groups.fraco4.push(type)
+    else if (multiplier > 1) groups.fraco2.push(type)
+    else if (multiplier <= 0.25) groups.resiste4.push(type)
+    else if (multiplier < 1) groups.resiste2.push(type)
+  }
+  return groups
+}
+
 // ── Cor legível ─────────────────────────────────────────────────────────────
 // Trazidos da landing page junto com o TypeIcon. Os ícones de tipo herdam
 // `currentColor`, então quem decide a cor é quem os renderiza — e a paleta dos

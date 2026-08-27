@@ -3,44 +3,34 @@ import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BattleHpBar from '../components/BattleHpBar.vue'
 import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
+import DamagePopup from '../components/DamagePopup.vue'
+import MoveButton from '../components/MoveButton.vue'
 import { useBattle } from '../composables/useBattle.js'
 import { openBackCamera } from '../composables/useBackCamera.js'
 import { useProfessorsStore } from '../stores/professors'
 import { buildMoveset } from '../data/moves.js'
-import {
-  typesForProfessor,
-  PROFESSOR_TYPES,
-  PLAYER_KEY,
-} from '../data/professorTypes.js'
-import {
-  ehPixelArt,
-  PLAYER_SPRITE_URL,
-  spriteUrlForProfessor,
-} from '../data/professorSprites.js'
+import { typesForProfessor, PROFESSOR_TYPES, PLAYER_KEY } from '../data/professorTypes.js'
+import { ehPixelArt, PLAYER_SPRITE_URL, spriteUrlForProfessor } from '../data/professorSprites.js'
+import { TREINO_ENEMY_FALLBACK_NAME, TREINO_ENEMY_KEY } from '../data/treino.js'
 
 const MAX_HP = 120
 
 const router = useRouter()
 const store = useProfessorsStore()
 
-// Professor inimigo: FIXO no Gustavo por enquanto — a arena sempre abre a
-// batalha contra ele, independente do professor que veio em /arena/:id. É o
-// único com pixel art nas duas orientações, então é ele que a tela de teste
-// mostra: de frente ao fundo (oponente) e de costas em primeiro plano (jogador).
-// Para voltar a usar o professor da rota, troque o `ENEMY_KEY` por
-// `route.params.id` (o findByKey aceita UUID, slug e nome) e restaure o
-// `useRoute()` no import de vue-router.
+// Professor inimigo: FIXO (ver src/data/treino.js, que explica o porquê e é a
+// mesma fonte que o hub de treino usa para anunciar contra quem se luta — antes
+// os dois divergiam e o aluno via /arena/eron enfrentando o Gustavo).
 //
 // O `beforeEnter` da rota já carregou a lista, então dá para resolver aqui no
 // setup — a batalha inteira (tipos, golpes, modelo) deriva deste objeto, e por
 // isso ele precisa estar correto ANTES de useBattle() montar os combatentes.
 // O literal é o fallback de quando a lista não veio (backend fora do ar): os
 // dados que a batalha usa são slug e nome, então ela roda igual.
-const ENEMY_KEY = 'gustavo'
-const enemyProfessor = store.findByKey(ENEMY_KEY) || {
-  id: ENEMY_KEY,
-  name: 'Gustavo',
-  slug: ENEMY_KEY,
+const enemyProfessor = store.findByKey(TREINO_ENEMY_KEY) || {
+  id: TREINO_ENEMY_KEY,
+  name: TREINO_ENEMY_FALLBACK_NAME,
+  slug: TREINO_ENEMY_KEY,
 }
 
 // ── Realidade aumentada: DESATIVADA por enquanto. O combate acontece sempre
@@ -114,8 +104,12 @@ const {
   message,
   enemyHit,
   playerHit,
+  playerFainted,
+  enemyFainted,
   playerStatus,
   enemyStatus,
+  playerFeedback,
+  enemyFeedback,
   isOver,
   start,
   useMove,
@@ -143,45 +137,58 @@ function goBack() {
 </script>
 
 <template>
-  <main class="arena">
+  <main class="arena" :class="{ 'arena--defeat': playerFainted, 'arena--victory': enemyFainted }">
     <!-- Palco: inimigo ao fundo (de frente) e jogador em primeiro plano (de costas) -->
     <div class="arena__stage" :class="{ 'arena__stage--ar': arEnabled }">
       <!-- Fundo do combate: câmera (AR) ou o cenário do túnel binário -->
-      <video
-        v-show="arEnabled"
-        ref="camVideo"
-        class="arena__camera"
-        autoplay
-        playsinline
-        muted
-      />
+      <video v-show="arEnabled" ref="camVideo" class="arena__camera" autoplay playsinline muted />
       <BinaryTunnelScene v-if="!arEnabled" class="arena__scenario" :speed="4" />
+      <img class="arena__brand" src="/marca/logotipo-branco.png" alt="UNIFIL" />
 
-      <img
-        class="arena__model arena__model--enemy"
-        :class="{
-          'arena__model--hit': enemyHit,
-          'arena__model--pixel': ehPixelArt(enemySpriteSrc),
-        }"
-        :src="enemySpriteSrc"
-        :alt="`Prof. ${enemyProfessor.name} em batalha`"
-        decoding="async"
-      />
-      <img
-        class="arena__model arena__model--player"
-        :class="{
-          'arena__model--hit': playerHit,
-          'arena__model--pixel': ehPixelArt(playerSpriteSrc),
-        }"
-        :src="playerSpriteSrc"
-        alt="Seu personagem"
-        decoding="async"
-      />
+      <div class="arena__fighter arena__fighter--enemy">
+        <img
+          class="arena__model"
+          :class="{
+            'arena__model--hit': enemyHit,
+            'arena__model--fainted': enemyFainted,
+            'arena__model--pixel': ehPixelArt(enemySpriteSrc),
+          }"
+          :src="enemySpriteSrc"
+          :alt="`Prof. ${enemyProfessor.name} em batalha`"
+          decoding="async"
+        />
+        <DamagePopup v-for="item in enemyFeedback" :key="item.id" v-bind="item" />
+      </div>
+      <div class="arena__fighter arena__fighter--player">
+        <img
+          class="arena__model"
+          :class="{
+            'arena__model--hit': playerHit,
+            'arena__model--fainted': playerFainted,
+            'arena__model--pixel': ehPixelArt(playerSpriteSrc),
+          }"
+          :src="playerSpriteSrc"
+          alt="Seu personagem"
+          decoding="async"
+        />
+        <DamagePopup v-for="item in playerFeedback" :key="item.id" v-bind="item" />
+      </div>
     </div>
 
     <!-- HUD sobreposto ao palco -->
-    <div class="arena__hud" :class="{ 'arena__hud--player-hit': playerHit }">
+    <div
+      class="arena__hud"
+      :class="{
+        'arena__hud--player-hit': playerHit,
+        'arena__hud--defeat': playerFainted,
+        'arena__hud--victory': enemyFainted,
+      }"
+    >
       <button class="arena__back" type="button" @click="goBack">←</button>
+
+      <!-- Sem isto, um aluno passa a tarde aqui achando que sobe de Elo: a
+           tela é idêntica à do PvP e nada dizia que não valia nada. -->
+      <p class="arena__selo pixel">TREINO — NÃO VALE RANKING</p>
 
       <!-- Barra do inimigo (topo esquerdo, como no esboço) -->
       <BattleHpBar
@@ -215,19 +222,34 @@ function goBack() {
         </div>
 
         <div v-if="phase === 'player-turn'" class="battle-panel__moves">
-          <button
+          <MoveButton
             v-for="move in playerMoves"
             :key="move.id"
-            class="move-btn"
-            type="button"
-            @click="useMove(move)"
-          >
-            <span class="pixel move-btn__name">{{ move.name }}</span>
-            <span class="pixel move-btn__meta">{{ move.raw }}</span>
-          </button>
+            :move="move"
+            :opponent-types="enemyTypes"
+            @select="useMove"
+          />
         </div>
 
         <div v-else-if="isOver" class="battle-panel__end">
+          <p
+            class="pixel battle-panel__result"
+            :class="{
+              'battle-panel__result--defeat': phase === 'defeat',
+              'battle-panel__result--victory': phase === 'victory',
+            }"
+          >
+            {{
+              phase === 'defeat'
+                ? 'VOCÊ FOI DERROTADO'
+                : phase === 'victory'
+                  ? 'VOCÊ VENCEU!'
+                  : 'BATALHA ENCERRADA'
+            }}
+          </p>
+          <p class="battle-panel__treino">
+            Foi um treino: seu Elo e suas estatísticas não mudaram.
+          </p>
           <button class="btn btn-primary pixel" type="button" @click="goBack">
             {{ phase === 'victory' ? 'Vitória! Voltar' : 'Voltar' }}
           </button>
@@ -294,10 +316,29 @@ function goBack() {
 /* Sprites 2D dos combatentes. Ocupam o mesmo lugar dos antigos <model-viewer>;
    `contain` preserva a proporção da arte dentro daquela caixa. */
 .arena__model {
-  position: absolute;
-  z-index: 1;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   object-fit: contain;
+  transition:
+    filter 0.6s ease,
+    opacity 0.6s ease,
+    transform 0.6s ease;
+}
+.arena__fighter {
+  position: absolute;
+  z-index: 1;
+}
+
+.arena__brand {
+  position: absolute;
+  top: 3%;
+  right: 4%;
+  z-index: 1;
+  width: clamp(64px, 19vw, 112px);
+  height: auto;
+  opacity: 0.64;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
 }
 
 /* Pixel art ampliada sem suavização; `object-fit: contain` acima já preserva a
@@ -316,7 +357,7 @@ function goBack() {
    avançava por trás do painel de comandos, aparecendo nos vãos entre os botões.
    As faixas verticais agora não se cruzam: oponente 10%–34%, jogador 35%–71%,
    e o painel começa por volta de 72%. */
-.arena__model--enemy {
+.arena__fighter--enemy {
   top: 10%;
   left: 6%;
   width: 38%;
@@ -324,29 +365,33 @@ function goBack() {
   /* Contorno vermelho discreto: drop-shadow segue a silhueta do sprite
      (o PNG é transparente), diferente de um border/outline retangular.
      --error é o vermelho real da paleta (--red do tema é marrom). */
-  filter:
-    drop-shadow(0 0 1px var(--error))
-    drop-shadow(0 0 2px var(--error));
+  filter: drop-shadow(0 0 1px var(--error)) drop-shadow(0 0 2px var(--error));
 }
 
 /* Jogador: em primeiro plano, à direita, de costas — abaixado (mais para baixo) */
 /* Jogador à direita: a barra de HP dele é ancorada à esquerda (máx. 58% de
    largura), então o boneco ocupa a faixa livre da direita sem cobri-la. */
-.arena__model--player {
+.arena__fighter--player {
   right: 3%;
   bottom: 29%;
   width: 42%;
   height: 36%;
   /* Mesmo contorno, em azul */
-  filter:
-    drop-shadow(0 0 1px var(--ds-blue-glow))
-    drop-shadow(0 0 2px var(--ds-blue-glow));
+  filter: drop-shadow(0 0 1px var(--ds-blue-glow)) drop-shadow(0 0 2px var(--ds-blue-glow));
 }
 
 /* Flash + tremida no modelo que tomou dano */
 .arena__model--hit {
   animation: shake 0.4s ease;
   filter: brightness(1.6) saturate(0.4);
+}
+
+.arena__model--fainted,
+.arena__model--fainted.arena__model--hit {
+  animation: none;
+  filter: grayscale(1) brightness(0.6);
+  opacity: 0.75;
+  transform: translateY(8%) rotate(12deg);
 }
 
 .arena__hud {
@@ -359,7 +404,7 @@ function goBack() {
   /* só os controles recebem toque; o resto deixa girar o modelo */
 }
 
-.arena__hud>* {
+.arena__hud > * {
   pointer-events: auto;
 }
 
@@ -370,6 +415,31 @@ function goBack() {
   inset: 0;
   background: rgba(255, 107, 107, 0.25);
   pointer-events: none;
+}
+
+.arena__hud--defeat::after,
+.arena__hud--victory::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: result-pulse 2.4s ease-in-out infinite;
+}
+
+.arena__hud--defeat::after {
+  background: radial-gradient(circle at center, transparent 34%, rgba(205, 32, 32, 0.42) 100%);
+  box-shadow: inset 0 0 80px rgba(255, 48, 48, 0.48);
+}
+
+.arena__hud--victory::after {
+  background: radial-gradient(circle at center, transparent 42%, rgba(255, 209, 102, 0.22) 100%);
+  box-shadow: inset 0 0 70px rgba(255, 209, 102, 0.22);
+}
+
+@keyframes result-pulse {
+  50% {
+    opacity: 0.62;
+  }
 }
 
 .arena__back {
@@ -383,6 +453,27 @@ function goBack() {
   color: var(--text);
   border: 1px solid var(--border);
   font-size: 18px;
+}
+
+/* Logo ABAIXO da barra do inimigo, alinhado com ela: os dois ficam à esquerda,
+   e o botão de voltar ocupa a direita. Fundo opaco porque a arena é usada sob
+   luz forte e o texto fica sobre o cenário em movimento. */
+.arena__selo {
+  position: absolute;
+  /* 12px do topo + ~56px da barra (avatar 40 + 8/8 de padding) + folga. */
+  top: calc(76px + env(safe-area-inset-top));
+  left: 12px;
+  max-width: 62%;
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--unifil-gold);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.72);
+  color: var(--unifil-gold);
+  font-size: 6px;
+  line-height: 1.5;
+  letter-spacing: 0.05em;
+  pointer-events: none;
 }
 
 /* Botão de canto para alternar AR (abaixo do voltar) */
@@ -576,7 +667,9 @@ function goBack() {
   background: var(--bg-card);
   border: 2px solid var(--border);
   color: var(--text);
-  transition: transform 0.1s, border-color 0.15s;
+  transition:
+    transform 0.1s,
+    border-color 0.15s;
 }
 
 .move-btn:active {
@@ -611,5 +704,42 @@ function goBack() {
 
 .battle-panel__end {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.battle-panel__result {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* O resultado é o momento em que o aluno mais supõe ter ganhado algo. */
+.battle-panel__treino {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.battle-panel__result--defeat {
+  color: #ff9b9b;
+}
+
+.battle-panel__result--victory {
+  color: #ffd166;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arena__model,
+  .arena__model--hit,
+  .arena__hud--defeat::after,
+  .arena__hud--victory::after {
+    animation: none;
+    transition: none;
+  }
 }
 </style>

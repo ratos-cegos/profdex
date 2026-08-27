@@ -1006,12 +1006,12 @@ export function movesForTypes(types: string | string[]): Move[] {
 
 // Um "deck" jogável de 4 golpes: mistura os pools dos (1–2) tipos garantindo
 // variedade (1 defensivo/utilitário + o resto ofensivo).
-export function buildMoveset(types: string | string[], size = 4): Move[] {
+export function buildMoveset(types: string | string[], size = 4, random: () => number = Math.random): Move[] {
   const pool = movesForTypes(types);
   if (!pool.length) return [];
   const attacks = pool.filter((m) => m.category === CATEGORY.ATAQUE);
   const utils = pool.filter((m) => m.category !== CATEGORY.ATAQUE);
-  const pick = (arr: Move[], n: number) => shuffle(arr).slice(0, n);
+  const pick = (arr: Move[], n: number) => shuffle(arr, random).slice(0, n);
 
   const chosen = [
     ...pick(attacks, Math.min(attacks.length, size - 1)),
@@ -1021,13 +1021,13 @@ export function buildMoveset(types: string | string[], size = 4): Move[] {
     const rest = pool.filter((m) => !chosen.includes(m));
     chosen.push(...pick(rest, size - chosen.length));
   }
-  return shuffle(chosen).slice(0, size);
+  return shuffle(chosen, random).slice(0, size);
 }
 
-function shuffle<T>(arr: T[]): T[] {
+function shuffle<T>(arr: T[], random: () => number): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;

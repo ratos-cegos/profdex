@@ -19,6 +19,7 @@ export const EVENT_TYPES = [
   'ranking_viewed',
   'guide_opened',
   'collection_completed',
+  'foto_ar',
   'quiz_answered',
   'quiz_correct',
   'quiz_practice_answered',
@@ -76,6 +77,7 @@ export const ENGAGEMENT_POINTS: Record<EventType, number> = {
   ranking_viewed: 0,
   guide_opened: 0,
   collection_completed: 200,
+  foto_ar: 0,
   quiz_answered: 10, // encarar a bancada já vale, mesmo errando
   quiz_correct: 25, // somado ao quiz_answered
   // Treinar não pontua: é ilimitado e sem supervisão, então qualquer valor
@@ -127,6 +129,7 @@ export const INTERACTION_WEIGHTS: Record<EventType, number> = {
   ranking_viewed: 1,
   guide_opened: 1,
   collection_completed: 50,
+  foto_ar: 3,
   quiz_answered: 10,
   quiz_correct: 0, // já contado no quiz_answered
   quiz_practice_answered: 0, // treino é volume livre, não atividade do evento
@@ -160,6 +163,7 @@ export const INTERACTION_SOURCE_LABELS: Record<EventType, string> = {
   ranking_viewed: 'Ranking consultado',
   guide_opened: 'Guia consultado',
   collection_completed: 'Coleções completadas',
+  foto_ar: 'Fotos em realidade aumentada',
   quiz_answered: 'Quiz respondido na bancada',
   quiz_correct: 'Quiz acertado',
   quiz_practice_answered: 'Quiz de treino respondido',

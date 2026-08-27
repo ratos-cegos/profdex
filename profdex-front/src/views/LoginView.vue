@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { resolveApiBaseUrl } from '../services/api-base-url'
+import InstitutionalSignature from '../components/InstitutionalSignature.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -117,6 +118,7 @@ async function submit() {
         <RouterLink to="/register" class="pk-link">Cadastrar direto</RouterLink>
       </div>
     </div>
+    <InstitutionalSignature class="auth-signature" compact />
   </div>
 </template>
 
@@ -139,6 +141,10 @@ async function submit() {
   flex-direction: column;
   background-color: var(--bg-deep);
   color: var(--text-primary);
+}
+
+.auth-signature {
+  margin: -12px auto 18px;
 }
 
 /* Login institucional e recuperação de senha */

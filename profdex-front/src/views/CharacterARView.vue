@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import ARViewer from '../components/ARViewer.vue'
 import { useProfessorsStore } from '../stores/professors'
 import { modelUrlForProfessor } from '../data/professorModels.js'
+import { typeInfos, typesForProfessor } from '../data/professorTypes.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,6 +37,11 @@ const viewerConfig = computed(() => ({
   ],
 }))
 
+const photoMeta = computed(() => ({
+  name: character.value.name,
+  types: typeInfos(typesForProfessor(character.value)).map((type) => type.label),
+}))
+
 onMounted(() => {
   if (!store.professors.length) store.fetch().catch(() => {})
 })
@@ -58,7 +64,7 @@ onMounted(() => {
     </header>
 
     <section class="viewer-panel">
-      <ARViewer :config="viewerConfig" />
+      <ARViewer :config="viewerConfig" :photo-meta="photoMeta" />
     </section>
   </main>
 </template>

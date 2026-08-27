@@ -32,17 +32,36 @@ export function statusLabel(status) {
   return status ? STATUS_LABEL[status.kind] || '' : ''
 }
 
+/**
+ * Teto do bônus que um IV concede em combate. Espelha `IV_BONUS_MAX` do motor
+ * do servidor (`profdex-back/src/battle/engine/engine.ts`) — mudar aqui sem
+ * mudar lá desalinha PvE e PvP. O banco guarda 0–15; o combate usa 0–5, para
+ * a sorte da captura não decidir partida ranqueada.
+ */
+export const IV_BONUS_MAX = 5
+
+/** Converte um IV bruto (0–15) no bônus efetivo de combate (0–IV_BONUS_MAX). */
+export function ivBonus(iv) {
+  return ((iv ?? 0) / 15) * IV_BONUS_MAX
+}
+
 // ── Combatente ──────────────────────────────────────────────────────────────
-export function createCombatant({ name, type, types, maxHp = DEFAULT_MAX_HP, moves = [] }) {
+export function createCombatant({ name, type, types, maxHp, moves = [], ivs = {} }) {
   // Aceita `types` (1–2) ou `type` (string) por compatibilidade.
   const typeList = (Array.isArray(types) ? types : types ? [types] : type ? [type] : []).filter(Boolean)
+  const resolvedMaxHp = maxHp ?? DEFAULT_MAX_HP + Math.round(ivBonus(ivs.ivHp))
   return {
     name,
     types: typeList,
-    maxHp,
-    hp: maxHp,
+    maxHp: resolvedMaxHp,
+    hp: resolvedMaxHp,
     moves,
     stages: { rigor: 0, didatica: 0, raciocinio: 0 },
+    baseStats: {
+      rigor: 100 + ivBonus(ivs.ivRigor),
+      didatica: 100 + ivBonus(ivs.ivDidatica),
+      raciocinio: 100 + ivBonus(ivs.ivRaciocinio),
+    },
     status: null, // { kind, turns, power? }
     shields: [], // { mode:'block'|'reduce'|'reflect'|'evade', amount, turns }
     timedBuffs: [], // { stat, delta, turns } — revertem ao expirar
@@ -51,7 +70,7 @@ export function createCombatant({ name, type, types, maxHp = DEFAULT_MAX_HP, mov
     forceMiss: false, // próximo ataque deste combatente erra
     usage: {}, // moveId -> nº de usos (grow/accuracyGain)
     lastAttackId: null, // último ataque (repeatLast)
-    hpAtTurnStart: maxHp, // p/ undoDamage
+    hpAtTurnStart: resolvedMaxHp, // p/ undoDamage
   }
 }
 
@@ -64,18 +83,25 @@ function stageMultiplier(stage) {
 }
 
 export function effectiveStat(combatant, stat) {
-  return stageMultiplier(combatant.stages[stat])
+  return ((combatant.baseStats?.[stat] ?? 100) / 100) * stageMultiplier(combatant.stages[stat])
 }
 
 const rand = (min, max) => min + Math.random() * (max - min)
 const randint = (min, max) => Math.floor(rand(min, max + 1))
 const chance = (p) => Math.random() < p
 
-// ── Ordem do turno: maior raciocínio age primeiro (empate → jogador) ─────────
+// ── Ordem do turno: a velocidade PESA a moeda, não decide sozinha ───────────
+//
+// Idêntico ao motor do servidor (`engine.ts`), de propósito. Antes divergiam:
+// aqui o empate ia sempre para o jogador (`ps >= es`), lá era cara-ou-coroa.
+// Com o inimigo do PvE sem IVs, esse `>=` dava ao jogador a iniciativa em
+// todos os turnos — e a batalha de treino ensinava um jogo que não é o
+// ranqueado. Como o treino existe justamente para preparar para o PvP, os
+// dois motores agora resolvem a ordem da mesma forma.
 export function turnOrder(state, playerMove, enemyMove) {
   const ps = effectiveStat(state.player, STAT.RACIOCINIO)
   const es = effectiveStat(state.enemy, STAT.RACIOCINIO)
-  const playerFirst = ps >= es
+  const playerFirst = chance(ps / (ps + es))
   const p = { key: 'player', move: playerMove }
   const e = { key: 'enemy', move: enemyMove }
   return playerFirst ? [p, e] : [e, p]
@@ -280,9 +306,9 @@ function resolveAttack(state, atkKey, move, events) {
   // Efetividade combinada contra os (1–2) tipos do defensor + STAB.
   const eff = typeMultiplier(move.type, defender.types)
   const stab = attacker.types.includes(move.type) ? STAB : 1
-  const atkMult = stageMultiplier(attacker.stages.rigor)
+  const atkMult = effectiveStat(attacker, STAT.RIGOR)
   const ignoreDef = move.effects.some((e) => e.kind === EFFECT.IGNORE_DEFENSE)
-  const defMult = ignoreDef ? 1 : stageMultiplier(defender.stages.didatica)
+  const defMult = ignoreDef ? 1 : effectiveStat(defender, STAT.DIDATICA)
 
   let bonus = stab
   if (move.effects.some((e) => e.kind === EFFECT.COMBO_BONUS) && hasFieldEffect(state)) {

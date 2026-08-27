@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
+import EstadoErro from '../components/EstadoErro.vue'
 import ProfCard from '../components/ProfCard.vue'
 import { useAuthStore } from '../stores/auth.js'
 import { useProfessorsStore } from '../stores/professors.js'
@@ -43,8 +44,9 @@ function goDetails(prof) {
     <header class="profdex__header">
       <div class="header__top">
         <h1 class="pixel header__title">PROF<span>DEX</span></h1>
-        <button class="logout-btn" @click="auth.logout(); router.push({ name: 'home' })">
-          Sair
+        <button class="profile-btn" type="button" aria-label="Abrir perfil" @click="router.push({ name: 'perfil' })">
+          <span class="profile-btn__avatar" aria-hidden="true">{{ auth.user?.name?.[0]?.toUpperCase() ?? 'P' }}</span>
+          <span>{{ auth.user?.name }}</span>
         </button>
       </div>
 
@@ -72,16 +74,7 @@ function goDetails(prof) {
         <span class="pixel" style="font-size: 8px">Carregando...</span>
       </div>
 
-      <div v-else-if="loadError && !store.professors.length" class="error-state">
-        <span class="error-state__icon pixel" aria-hidden="true">!</span>
-        <p class="pixel error-state__title">SEM CONEXÃO</p>
-        <p class="error-state__copy">
-          Não foi possível carregar os professores. Verifique se o servidor está no ar.
-        </p>
-        <button class="btn btn-primary error-state__retry" type="button" @click="load">
-          <span class="pixel">TENTAR NOVAMENTE</span>
-        </button>
-      </div>
+      <EstadoErro v-else-if="loadError && !store.professors.length" message="Não foi possível carregar os professores. Verifique se o servidor está no ar." @retry="load" />
 
       <div v-else class="grid">
         <ProfCard
@@ -139,13 +132,24 @@ function goDetails(prof) {
   color: var(--yellow);
 }
 
-.logout-btn {
+.profile-btn {
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 52%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   background: rgba(0,0,0,0.25);
   color: rgba(255,255,255,0.8);
   border: 1px solid rgba(255,255,255,0.2);
   border-radius: 20px;
-  padding: 6px 14px;
-  font-size: 12px;
+  padding: 6px 10px;
+  font-size: 11px;
+  overflow: hidden;
+}
+.profile-btn > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.profile-btn__avatar { flex: 0 0 30px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--yellow); color: var(--bg-deep); font-weight: 900; }
+.profile-btn:focus-visible { outline: 2px solid white; outline-offset: 2px;
 }
 
 .header__trainer {

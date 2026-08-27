@@ -47,7 +47,7 @@ export const nav = {
   // Nome acessível do logo. Contém o texto visível ("PROFDEX"), como exige a
   // WCAG 2.5.3 — quem usa comando de voz fala o que vê.
   brandLabel: 'ProfDex — voltar ao topo',
-  credits: 'Créditos',
+  credits: 'Quem somos',
   cta: 'COMEÇAR',
 }
 
@@ -330,6 +330,7 @@ export const credits = {
 export const footer = {
   project: 'ProfDex',
   event: 'TechFil · UniFil',
+  creditsLabel: 'Sobre',
   compLabel: 'Instagram de computação',
   siteLabel: 'unifil.br',
   colophon: 'Feito por alunos, para alunos — com uma quantidade defensável de nostalgia.',

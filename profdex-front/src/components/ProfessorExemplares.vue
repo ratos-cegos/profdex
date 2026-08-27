@@ -1,0 +1,230 @@
+<script setup>
+import { computed, ref } from 'vue'
+import StarRating from './StarRating.vue'
+import TypeIcon from './TypeIcon.vue'
+import { fraquezasDe, getType } from '../data/types.js'
+const props = defineProps({
+  groups: { type: Array, default: () => [] },
+  /** A coleção não pôde ser carregada. Diferente de "não capturou nada". */
+  erro: { type: Boolean, default: false },
+})
+const filter = ref('')
+const allItems = computed(() => props.groups.flatMap((group) => group.items))
+const types = computed(() =>
+  [...new Set(allItems.value.flatMap((item) => item.types))].map(getType).filter(Boolean),
+)
+const showFilters = computed(() => allItems.value.length >= 3 && types.value.length > 1)
+const filteredGroups = computed(() =>
+  props.groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !filter.value || item.types.includes(filter.value)),
+    }))
+    .filter((group) => group.items.length),
+)
+function matchups(types) {
+  const r = fraquezasDe(types)
+  return {
+    weak: [
+      ...r.fraco4.map((t) => ({ ...t, mult: '×4' })),
+      ...r.fraco2.map((t) => ({ ...t, mult: '×2' })),
+    ],
+    resist: [
+      ...r.resiste4.map((t) => ({ ...t, mult: '×¼' })),
+      ...r.resiste2.map((t) => ({ ...t, mult: '×½' })),
+    ],
+  }
+}
+</script>
+<template>
+  <div class="copies">
+    <div v-if="showFilters" class="filters" aria-label="Filtrar exemplares por tipo">
+      <button type="button" :class="{ active: !filter }" @click="filter = ''">Todos</button
+      ><button
+        v-for="type in types"
+        :key="type.id"
+        type="button"
+        :class="{ active: filter === type.id }"
+        :style="{ '--type-color': type.color }"
+        @click="filter = type.id"
+      >
+        <TypeIcon :type="type.id" :size="12" /> {{ type.label }}
+      </button>
+    </div>
+    <p v-if="erro" class="empty">
+      Não foi possível carregar sua coleção. Verifique a conexão e tente de novo.
+    </p>
+    <p v-else-if="!allItems.length" class="empty">Nenhum exemplar capturado ainda.</p>
+    <section v-for="group in filteredGroups" :key="group.typeKey" class="group">
+      <header>
+        <span
+          v-for="typeId in group.types"
+          :key="typeId"
+          class="type"
+          :style="{ '--type-color': getType(typeId)?.color }"
+          ><TypeIcon :type="typeId" :size="12" /> {{ getType(typeId)?.label }}</span
+        >
+      </header>
+      <article v-for="(copy, index) in group.items" :key="copy.id" class="copy">
+        <div class="copy__head">
+          <span class="pixel">EXEMPLAR {{ index + 1 }}</span
+          ><StarRating :value="copy.stars" />
+        </div>
+        <div class="ivs">
+          <span>PV +{{ copy.ivHp }}</span
+          ><span>ATQ +{{ copy.ivRigor }}</span
+          ><span>DEF +{{ copy.ivDidatica }}</span
+          ><span>VEL +{{ copy.ivRaciocinio }}</span>
+        </div>
+        <div class="matchups">
+          <div>
+            <b>Fraco contra</b
+            ><span v-for="type in matchups(copy.types).weak" :key="type.id"
+              ><TypeIcon :type="type.id" :size="12" /> {{ type.mult }}</span
+            >
+          </div>
+          <div>
+            <b>Resiste a</b
+            ><span v-for="type in matchups(copy.types).resist" :key="type.id"
+              ><TypeIcon :type="type.id" :size="12" /> {{ type.mult }}</span
+            >
+          </div>
+        </div>
+        <details>
+          <summary>Ver 4 golpes</summary>
+          <ul>
+            <li v-for="move in copy.moves" :key="move.id">
+              <b>{{ move.name }}</b
+              ><span>{{ move.description }}</span>
+            </li>
+          </ul>
+        </details>
+      </article>
+    </section>
+  </div>
+</template>
+<style scoped>
+.copies {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 16px;
+}
+.filters {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.filters button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--type-color, var(--border));
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+}
+.filters button.active {
+  background: var(--type-color, var(--unifil-orange));
+  color: white;
+}
+.empty {
+  padding: 28px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.group {
+  display: grid;
+  gap: 9px;
+}
+.group header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.type {
+  padding: 4px 8px;
+  border: 1px solid var(--type-color);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--type-color) 25%, transparent);
+  font-size: 10px;
+}
+.copy {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.copy__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.copy__head > span {
+  color: var(--unifil-gold);
+  font-size: 7px;
+}
+.ivs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.ivs span {
+  padding: 5px 2px;
+  border-radius: 5px;
+  background: var(--bg-deep);
+  color: var(--text-muted);
+  font-size: 8px;
+  text-align: center;
+}
+.matchups {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.matchups > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: var(--bg-deep);
+}
+.matchups b {
+  width: 100%;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+.matchups span {
+  font-size: 10px;
+}
+details summary {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  color: var(--unifil-gold);
+  cursor: pointer;
+  font-size: 11px;
+}
+details ul {
+  display: grid;
+  gap: 7px;
+  list-style: none;
+}
+details li {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: var(--bg-deep);
+  font-size: 11px;
+}
+details li span {
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+</style>

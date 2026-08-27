@@ -15,7 +15,7 @@ const { el } = useReveal()
         <h2 id="cta-title" class="section-title">{{ finalCta.title }}</h2>
         <p class="cta__desc">{{ finalCta.desc }}</p>
 
-        <PixelButton :href="APP_LOGIN_URL" external>{{ finalCta.cta }}</PixelButton>
+        <PixelButton :href="APP_LOGIN_URL">{{ finalCta.cta }}</PixelButton>
 
         <div class="cta__domains">
           <p class="cta__domains-title">{{ finalCta.domainsIntro }}</p>

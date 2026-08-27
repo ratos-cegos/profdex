@@ -33,7 +33,7 @@ function hideBrokenImage(event) {
 </script>
 
 <template>
-  <div class="hp-panel">
+  <div class="hp-panel" :class="{ 'hp-panel--empty': percent === 0 }">
     <div v-if="avatarSrc" class="hp-panel__avatar">
       <img :src="avatarSrc" :alt="name" @error="hideBrokenImage" />
     </div>
@@ -47,7 +47,7 @@ function hideBrokenImage(event) {
       <div class="hp-panel__bar" role="progressbar" :aria-valuenow="hp" :aria-valuemax="maxHp"
         :aria-label="`HP de ${name}`">
         <span class="pixel hp-panel__hp-label">HP</span>
-        <div class="hp-panel__track">
+        <div class="hp-panel__track" :class="{ 'hp-panel__track--empty': percent === 0 }">
           <div class="hp-panel__fill" :style="{ width: percent + '%', background: barColor }" />
         </div>
       </div>
@@ -137,6 +137,16 @@ function hideBrokenImage(event) {
   border: 1px solid var(--border);
   border-radius: 4px;
   overflow: hidden;
+}
+
+.hp-panel__track--empty {
+  background: var(--error);
+  border-color: #ff8f8f;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.28);
+}
+
+.hp-panel--empty .hp-panel__numbers {
+  color: #ff9b9b;
 }
 
 .hp-panel__fill {

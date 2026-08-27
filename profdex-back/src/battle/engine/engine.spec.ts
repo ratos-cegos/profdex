@@ -29,6 +29,20 @@ describe('engine (port do battleEngine.js)', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
+  it('applies capture IVs to HP and battle stats', () => {
+    // O banco guarda 0–15, mas o combate usa 0–IV_BONUS_MAX (5): num modo
+    // ranqueado, a sorte da captura influencia, não decide. Ver iv-balance.spec.
+    const combatant = createCombatant({
+      name: 'IV',
+      types: ['logica'],
+      ivs: { ivHp: 15, ivRigor: 12, ivDidatica: 8, ivRaciocinio: 4 },
+    });
+    expect(combatant.maxHp).toBe(125); // 120 + 5
+    expect(combatant.baseStats.rigor).toBeCloseTo(104); // 12/15 * 5
+    expect(combatant.baseStats.didatica).toBeCloseTo(102.667); // 8/15 * 5
+    expect(combatant.baseStats.raciocinio).toBeCloseTo(101.333); // 4/15 * 5
+  });
+
   it('deals deterministic damage with STAB and neutral effectiveness', () => {
     jest.spyOn(Math, 'random').mockReturnValue(0.999); // variance ~1, sem crit de status
     const state = makeState();

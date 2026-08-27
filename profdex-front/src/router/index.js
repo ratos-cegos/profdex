@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useMetricsStore } from '../stores/metrics'
 import { useProfessorsStore } from '../stores/professors'
+import { goToLandingCredits } from '../services/public-links.js'
 
 // Teto para a espera do preload. O `api` não define timeout (axios usa 0 =
 // infinito), então um backend lento ou fora do ar travaria a navegação para
@@ -42,6 +43,17 @@ const router = createRouter({
       meta: { guest: true },
     },
     {
+      path: '/sobre',
+      name: 'sobre',
+      component: () => import('../views/SobreView.vue'),
+      // Compatibilidade com favoritos e links antigos. A página institucional
+      // completa agora vive no build público da landing.
+      beforeEnter: () => {
+        goToLandingCredits()
+        return false
+      },
+    },
+    {
       // Em produção o cadastro é só pelo Google: quem não tem conta entra por
       // /auth/google e cai em /completar-cadastro. A rota continua existindo
       // como redirect porque links e atalhos antigos para /register circulam.
@@ -69,6 +81,12 @@ const router = createRouter({
       path: '/scan',
       name: 'scan',
       component: () => import('../views/ScanView.vue'),
+      meta: { auth: true },
+    },
+    {
+      path: '/perfil',
+      name: 'perfil',
+      component: () => import('../views/PerfilView.vue'),
       meta: { auth: true },
     },
     {
@@ -116,6 +134,12 @@ const router = createRouter({
       path: '/ranking',
       name: 'ranking',
       component: () => import('../views/RankingView.vue'),
+      meta: { auth: true },
+    },
+    {
+      path: '/treino',
+      name: 'treino',
+      component: () => import('../views/TreinoView.vue'),
       meta: { auth: true },
     },
     {

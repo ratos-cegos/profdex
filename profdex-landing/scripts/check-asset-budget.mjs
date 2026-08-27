@@ -131,8 +131,14 @@ for (const prof of CAPTURABLE) {
 const dracoLocal = path.join(pub, 'draco', 'draco_decoder.js')
 const dracoThree = path.join(root, 'node_modules', 'three', 'examples', 'jsm', 'libs', 'draco', 'gltf', 'draco_decoder.js')
 if (existsSync(dracoLocal) && existsSync(dracoThree)) {
-  const [a, b] = await Promise.all([readFile(dracoLocal), readFile(dracoThree)])
-  if (!a.equals(b)) {
+  const [a, b] = await Promise.all([
+    readFile(dracoLocal, 'utf8'),
+    readFile(dracoThree, 'utf8'),
+  ])
+  // O checkout do Git no Windows pode converter apenas a cópia versionada
+  // para CRLF. Normalize as quebras antes de comparar e reserve a falha para
+  // diferenças funcionais reais no decoder.
+  if (a.replaceAll('\r\n', '\n') !== b.replaceAll('\r\n', '\n')) {
     erros.push(
       'public/draco/ está diferente do decodificador do three instalado.' +
         ' Recopie de node_modules/three/examples/jsm/libs/draco/gltf/.',
