@@ -1,4 +1,19 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "prisma", "**/*spec.ts"]
+  // `rootDir` fixo em src: sem ele, o TypeScript CALCULA a raiz comum dos
+  // arquivos compilados. Basta um .ts fora de src entrar na compilação para a
+  // raiz virar a do projeto e o emit migrar de `dist/main.js` para
+  // `dist/src/main.js` -- sem erro nenhum. O `CMD` da imagem aponta para
+  // `dist/main.js`, então o container sobe, aplica as migrations e morre em
+  // "Cannot find module '/app/dist/main.js'", em loop. Foi o que aconteceu em
+  // 26/08/2026 ao acrescentar `scripts/gerar-questoes-treino.ts`.
+  //
+  // Com `rootDir` explícito o mesmo erro vira uma falha ALTA no build (TS6059),
+  // antes da imagem existir, em vez de um crash-loop em produção.
+  "compilerOptions": {
+    "rootDir": "./src"
+  },
+  // `scripts/` é ferramenta de operação, rodada por ts-node no runtime (o
+  // Dockerfile copia a pasta inteira) -- nunca deve ser compilada para `dist`.
+  "exclude": ["node_modules", "test", "dist", "prisma", "scripts", "**/*spec.ts"]
 }

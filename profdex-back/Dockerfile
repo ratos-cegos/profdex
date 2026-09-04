@@ -14,6 +14,17 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
+# O `CMD` lá embaixo roda `dist/main.js`. Se o emit mudar de lugar, o build
+# continua com exit 0 e o erro só aparece como crash-loop em produção, DEPOIS
+# de as migrations já terem sido aplicadas. Aconteceu em 26/08/2026: um .ts
+# novo em `scripts/` entrou na compilação, o TypeScript recalculou a raiz comum
+# e tudo foi para `dist/src/`. Falhar aqui custa um build; falhar lá custa o ar.
+RUN test -f dist/main.js || { \
+      echo "ERRO: o build nao emitiu dist/main.js. Layout gerado:"; \
+      find dist -maxdepth 2 -name 'main.js'; \
+      exit 1; \
+    }
+
 # ---- runtime ----
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
