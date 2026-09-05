@@ -56,6 +56,9 @@ model User {
   vouchersIssued   CaptureVoucher[] @relation("VoucherEmitidoPor")
   vouchersRedeemed CaptureVoucher[] @relation("VoucherResgatadoPor")
 
+  // Tiragens de ficha geradas por esta conta (ver QrBatch).
+  qrBatches QrBatch[] @relation("QrBatchAutor")
+
   @@index([battleRating(sort: Desc)])
   @@index([engagementScore(sort: Desc)])
   @@map("users")
@@ -299,8 +302,6 @@ model Battle {
   pairKey      String    @map("pair_key")
   playerAId    String    @map("player_a_id")
   playerBId    String    @map("player_b_id")
-  professorAId String    @map("professor_a_id")
-  professorBId String    @map("professor_b_id")
   status       String // active | finished | abandoned | annulled
   winnerId     String?   @map("winner_id") // null = empate ou anulada
   ratingDeltaA Int?      @map("rating_delta_a")
@@ -308,13 +309,42 @@ model Battle {
   createdAt    DateTime  @default(now()) @map("created_at")
   finishedAt   DateTime? @map("finished_at")
 
-  playerA    User      @relation("BattlesAsPlayerA", fields: [playerAId], references: [id])
-  playerB    User      @relation("BattlesAsPlayerB", fields: [playerBId], references: [id])
-  professorA Professor @relation("BattleProfessorA", fields: [professorAId], references: [id])
-  professorB Professor @relation("BattleProfessorB", fields: [professorBId], references: [id])
+  playerA User         @relation("BattlesAsPlayerA", fields: [playerAId], references: [id])
+  playerB User         @relation("BattlesAsPlayerB", fields: [playerBId], references: [id])
+  slots   BattleSlot[]
 
   @@index([pairKey, finishedAt])
   @@map("battles")
+}
+
+// Um exemplar levado para uma batalha. Substituiu `professorAId`/`professorBId`
+// quando o PvP passou a ser time de ATÉ 3: com uma coluna por lado não havia
+// onde registrar um time, e sem linha por slot morre a pergunta que o painel do
+// evento faz ("qual professor mais jogou, qual mais venceu").
+//
+// Guarda o `captureId`, não só o professor: é o exemplar que carrega a
+// combinação de tipos, o deck e os IVs — dois Erons do mesmo aluno são
+// personagens diferentes em combate.
+//
+// `slot` é a ordem de seleção, que também é o fallback quando o jogador não
+// escolhe o lead ou quem entra depois de um nocaute.
+model BattleSlot {
+  id          String  @id @default(uuid())
+  battleId    String  @map("battle_id")
+  side        String // "a" | "b"
+  slot        Int // 0..2
+  captureId   String  @map("capture_id")
+  professorId String  @map("professor_id")
+  lead        Boolean @default(false) // entrou primeiro
+  fainted     Boolean @default(false) // caiu durante a batalha
+
+  battle    Battle    @relation(fields: [battleId], references: [id], onDelete: Cascade)
+  capture   Capture   @relation(fields: [captureId], references: [id])
+  professor Professor @relation(fields: [professorId], references: [id])
+
+  @@unique([battleId, side, slot])
+  @@index([professorId])
+  @@map("battle_slots")
 }
 
 model Professor {
@@ -327,8 +357,7 @@ model Professor {
   discoveries  Discovery[]
   captures     Capture[]
   variants     ProfessorVariant[]
-  battlesAsA   Battle[]           @relation("BattleProfessorA")
-  battlesAsB   Battle[]           @relation("BattleProfessorB")
+  battleSlots  BattleSlot[]
 
   @@map("professors")
 }
@@ -377,6 +406,31 @@ model CaptureToken {
   @@map("capture_tokens")
 }
 
+// Uma tiragem de fichas. Gerar ficha é criar direito de captura — a ação mais
+// sensível do painel — e "quem liberou isso?" precisa ser respondível sem SSH
+// no servidor, por isso é tabela e não só linha de log.
+//
+// `batch` é o mesmo identificador gravado em `CaptureToken.batch`, mas SEM FK:
+// existem tokens anteriores a este modelo, com `batch` nulo ou de tiragem feita
+// antes da tabela existir, e uma FK impediria o próprio backfill de existir.
+// `createdById` é nulo quando a tiragem veio da CLI sem `--by` — daí o `source`,
+// que distingue "gerada pelo painel" de "gerada por script" sem ambiguidade.
+model QrBatch {
+  batch       String   @id
+  createdById String?  @map("created_by_id")
+  source      String   @default("panel") // panel | cli
+  createdAt   DateTime @default(now()) @map("created_at")
+  copies      Int
+  total       Int // fichas geradas nesta tiragem
+  variantIds  String[] @map("variant_ids")
+  // SetNull: apagar um admin não pode apagar o registro de que a tiragem
+  // existiu — é esse rastro que a tabela serve para guardar.
+  createdBy User? @relation("QrBatchAutor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@map("qr_batches")
+}
+
 model Discovery {
   id           String    @id @default(uuid())
   userId       String    @map("user_id")
@@ -412,6 +466,7 @@ model Capture {
   professor    Professor         @relation(fields: [professorId], references: [id])
   variant      ProfessorVariant? @relation(fields: [variantId], references: [id])
   token        CaptureToken?     @relation(fields: [tokenId], references: [id])
+  battleSlots  BattleSlot[]
 
   @@index([userId, professorId])
   @@map("captures")

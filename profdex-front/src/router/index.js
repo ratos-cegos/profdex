@@ -209,6 +209,14 @@ const router = createRouter({
           name: 'admin-errata',
           component: () => import('../views/AdminErrataView.vue'),
         },
+        {
+          // Fichas de captura: estoque e tiragem nova. É a tela de escrita mais
+          // sensível do painel — gerar ficha é criar direito de captura — e por
+          // isso a rota HTTP tem auditoria própria (tabela qr_batches).
+          path: 'fichas',
+          name: 'admin-fichas',
+          component: () => import('../views/AdminFichasView.vue'),
+        },
       ],
     },
     {
