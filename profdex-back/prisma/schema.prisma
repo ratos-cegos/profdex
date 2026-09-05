@@ -46,6 +46,16 @@ model User {
   quizAttempts QuizAttempt[] @relation("QuizAluno")
   quizOperated QuizAttempt[] @relation("QuizOperador")
 
+  // Errata e vouchers (ver docs/QUIZ.md). Três relações de auditoria por
+  // entidade — quem abriu, quem resolveu, quem deu o check — porque a pergunta
+  // depois do evento é sempre "quem liberou isso?".
+  errataAsStudent  QuizErratum[]    @relation("ErrataAluno")
+  errataOpened     QuizErratum[]    @relation("ErrataAbertaPor")
+  errataResolved   QuizErratum[]    @relation("ErrataResolvidaPor")
+  vouchers         CaptureVoucher[] @relation("VoucherDono")
+  vouchersIssued   CaptureVoucher[] @relation("VoucherEmitidoPor")
+  vouchersRedeemed CaptureVoucher[] @relation("VoucherResgatadoPor")
+
   @@index([battleRating(sort: Desc)])
   @@index([engagementScore(sort: Desc)])
   @@map("users")
@@ -122,12 +132,74 @@ model QuizQuestion {
   active     Boolean       @default(true)
   createdAt  DateTime      @default(now()) @map("created_at")
   attempts   QuizAttempt[]
+  errata     QuizErratum[]
+
+  // Código de 4 dígitos impresso ao lado da questão na bancada. É o que o aluno
+  // dita para contestar ("a #4821 está errada"), então é PÚBLICO — e por isso
+  // sorteado, nunca derivado do id ou do gabarito.
+  code String @unique
 
   // Uma questão é identificada pelo enunciado: reexecutar o seed atualiza em
   // vez de duplicar o banco de questões.
   @@unique([prompt])
   @@index([theme, difficulty, active])
   @@map("quiz_questions")
+}
+
+// Uma contestação de questão. Nasce na bancada (o aluno reclama, o operador
+// abre) e morre no painel (o admin julga). Se procedente, vira voucher.
+//
+// `studentId` é o aluno que respondeu, não quem digitou: o operador é
+// `openedById`. Os três campos de autoria existem para responder "quem liberou
+// isso?" depois do evento e NUNCA são preenchidos pelo corpo da requisição.
+model QuizErratum {
+  id           String    @id @default(uuid())
+  questionId   String    @map("question_id")
+  studentId    String    @map("student_id")
+  attemptId    String?   @map("attempt_id") // tentativa, quando localizável
+  openedById   String    @map("opened_by_id")
+  status       String    @default("aberta") // aberta | procedente | improcedente
+  notes        String?
+  resolvedById String?   @map("resolved_by_id")
+  resolvedAt   DateTime? @map("resolved_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  question   QuizQuestion     @relation(fields: [questionId], references: [id])
+  student    User             @relation("ErrataAluno", fields: [studentId], references: [id])
+  openedBy   User             @relation("ErrataAbertaPor", fields: [openedById], references: [id])
+  resolvedBy User?            @relation("ErrataResolvidaPor", fields: [resolvedById], references: [id])
+  attempt    QuizAttempt?     @relation(fields: [attemptId], references: [id])
+  vouchers   CaptureVoucher[]
+
+  // Fila de revisão: as abertas, mais antigas primeiro.
+  @@index([status, createdAt])
+  @@index([questionId])
+  @@map("quiz_errata")
+}
+
+// Vale um QR sem responder pergunta. Emitido por errata procedente e resgatado
+// na mesa, por um operador — o voucher não captura nada sozinho, ele só
+// autoriza a entrega da ficha física.
+model CaptureVoucher {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  erratumId    String?   @map("erratum_id")
+  theme        String? // tema da questão contestada, para escolher a ficha
+  reason       String    @default("errata")
+  status       String    @default("disponivel") // disponivel | usado | cancelado
+  issuedById   String    @map("issued_by_id")
+  redeemedById String?   @map("redeemed_by_id")
+  redeemedAt   DateTime? @map("redeemed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user       User         @relation("VoucherDono", fields: [userId], references: [id])
+  issuedBy   User         @relation("VoucherEmitidoPor", fields: [issuedById], references: [id])
+  redeemedBy User?        @relation("VoucherResgatadoPor", fields: [redeemedById], references: [id])
+  erratum    QuizErratum? @relation(fields: [erratumId], references: [id])
+
+  // O sino do aluno: os disponíveis dele, e só.
+  @@index([userId, status])
+  @@map("capture_vouchers")
 }
 
 // Banco do Quiz Treino — o aluno praticando sozinho, no próprio celular.
@@ -178,9 +250,16 @@ model QuizAttempt {
   operatorId  String   @map("operator_id")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  user     User         @relation("QuizAluno", fields: [userId], references: [id])
-  operator User         @relation("QuizOperador", fields: [operatorId], references: [id])
-  question QuizQuestion @relation(fields: [questionId], references: [id])
+  // Tentativa consumida por uma questão errada, anulada por errata procedente.
+  // A linha continua existindo (é histórico e o voucher aponta para ela), mas
+  // sai do cooldown e das estatísticas — punir o aluno pelo erro do banco de
+  // questões é exatamente o que a errata existe para desfazer.
+  annulled Boolean @default(false)
+
+  user     User          @relation("QuizAluno", fields: [userId], references: [id])
+  operator User          @relation("QuizOperador", fields: [operatorId], references: [id])
+  question QuizQuestion  @relation(fields: [questionId], references: [id])
+  errata   QuizErratum[]
 
   // Consulta do cooldown: última tentativa daquele aluno naquele tema.
   @@index([userId, theme, createdAt(sort: Desc)])
@@ -318,21 +397,21 @@ model Discovery {
 // `variantId` e `tokenId` são opcionais só para as capturas anteriores a este
 // modelo, que o seed preenche (ver prisma/seed.ts).
 model Capture {
-  id          String            @id @default(uuid())
-  userId      String            @map("user_id")
-  professorId String            @map("professor_id")
-  variantId   String?           @map("variant_id")
-  tokenId     String?           @unique @map("token_id")
-  moves       String[]
-  ivHp        Int               @default(0) @map("iv_hp")
-  ivRigor     Int               @default(0) @map("iv_rigor")
-  ivDidatica  Int               @default(0) @map("iv_didatica")
-  ivRaciocinio Int              @default(0) @map("iv_raciocinio")
-  capturedAt  DateTime          @default(now()) @map("captured_at")
-  user        User              @relation(fields: [userId], references: [id])
-  professor   Professor         @relation(fields: [professorId], references: [id])
-  variant     ProfessorVariant? @relation(fields: [variantId], references: [id])
-  token       CaptureToken?     @relation(fields: [tokenId], references: [id])
+  id           String            @id @default(uuid())
+  userId       String            @map("user_id")
+  professorId  String            @map("professor_id")
+  variantId    String?           @map("variant_id")
+  tokenId      String?           @unique @map("token_id")
+  moves        String[]
+  ivHp         Int               @default(0) @map("iv_hp")
+  ivRigor      Int               @default(0) @map("iv_rigor")
+  ivDidatica   Int               @default(0) @map("iv_didatica")
+  ivRaciocinio Int               @default(0) @map("iv_raciocinio")
+  capturedAt   DateTime          @default(now()) @map("captured_at")
+  user         User              @relation(fields: [userId], references: [id])
+  professor    Professor         @relation(fields: [professorId], references: [id])
+  variant      ProfessorVariant? @relation(fields: [variantId], references: [id])
+  token        CaptureToken?     @relation(fields: [tokenId], references: [id])
 
   @@index([userId, professorId])
   @@map("captures")

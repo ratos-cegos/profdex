@@ -201,6 +201,14 @@ const router = createRouter({
           name: 'admin-quiz-treino',
           component: () => import('../views/AdminQuizTreinoView.vue'),
         },
+        {
+          // Errata: a única tela do painel que MOSTRA o gabarito. Fica aqui
+          // dentro, sob o AdminLayout, e não pode ganhar link a partir da
+          // bancada — ver o comentário da rota /admin/quiz/bancada acima.
+          path: 'errata',
+          name: 'admin-errata',
+          component: () => import('../views/AdminErrataView.vue'),
+        },
       ],
     },
     {

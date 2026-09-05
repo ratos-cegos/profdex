@@ -14,7 +14,45 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { QUIZ_QUESTIONS } from './quiz-questions';
 
+/**
+ * Sorteia códigos de 4 dígitos livres, um por questão nova.
+ *
+ * O `update` do upsert NÃO toca no código: ele está impresso na bancada e
+ * ditado pelo aluno na hora de contestar. Reexecutar o seed não pode
+ * renumerar a folha que já está na mesa.
+ *
+ * São 9000 códigos para um banco de ~180 questões — a rejeição por colisão
+ * praticamente não acontece, mas o teto existe para o seed falhar alto em vez
+ * de girar para sempre se um dia o banco encostar no limite.
+ */
+function criarSorteadorDeCodigos(usados: Set<string>) {
+  const PRIMEIRO = 1000;
+  const ULTIMO = 9999;
+  const TENTATIVAS = 200;
+
+  return function proximoCodigo(): string {
+    for (let i = 0; i < TENTATIVAS; i++) {
+      const n = PRIMEIRO + Math.floor(Math.random() * (ULTIMO - PRIMEIRO + 1));
+      const codigo = String(n);
+      if (usados.has(codigo)) continue;
+      usados.add(codigo);
+      return codigo;
+    }
+    throw new Error(
+      'Sem código de 4 dígitos livre para a questão nova. ' +
+        'O banco encostou no limite de 9000 questões?',
+    );
+  };
+}
+
 export async function seedQuiz(prisma: PrismaClient) {
+  const existentes = await prisma.quizQuestion.findMany({
+    select: { code: true },
+  });
+  const proximoCodigo = criarSorteadorDeCodigos(
+    new Set(existentes.map((q) => q.code)),
+  );
+
   for (const q of QUIZ_QUESTIONS) {
     await prisma.quizQuestion.upsert({
       where: { prompt: q.prompt },
@@ -31,6 +69,7 @@ export async function seedQuiz(prisma: PrismaClient) {
         prompt: q.prompt,
         options: q.options,
         answer: q.answer,
+        code: proximoCodigo(),
       },
     });
   }

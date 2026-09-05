@@ -20,6 +20,7 @@ const abas = [
   { name: 'admin-metricas', label: 'Métricas' },
   { name: 'admin-quiz', label: 'Quiz da Bancada' },
   { name: 'admin-quiz-treino', label: 'Quiz Treino' },
+  { name: 'admin-errata', label: 'Errata' },
 ]
 
 const atual = computed(() => route.name)

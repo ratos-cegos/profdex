@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
 import EstadoErro from '../components/EstadoErro.vue'
 import ProfCard from '../components/ProfCard.vue'
+import VoucherSino from '../components/VoucherSino.vue'
 import { useAuthStore } from '../stores/auth.js'
 import { useProfessorsStore } from '../stores/professors.js'
 
@@ -44,10 +45,14 @@ function goDetails(prof) {
     <header class="profdex__header">
       <div class="header__top">
         <h1 class="pixel header__title">PROF<span>DEX</span></h1>
-        <button class="profile-btn" type="button" aria-label="Abrir perfil" @click="router.push({ name: 'perfil' })">
-          <span class="profile-btn__avatar" aria-hidden="true">{{ auth.user?.name?.[0]?.toUpperCase() ?? 'P' }}</span>
-          <span>{{ auth.user?.name }}</span>
-        </button>
+        <div class="header__acoes">
+          <!-- Só aparece quando existe voucher para mostrar (ver VoucherSino). -->
+          <VoucherSino />
+          <button class="profile-btn" type="button" aria-label="Abrir perfil" @click="router.push({ name: 'perfil' })">
+            <span class="profile-btn__avatar" aria-hidden="true">{{ auth.user?.name?.[0]?.toUpperCase() ?? 'P' }}</span>
+            <span>{{ auth.user?.name }}</span>
+          </button>
+        </div>
       </div>
 
       <div class="header__trainer">
@@ -130,6 +135,15 @@ function goDetails(prof) {
 
 .header__title span {
   color: var(--yellow);
+}
+
+/* Sino + perfil. `min-width: 0` para o nome do treinador continuar podendo
+   encolher com reticências quando o sino aparece. */
+.header__acoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .profile-btn {

@@ -356,6 +356,9 @@ function formatarEspera(s) {
         <span class="faixa__nivel">
           {{ DIFICULDADES[sessao.question.difficulty] }}
         </span>
+        <!-- Código da questão: é por ele que o aluno contesta ("a #4821 está
+             errada"). Público de propósito — não revela nada do gabarito. -->
+        <span class="faixa__codigo">#{{ sessao.question.code }}</span>
         <span class="faixa__aluno">{{ sessao.aluno.name }}</span>
         <span class="relogio" :class="{ 'relogio--apertado': apertado }"> {{ segundos }}s </span>
       </header>
@@ -405,6 +408,10 @@ function formatarEspera(s) {
       <p v-if="!resultado.correct" class="gabarito">
         Resposta certa: <strong>{{ resultado.correctOption }}</strong>
       </p>
+
+      <!-- É aqui que o aluno descobre que discorda do gabarito, então é aqui
+           que ele precisa do número para contestar com o operador. -->
+      <p class="codigo-questao">Questão #{{ resultado.code }}</p>
 
       <p v-if="resultado.correct && resultado.professores.length" class="instrucao">
         Agora escaneie o QR Code para capturar
@@ -806,6 +813,14 @@ function formatarEspera(s) {
   letter-spacing: 1px;
 }
 
+/* Discreto: serve para o aluno ditar o número se quiser contestar, e não pode
+   competir com o enunciado nem com o cronômetro. */
+.faixa__codigo {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: clamp(10px, 1.1vw, 13px);
+  letter-spacing: 1px;
+}
+
 .faixa__aluno {
   color: rgba(255, 255, 255, 0.55);
 }
@@ -920,6 +935,13 @@ function formatarEspera(s) {
 }
 
 .gabarito,
+.codigo-questao {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: clamp(12px, 1.3vw, 16px);
+  letter-spacing: 1px;
+}
+
 .instrucao {
   margin: 0;
   max-width: 60ch;

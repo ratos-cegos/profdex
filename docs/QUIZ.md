@@ -43,7 +43,7 @@ acerta uma questão de `banco` é mandado capturar um professor de `banco`, ent�
 as duas listas precisam ser a mesma. A identidade visual (ícone, cor) vem de
 `profdex-front/src/data/types.js`, que já era a dona desses metadados.
 
-O banco de questões tem **10 por tema** (4 fáceis, 3 médias, 3 difíceis), em
+O banco de questões tem **20 por tema** (8 fáceis, 6 médias, 6 difíceis), em
 `prisma/quiz-questions.ts`.
 
 ## Fluxo
@@ -82,6 +82,39 @@ memória (um restart custa refazer a pergunta). Já a tentativa vai para
 lido do **banco**, justamente para sobreviver a um restart no meio do evento:
 em memória, a fila descobriria que basta esperar o servidor reiniciar.
 
+## Sorteio da questão
+
+O aluno **nunca recebe uma questão que já respondeu naquele tema enquanto
+houver inédita disponível**. O filtro é sobre todo o histórico dele no tema, não
+sobre uma janela das últimas N — a versão anterior evitava só as 5 mais
+recentes, e com 10 questões por tema quem passava o dia no estande reencontrava
+a primeira já na 6ª tentativa.
+
+Três regras montam o pool:
+
+1. **Já respondidas saem.** As questões vistas vêm de um `groupBy` em
+   `quiz_attempts` por `(userId, theme)`, que devolve também *quando* cada uma
+   foi vista pela última vez.
+2. **Questão aberta e abandonada conta como vista.** A tentativa só é gravada em
+   `answer`; sem isso, o aluno que desistiu (ou o tablet que travou) reencontra
+   a mesma pergunta na tentativa seguinte. O descarte fica **em memória**, num
+   mapa por aluno com TTL igual ao cooldown do tema — gravar uma `QuizAttempt`
+   de desistência seria mais durável, mas inflaria o relatório do painel e
+   puniria o aluno com 10min de espera por uma questão que ele nem leu. O
+   restart apaga os descartes, e a pior consequência é ver uma repetida.
+3. **Esgotado o banco, repete a mais antiga.** Recusar a tentativa seria pior.
+   As candidatas são ordenadas pela última vez que foram vistas e o sorteio cai
+   no **terço mais antigo**, nunca na que o aluno acabou de responder.
+
+A **dificuldade é sorteada antes da questão**, pelos pesos 4:3:3 do seed
+(`QUIZ_DIFFICULTY_MIX`), renormalizados entre as faixas que ainda têm questão no
+pool. Sortear uniformemente sobre o pool daria outra coisa: quem já respondeu as
+fáceis do tema cairia num pool quase só de difíceis, e o quiz endureceria
+sozinho justo para quem mais participou.
+
+O RNG é injetado (`QUIZ_RNG`), tanto no sorteio quanto no embaralhamento das
+alternativas — sem isso o comportamento acima não é testável.
+
 ## Cooldown
 
 10 minutos por **aluno + tema**. Enquanto corre, aquele tema aparece bloqueado
@@ -91,6 +124,63 @@ o operador não tentar à toa.
 
 Os outros 8 temas continuam liberados: o cooldown limita a repetição, não a
 participação.
+
+## Errata: quando a questão é que está errada
+
+Toda questão tem um **código de 4 dígitos** (`quiz_questions.code`), exibido na
+bancada ao lado do enunciado e repetido na tela de resultado — é lá que o aluno
+descobre que discorda do gabarito. O código é **público** e sorteado: não deriva
+do id nem da resposta, e mostrá-lo não entrega nada.
+
+O fluxo tem quatro atos e três atores:
+
+1. **Bancada.** O aluno contesta na hora. O operador abre `/admin/errata`,
+   digita o código e a matrícula, e marca a questão como questionada. O servidor
+   localiza a última tentativa daquele aluno naquela questão.
+2. **Painel.** Um admin abre a fila de revisão, vê enunciado, alternativas e
+   gabarito, corrige o que estiver errado e julga: **procedente** ou
+   **improcedente**.
+3. **Voucher.** Procedente emite um `capture_vouchers` para o aluno — vale um QR
+   sem responder outra pergunta — e **anula a tentativa**
+   (`quiz_attempts.annulled`), tirando-o do cooldown daquele tema. As duas
+   coisas na mesma transação: voucher sem anulação deixaria o aluno esperando
+   10min, anulação sem voucher o deixaria sem a compensação.
+4. **Check.** O aluno abre o sino na ProfDex, mostra o card, e o operador dá o
+   check em `/admin/errata` → Vouchers. O voucher vira `usado`, some da tela do
+   aluno, e a ficha de QR é entregue na mão.
+
+```
+POST   /api/admin/errata            { code, matricula, notes? }   Admin
+GET    /api/admin/errata?status=    fila de revisão (com gabarito) Admin
+PATCH  /api/admin/errata/:id        { status, notes? }             Admin
+PATCH  /api/admin/quiz/questions/:id  corrige enunciado/gabarito   Admin
+GET    /api/vouchers/me             os do próprio aluno            Aluno
+GET    /api/vouchers?matricula=     busca para o check             Admin
+POST   /api/vouchers/:id/redeem     dá o check (2ª vez → 409)      Admin
+```
+
+**Corrigir o gabarito não reprocessa tentativas antigas.** A compensação é
+individual e é o voucher. Reprocessar mudaria a pontuação de gente que já foi
+embora do estande, e ninguém estaria lá para explicar por quê.
+
+**Tentativa anulada some do cooldown E do relatório.** `assertForaDoCooldown`,
+o cartão do aluno, `attempts()` e `stats()` filtram `annulled: false` — manter
+a linha nas estatísticas distorceria a taxa de acerto com um erro que o próprio
+painel já reconheceu como não sendo do aluno.
+
+**Três campos de autoria, nunca vindos do cliente.** `openedById`,
+`resolvedById` e `redeemedById` saem sempre do principal da sessão. A pergunta
+depois do evento é "quem liberou isso?", e uma resposta que o cliente escolheu
+não vale nada.
+
+⚠️ **A errata mostra gabarito.** A tela vive dentro do `AdminLayout` e a bancada
+(`/admin/quiz/bancada`, virada para o aluno) **não pode ganhar link para ela**.
+É a mesma razão pela qual a bancada fica fora do layout do painel.
+
+Esta é também a **primeira escrita administrativa** do painel — até aqui o
+admin só lia (ver [METRICAS.md](./METRICAS.md)). O `AdminGuard` confere o papel
+**no banco**, não num claim do token, então revogar um administrador vale na
+hora.
 
 ## Sessão de quiz ≠ sessão do aluno
 
@@ -164,7 +254,7 @@ e escreve `prisma/training-questions.ts`. Revise por amostragem antes de semear.
 ## Operação
 
 ```bash
-npm run db:seed-quiz            # popula/atualiza as 90 questões oficiais (idempotente)
+npm run db:seed-quiz            # popula/atualiza as 180 questões oficiais (idempotente)
 npm run db:seed-quiz-treino     # popula/atualiza as 135 questões de treino
 npm run db:set-admin -- <matricula>   # quem pode abrir a bancada
 ```
@@ -179,11 +269,19 @@ fica nela o dia inteiro, e quem administra continua com o painel do outro lado.
 
 ## Limitações conhecidas
 
-- **Nada foi validado contra banco** — a migration `20260807020000_add_quiz`
-  foi escrita à mão e não foi aplicada (sem Postgres local no ar durante a
-  implementação). O que está coberto são os testes de unidade do serviço
-  (8 casos: gabarito não vaza, embaralhamento, tempo esgotado, uso único da
-  sessão, cooldown antes e depois da janela, matrícula inexistente).
+- **A migration do quiz nunca foi validada contra banco** — a
+  `20260807020000_add_quiz` foi escrita à mão e não foi aplicada (sem Postgres
+  local no ar na época). A da errata
+  (`20260904000000_add_errata_and_vouchers`) **foi**: aplicada num Postgres 16
+  descartável junto com todas as anteriores, com o backfill dos códigos
+  conferido sobre 180 questões pré-existentes (180 códigos distintos, todos em
+  1000–9999) e o `prisma migrate diff` acusando zero divergência para o schema.
+  O que está coberto além disso são os testes de unidade do serviço
+  (gabarito não vaza, embaralhamento, tempo esgotado, uso único da sessão,
+  cooldown antes e depois da janela, matrícula inexistente) mais os do sorteio,
+  que rodam com RNG fixo: nunca repetir enquanto houver inédita, repetir a mais
+  antiga quando o banco esgota, não devolver a questão abandonada e respeitar a
+  proporção de dificuldade.
 - A sessão em andamento é de processo único, como o resto do PvP. Escalar para
   mais de uma instância exige tirá-la da memória.
 - O acerto não libera tecnicamente a captura — o gate é humano, o administrador

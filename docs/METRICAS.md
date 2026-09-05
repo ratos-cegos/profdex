@@ -162,17 +162,27 @@ Métrica não pode competir com o PvP pelo servidor (ver
 
 ## Painel administrativo
 
-A área `/admin` tem navegação própria e duas seções:
+A área `/admin` tem navegação própria e estas seções:
 
 | Rota | O que é |
 |---|---|
 | `/admin/metricas` | Este documento — **somente leitura** |
 | `/admin/quiz` | Tentativas do quiz de bancada (ver [QUIZ.md](./QUIZ.md)) |
+| `/admin/quiz-treino` | Uso do Quiz Treino, contado à parte |
+| `/admin/errata` | Contestação de questão e check de voucher — **escreve** |
 | `/admin/quiz/bancada` | Quiosque do quiz, fora do layout do painel |
 
 Em métricas, todas as rotas são `GET` e o serviço não tem nenhum método de
 escrita, por desenho: ser administrador dá acesso a acompanhar números e
 **nada além do que um aluno pode fazer** sobre a conta de ninguém.
+
+A **errata é a exceção** e a primeira escrita administrativa do painel: ela
+altera questões, anula tentativas e emite vouchers. O que a mantém dentro do
+mesmo princípio é o escopo — nada ali toca cadastro, senha ou coleção do aluno,
+e todo ato fica assinado (`openedById`, `resolvedById`, `redeemedById`,
+preenchidos a partir da sessão, nunca do corpo da requisição). O `AdminGuard`
+confere o papel **no banco** a cada request, então revogar um administrador
+passa a valer na hora.
 
 Mostra:
 
