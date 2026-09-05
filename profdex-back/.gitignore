@@ -60,3 +60,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # QR Codes de captura gerados — contem tokens em texto puro
 /qr-out
+
+# Cache incremental do tsc (gerado por `tsc -p tsconfig.build.json`).
+/*.tsbuildinfo

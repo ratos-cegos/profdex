@@ -1,4 +1,8 @@
 import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+} from '../password.constants';
 
 /**
  * Dados que o aluno preenche depois de escolher a conta Google.
@@ -23,8 +27,8 @@ export class CompleteGoogleSignupDto {
   name: string;
 
   @IsString()
-  @MinLength(12)
-  @MaxLength(128)
+  @MinLength(MIN_PASSWORD_LENGTH)
+  @MaxLength(MAX_PASSWORD_LENGTH)
   password: string;
 }
 
@@ -43,7 +47,7 @@ export class ResetPasswordDto {
   token: string;
 
   @IsString()
-  @MinLength(12)
-  @MaxLength(128)
+  @MinLength(MIN_PASSWORD_LENGTH)
+  @MaxLength(MAX_PASSWORD_LENGTH)
   password: string;
 }

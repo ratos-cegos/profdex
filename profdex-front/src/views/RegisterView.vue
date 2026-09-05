@@ -2,6 +2,11 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import {
+  SENHA_CURTA_MSG,
+  SENHA_PLACEHOLDER,
+  senhaTemTamanhoMinimo,
+} from '../services/password-rules'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -14,8 +19,8 @@ const errorMsg = ref('')
 
 async function submit() {
   if (!name.value || !matricula.value || !password.value) return
-  if (password.value.length < 12) {
-    errorMsg.value = 'Senha deve ter no mínimo 12 caracteres'
+  if (!senhaTemTamanhoMinimo(password.value)) {
+    errorMsg.value = SENHA_CURTA_MSG
     return
   }
   loading.value = true
@@ -75,7 +80,7 @@ async function submit() {
           <input
             v-model="password"
             type="password"
-            placeholder="MÍNIMO 12 CARACTERES"
+            :placeholder="SENHA_PLACEHOLDER"
             autocomplete="new-password"
             class="pk-input"
           />
