@@ -13,9 +13,13 @@ Criado em **02/08/2026**. Feature para a semana tecnológica (1000+ alunos).
 > - Manual: dois navegadores/celulares logados → aba Batalha → Desafiar.
 >
 > Mapa do código: back em `profdex-back/src/battle/` (gateway Socket.IO,
-> `presence/invite/cooldown/battle-room/rating/rankings` + motor portado em
-> `engine/`); front em `stores/battle.js`, `views/BatalhaView.vue` (lobby +
-> tabs), `views/PvpPickView.vue` e `views/PvpArenaView.vue`.
+> `presence/invite/cooldown/battle-room/rating/rankings`, regras de time em
+> `team.ts` + motor portado em `engine/`); front em `stores/battle.js`,
+> `views/BatalhaView.vue` (lobby + tabs), `views/PvpPickView.vue` e
+> `views/PvpArenaView.vue`.
+>
+> **Atualização de 05/09/2026:** o formato passou a ser **time de até 3
+> exemplares**, com troca no turno e team preview. Ver "Batalha em time".
 >
 > Notas de operação:
 > - Deploy/restart **anula** batalhas ativas (`annulled`, sem pontos, sem
@@ -33,22 +37,61 @@ Criado em **02/08/2026**. Feature para a semana tecnológica (1000+ alunos).
 | Presença | **Todos os usuários logados e conectados aparecem online**, sem filtro de rede |
 | Autoridade da batalha | **Servidor autoritativo** — o motor roda no backend; o cliente só envia intenções e renderiza eventos |
 | Tema dos tiers | **Metais clássicos** (Bronze → Prata → Ouro → Platina → Diamante → Mestre) |
+| Formato | **Time de até 3 exemplares** (05/09/2026) — ver "Batalha em time" abaixo |
 
 ## Visão geral do fluxo
 
 ```
-Lobby (BatalhaView)                    Batalha (ArenaView modo PvP)
-┌─────────────────────┐   aceite   ┌──────────────┐   2 escolhas   ┌────────────┐
-│ lista de online     │──convite──▶│ seleção às   │───────────────▶│ turnos 60s │──▶ Elo + ranking
-│ (disponível/em luta)│  TTL 60s   │ cegas do prof│  (blind pick)  │ (Showdown) │
-└─────────────────────┘            └──────────────┘                └────────────┘
+Lobby (BatalhaView)                     Preparação                    Batalha
+┌─────────────────────┐   aceite   ┌──────────────┐  ┌───────────┐  ┌────────────┐
+│ lista de online     │──convite──▶│ time de até 3│─▶│ preview + │─▶│ turnos 60s │──▶ Elo
+│ (disponível/em luta)│  TTL 60s   │ (às cegas)   │  │ lead      │  │ ⇄ trocas   │
+└─────────────────────┘            └──────────────┘  └───────────┘  └────────────┘
 ```
 
-1. **Presença**: usuário logado conecta no WebSocket e aparece no lobby com status `disponivel` ou `em_batalha`.
+1. **Presença**: usuário logado conecta no WebSocket e aparece no lobby com status `disponivel` ou `em_batalha`. O lobby **não** mostra tamanho de coleção.
 2. **Convite**: A convida B. O convite expira em **60s** (timer no servidor; some dos dois lados). B aceita → nasce a batalha. Recusa/expiração apaga o convite.
-3. **Seleção**: em duas etapas — primeiro o professor, depois **qual exemplar** dele (o mesmo professor pode estar na coleção em combinações de tipos diferentes, cada uma com o seu deck). Validado no servidor contra a tabela `captures`, pelo id da captura. Escolha às cegas — um não vê o pick do outro até os dois confirmarem (evita counter-pick e dodge).
-4. **Turnos (estilo Showdown)**: os dois escolhem golpe simultaneamente; quando ambos submetem (ou estoura o timer de **60s**), o servidor resolve a rodada com o motor e emite a lista de eventos para os dois clientes animarem. Quem não escolheu não age no turno — só sofre o golpe.
-5. **Fim**: HP zerou (ou abandono) → servidor calcula Elo, persiste `Battle`, atualiza ratings e notifica os dois.
+3. **Seleção do time**: cada um monta um time de **até 3 exemplares**, às cegas. A navegação continua em duas etapas — primeiro o professor, depois **qual exemplar** dele (o mesmo professor pode estar na coleção em combinações de tipos diferentes, cada uma com o seu deck) — e uma faixa de 3 slots mostra o time em montagem. Validado no servidor contra `captures`, por `captureId`.
+4. **Team preview + lead**: com os dois times confirmados, cada jogador vê os 3 do adversário (**professor e tipos**, nunca IVs nem golpes) e escolhe quem entra primeiro, às cegas. O preview acontece **depois** da confirmação — é isso que impede que ele devolva o counter-pick que a seleção às cegas elimina.
+5. **Turnos (estilo Showdown)**: os dois escolhem **golpe ou troca** simultaneamente; quando ambos submetem (ou estoura o timer de **60s**), o servidor resolve a rodada e emite a lista de eventos. Quem não escolheu não age no turno — só sofre o golpe.
+6. **Revezamento**: quando o ativo cai e ainda há reserva vivo, a rodada pausa e quem perdeu escolhe quem entra (60s, fallback pelo próximo da ordem). Sem reserva, aquele lado perde.
+7. **Fim**: um lado ficou sem ninguém em pé, ou abandono, ou o teto de 40 turnos → servidor calcula Elo, persiste `Battle` + `battle_slots`, atualiza ratings e notifica os dois.
+
+## Batalha em time
+
+Introduzida em **05/09/2026**, substituindo o 1 contra 1. As decisões e o
+porquê de cada uma estão em `docs/tasks/10-batalha-em-time-e-painel-qr.md`; o
+essencial para mexer no código:
+
+| Regra | Como é |
+|---|---|
+| Tamanho | **Até 3**. Os times podem ter tamanhos diferentes (1v3, 2v3…) |
+| Assimetria | **Sem compensação** — nem de Elo, nem de atributo. Ter mais exemplares é a vantagem que paga a captura, que é o ponto do evento |
+| Ação do turno | **Golpe OU troca**, nunca as duas |
+| Prioridade | **A troca resolve antes de qualquer golpe**, independente de Raciocínio. Quem entra come o ataque — é esse custo que faz a troca ser decisão. Os dois trocando = ninguém ataca |
+| Repetição | Trava por **`captureId`**. Dois exemplares do mesmo professor são legítimos; o mesmo exemplar duas vezes, não |
+| Ao sair de campo | Zera `stages`, `shields`, `timedBuffs`, `regen`, `debuffImmuneTurns`, `forceMiss`, `usage`, `lastAttackId` e **confusão**. Mantém `hp`, paralisia e queimadura (`benchCombatant` em `team.ts`) |
+| Upkeep na troca | Quem trocou **não** passa por upkeep no turno: gastou o turno trocando |
+| Teto de turnos | **40**. No teto vence quem tiver mais **HP somado** (caídos contam 0); igual = empate |
+| Abandono | **Contador único** por jogador: lead, entrada pós-nocaute e turno somam na mesma conta; **3** = derrota. Ação válida zera |
+| Prazos | **60s em todas as fases** (`PHASE_TIMEOUT_MS`) |
+| Treino (bot) | **Continua 1 contra 1.** `ArenaView` e `battleEngine.js` não sabem de time |
+
+> **A composição de time é regra de SALA, não do motor.** Ela vive em
+> `src/battle/team.ts` e `battle-room.service.ts`; `engine/engine.ts` continua
+> resolvendo um combatente contra outro, e por isso a paridade com
+> `profdex-front/src/composables/battleEngine.js` segue valendo do jeito que
+> valia. A única mudança no motor foi acrescentar `switch` ao tipo
+> `BattleEvent` — evento emitido pela sala, nunca pelo motor.
+
+### Máquina de estados da sala
+
+```
+picking ──▶ preview ──▶ active ⇄ switching ──▶ done
+```
+
+`onModuleDestroy` anula `active` **e** `switching` (as duas já têm linha no
+banco). O `resync` cobre as quatro fases.
 
 ## Arquitetura
 
@@ -84,19 +127,38 @@ model User {
 
 model Battle {
   id           String    @id @default(uuid())
+  pairKey      String    @map("pair_key")        // "menor:maior" — cooldown por dupla
   playerAId    String    @map("player_a_id")
   playerBId    String    @map("player_b_id")
-  professorAId String    @map("professor_a_id")
-  professorBId String    @map("professor_b_id")
   status       String    // active | finished | abandoned | annulled
   winnerId     String?   @map("winner_id")        // null = empate/anulada
   ratingDeltaA Int?      @map("rating_delta_a")
   ratingDeltaB Int?      @map("rating_delta_b")
   createdAt    DateTime  @default(now()) @map("created_at")
   finishedAt   DateTime? @map("finished_at")
+  slots        BattleSlot[]
 
-  @@index([playerAId, playerBId, finishedAt]) // cooldown por dupla
+  @@index([pairKey, finishedAt])
   @@map("battles")
+}
+
+// Um exemplar levado para a batalha. Substituiu professorAId/professorBId
+// quando o formato virou time: com uma coluna por lado não havia onde
+// registrar um time, e sem linha por slot morre a pergunta do painel
+// ("qual professor mais jogou, qual mais venceu").
+model BattleSlot {
+  id          String  @id @default(uuid())
+  battleId    String  @map("battle_id")
+  side        String  // "a" | "b"
+  slot        Int     // 0..2 — ordem de seleção, e fallback de lead/entrada
+  captureId   String  @map("capture_id")   // o exemplar, com tipos, deck e IVs
+  professorId String  @map("professor_id")
+  lead        Boolean @default(false)
+  fainted     Boolean @default(false)
+
+  @@unique([battleId, side, slot])
+  @@index([professorId])
+  @@map("battle_slots")
 }
 ```
 
@@ -153,6 +215,18 @@ O peso dos IVs foi calibrado para que a captura **influencie sem decidir**:
 subir. Mexer em `IV_BONUS_MAX` ou na ordem de turno exige rever esse teste — e,
 se o balanceamento mudar de novo, a mesma pergunta sobre zerar o Elo volta.
 
+### Segundo reset: a virada para time (05/09/2026)
+
+A pergunta voltou, e a resposta foi a mesma. Trocar 1 contra 1 por time de até
+3 com troca é mudança maior que os IVs: partidas de antes e depois não medem o
+mesmo jogo, e somá-las no mesmo ranking é somar réguas distintas.
+
+**O Elo foi zerado de novo**, junto com a migration
+`20260905010000_add_battle_slots`, que também apaga as `battles` antigas — elas
+não têm para onde migrar, já que `professor_a_id`/`professor_b_id` saíram da
+tabela. Nada de `captures`, `capture_tokens` ou `discoveries` é tocado: a
+coleção dos alunos fica intacta.
+
 ⚠️ O motor tem duas cópias (`profdex-back/src/battle/engine/engine.ts` e
 `profdex-front/src/composables/battleEngine.js`). Elas precisam continuar
 idênticas nessas regras: divergir aqui faz a batalha de treino ensinar um jogo
@@ -170,13 +244,21 @@ que não é o ranqueado.
 | `invite:received` | S→C | `{ inviteId, from, expiresAt }` |
 | `invite:accept` / `invite:decline` | C→S | `{ inviteId }` |
 | `invite:expired` / `invite:cancelled` | S→C | `{ inviteId }` |
-| `battle:start` | S→C | `{ battleId, opponent }` → vai pra seleção |
-| `battle:pick` | C→S | `{ captureId }` (validado contra as capturas do próprio usuário) |
-| `battle:begin` | S→C | estado inicial + moveset próprio + prof do oponente |
-| `battle:move` | C→S | `{ moveId }` (validado: é seu, batalha ativa, ainda não escolheu) |
-| `battle:round` | S→C | `{ events[], hpA, hpB, deadline }` — eventos no formato do motor |
-| `battle:end` | S→C | `{ winnerId, ratingDelta, newRating, newTier }` |
-| `battle:resync` | C→S / S→C | reconexão: servidor devolve snapshot do estado |
+| `battle:start` | S→C | `{ battleId, pickDeadline, opponent }` → vai pra seleção |
+| `battle:pick` | C→S | `{ captureIds: string[] }` — 1 a 3, distintos, todos do próprio usuário |
+| `battle:pick:opponent` | S→C | `{}` — o rival confirmou o time (nunca o quê) |
+| `battle:preview` | S→C | `{ deadline, you: { team[] }, foe: { name, team[] } }` — o time do rival vem **sem** `captureId`, `moves` nem IVs |
+| `battle:lead` | C→S | `{ captureId }` — quem entra primeiro |
+| `battle:lead:opponent` | S→C | `{}` — o rival escolheu o lead |
+| `battle:begin` | S→C | estado inicial + moveset próprio + os dois times |
+| `battle:move` | C→S | `{ moveId }` (validado: é do ativo, batalha ativa, ainda não agiu) |
+| `battle:switch` | C→S | `{ captureId }` — troca no turno; alternativa ao golpe |
+| `battle:move:opponent` | S→C | `{}` — o rival agiu (golpe ou troca, sem dizer qual) |
+| `battle:round` | S→C | `{ turn, deadline, events[], you, foe }` — eventos no formato do motor |
+| `battle:faint` | S→C | `{ deadline, youChoose, events[], you, foe }` — o ativo caiu; `youChoose` diz quem escolhe |
+| `battle:enter` | C→S | `{ captureId }` — quem entra no lugar de quem caiu |
+| `battle:end` | S→C | `{ result, reason, rating, you, foe }` |
+| `battle:resync` | C→S / S→C | reconexão: snapshot com a fase (`picking`/`preview`/`active`/`switching`) |
 
 ### REST
 
@@ -193,10 +275,10 @@ ladder pelo mesmo motivo: cadastro não é ranking.
 
 ## Frontend
 
-- **`stores/battle.js`** (Pinia): conexão WS, lista de online, convites, estado da batalha ativa.
-- **BatalhaView**: seção "Jogadores online" (status + botão convidar), toast de convite recebido com contagem regressiva de 60s, e **tabs** internas: `Batalha | Ranking` (a aba Ranking de Pokédex futura entra ao lado depois).
-- **Tela de seleção**: grid dos professores com exemplar, depois a lista de exemplares daquele professor com tipos e golpes (`GET /api/captures`) + "aguardando oponente…".
-- **ArenaView**: ganha modo `pvp` — sem IA e sem motor local; anima `battle:round` (mesmo formato que `useBattle.js` já consome), timer de 60s visível, banner "oponente está escolhendo…".
+- **`stores/battle.js`** (Pinia): conexão WS, lista de online, convites, estado da batalha ativa. Ações de batalha: `pickTeam`, `chooseLead`, `submitMove`, `switchTo`, `enterWith`.
+- **BatalhaView**: seção "Jogadores online" (status + botão convidar), toast de convite recebido com contagem regressiva de 60s, e **tabs** internas. O painel administrativo **saiu daqui** (05/09/2026) e agora mora no Perfil.
+- **PvpPickView**: cobre as duas fases da preparação. Em `picking`, a navegação de dois níveis (professor → exemplar) mais uma **faixa de 3 slots** e o botão "Confirmar". Em `preview`, os dois times lado a lado e a escolha do lead.
+- **PvpArenaView**: sem IA e sem motor local; anima `battle:round` (mesmo formato que `useBattle.js` já consome), timer de 60s visível. Ganhou o **banco de reservas** (foto + barra de HP dos dois lados), o botão **Trocar** ao lado dos golpes e o painel de **entrada após nocaute**.
 - **Ranking**: `PointsLeaderboard` deixa de usar o mock `data/ranking.js` e consome a API, exibindo tier + pontos.
 
 ## Produção e boas práticas
@@ -212,11 +294,14 @@ ladder pelo mesmo motivo: cadastro não é ranking.
 
 ## Regras de borda (defaults propostos — ajustáveis)
 
-1. **Não escolheu professor em 60s** → batalha cancelada, sem pontos, cooldown **não** consumido (ninguém pode ser punido na preparação; blind pick já elimina vantagem de dodge).
-2. **Empate** (duplo nocaute na mesma rodada, via recuo/reflexão) → `S = 0.5` para os dois no Elo; conta `battleDraws`.
-3. **Ambos abandonam** (3 turnos sem ação dos dois) → anulada, sem pontos, cooldown consumido (evita farmar cancelamento pra resetar matchup).
-4. **Mesmo professor pelos dois** → permitido (espelho); não há vantagem estrutural.
+1. **Não confirmou NENHUM exemplar em 60s** → batalha cancelada, sem pontos, cooldown **não** consumido (ninguém pode ser punido na preparação). Quem confirmou pelo menos 1 **entra com o que confirmou**: o formato já aceita times menores, então cancelar por lentidão puniria por uma regra que não existe.
+2. **Empate** (os dois times caem na mesma rodada, ou HP somado igual no teto de turnos) → `S = 0.5` para os dois no Elo; conta `battleDraws`.
+3. **Ambos abandonam** (3 faltas dos dois) → anulada, sem pontos, cooldown consumido (evita farmar cancelamento pra resetar matchup).
+4. **Mesmo professor pelos dois** → permitido (espelho); não há vantagem estrutural. **O mesmo exemplar duas vezes no próprio time**, não.
 5. **Convidar quem está `em_batalha`** → bloqueado na hora, com mensagem.
+6. **Não escolheu o lead em 60s** → entra o primeiro da ordem de seleção, e conta uma falta.
+7. **Não escolheu quem entra após nocaute em 60s** → entra o próximo vivo pela ordem, e conta uma falta.
+8. **Batalha travada em trocas** → o teto de 40 turnos encerra pelo HP somado. Sem ele, trocar não custa recurso (o motor não tem PP) e a sala ficaria aberta em memória para sempre.
 
 ## Fases de entrega (cada uma deployável e testável)
 

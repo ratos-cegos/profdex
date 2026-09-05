@@ -176,8 +176,8 @@ concorrentes → fila no pool → `P2024` (timeout de 5s) → batalhas que não 
 
 **Correções:**
 
-- Adicionar jitter ao deadline do turno: `TURN_TIMEOUT_MS + random(0..3000)` em
-  `armTurnTimer` (`battle-room.service.ts:445`). Barato e desalinha o rebanho.
+- Adicionar jitter ao deadline do turno: `PHASE_TIMEOUT_MS + random(0..3000)` em
+  `armTimer` (`battle-room.service.ts`). Barato e desalinha o rebanho.
 - Subir `connection_limit` na `DATABASE_URL` e o `pool_timeout`.
 - Trocar a transação interativa por uma sequência de `$transaction([...])` em
   batch, que não segura conexão entre as queries.

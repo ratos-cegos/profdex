@@ -57,8 +57,11 @@ mesmo travamento: o celular bloquear a tela, o aluno trocar de app por alguns
 minutos, o Wi-Fi do evento oscilar. A cadeia é esta:
 
 **1. O servidor encerra a batalha depois de 3 minutos de silêncio.**
-`TURN_TIMEOUT_MS = 60s` × `MAX_MISSED_TURNS = 3` (`battle-room.service.ts`).
-Passou disso, a sala é fechada por abandono.
+`PHASE_TIMEOUT_MS = 60s` × `MAX_MISSED_PHASES = 3` (`battle-room.service.ts`).
+Passou disso, a sala é fechada por abandono. (Os dois se chamavam
+`TURN_TIMEOUT_MS` e `MAX_MISSED_TURNS` até a batalha em time: agora há um prazo
+só para todas as fases, e o contador de faltas soma turno, lead e entrada após
+nocaute na mesma conta — ver docs/BATALHA-PVP.md.)
 
 **2. O `battle:end` é emitido para um socket que já morreu.** Enquanto a aba
 está congelada, o iOS mantém a página viva mas sem rede. O servidor emite; a

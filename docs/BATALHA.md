@@ -6,6 +6,12 @@ Documento para retomar o desenvolvimento da batalha. Última atualização: 2026
 > `ffdd103 (implementation of types and movesets)`, que substituíram o movepool
 > placeholder por um sistema real de **tipos + movesets + motor de batalha**.
 
+> ⚠️ **Este documento descreve a batalha de TREINO (contra o bot), que continua
+> 1 contra 1.** O PvP ranqueado passou a ser **time de até 3 exemplares**, com
+> troca no turno e team preview — ver `docs/BATALHA-PVP.md`. A composição de
+> time é regra de sala (`profdex-back/src/battle/team.ts`), não do motor, então
+> `battleEngine.js` e `engine.ts` continuam idênticos nas regras de combate.
+
 ## Visão geral
 
 O ProfDex é uma "Pokédex de professores": o aluno escaneia QR codes pelo campus
