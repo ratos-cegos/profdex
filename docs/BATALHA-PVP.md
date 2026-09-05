@@ -181,6 +181,14 @@ que não é o ranqueado.
 ### REST
 
 - `GET /api/rankings/battle?page=` — leaderboard paginado + posição do usuário logado (`SELECT count(*) WHERE rating > meu`).
+- `GET /api/rankings/captures?page=` — exemplares resgatados por aluno.
+- `GET /api/rankings/dex?page=` — professores **distintos** por aluno, com o percentual da dex (`dexTotal` acompanha a resposta).
+
+Os três têm o mesmo formato (`entries`, `me`, `page`, `pageSize`, `total`) e a
+mesma `PAGE_SIZE`, e são as três abas internas do `/ranking`. A diferença está
+no `me`: o de batalha marca `played`, os de coleção marcam `ranked` — nos dois
+casos, "tem posição para mostrar?". Quem nunca jogou/capturou fica fora do
+ladder pelo mesmo motivo: cadastro não é ranking.
 - `GET /api/battles/me` — histórico do usuário (futuro; barato porque `Battle` já persiste tudo).
 
 ## Frontend

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import api from '../services/api'
 import BottomNav from '../components/BottomNav.vue'
 import AppHeader from '../components/AppHeader.vue'
@@ -9,6 +9,10 @@ import TopTabs from '../components/TopTabs.vue'
 // Esta tela era um protótipo com dados fixos de `src/data/ranking.js`, enquanto o
 // ranking real (Elo de PvP) vivia como aba interna da BatalhaView. Agora existe
 // um ranking só: o de verdade, aqui, alcançado pela aba superior.
+//
+// As abas ABAIXO são internas desta tela e não têm relação com o TopTabs, que é
+// a navegação externa (Batalha ↔ Ranking ↔ Treino). Misturar as duas viraria
+// quatro níveis de navegação empilhados na mesma dobra.
 
 // Emblema por tier (cores/emoji seguem docs/BATALHA-PVP.md).
 const TIER_BADGE = {
@@ -20,25 +24,96 @@ const TIER_BADGE = {
   Mestre: '👑',
 }
 
-const ranking = ref(null) // { entries, me, page, pageSize, total }
-const carregando = ref(false)
-const erro = ref(null)
+// Cada aba é uma fonte de dados diferente com o MESMO formato de resposta
+// (entries + me + paginação), então só muda o endpoint e como a linha vira
+// pontuação/detalhe na lista.
+const ABAS = [
+  {
+    id: 'elo',
+    rotulo: 'ELO',
+    endpoint: '/rankings/battle',
+    unidade: 'ELO',
+    vazio: 'Ninguém pontuou ainda — vença a primeira batalha do evento!',
+    semPosicao: 'Você ainda não pontuou — desafie alguém na aba Batalha!',
+  },
+  {
+    id: 'capturas',
+    rotulo: 'CAPTURAS',
+    endpoint: '/rankings/captures',
+    unidade: 'capturas',
+    vazio: 'Ninguém capturou ainda — o primeiro QR do evento é seu!',
+    semPosicao: 'Você ainda não capturou ninguém — leia um QR no estande!',
+  },
+  {
+    id: 'dex',
+    rotulo: 'DEX',
+    endpoint: '/rankings/dex',
+    unidade: '% da dex',
+    vazio: 'Ninguém abriu a dex ainda — seja o primeiro!',
+    semPosicao: 'Você ainda não capturou ninguém — leia um QR no estande!',
+  },
+]
 
-async function carregar(pagina = 1) {
-  carregando.value = true
-  erro.value = null
-  try {
-    const { data } = await api.get('/rankings/battle', { params: { page: pagina } })
-    // Página 1 substitui; seguintes anexam ("carregar mais").
-    ranking.value =
-      pagina === 1 || !ranking.value
-        ? data
-        : { ...data, entries: [...ranking.value.entries, ...data.entries] }
-  } catch {
-    erro.value = 'Não deu para carregar o ranking. Tente de novo.'
-  } finally {
-    carregando.value = false
-  }
+// Um estado por aba, mantido depois de carregado: voltar para uma aba já vista
+// não refaz a requisição nem devolve a lista ao topo.
+const estados = ref(
+  Object.fromEntries(
+    ABAS.map((aba) => [aba.id, { dados: null, carregando: false, erro: null, rolagem: 0 }]),
+  ),
+)
+const abaAtiva = ref(ABAS[0].id)
+const conteudo = ref(null)
+
+// Uma requisição em voo por aba: sem isso, dois cliques rápidos em "CARREGAR
+// MAIS" (ou uma troca de aba durante o carregamento) anexam a mesma página duas
+// vezes.
+const emVoo = new Map()
+
+const aba = computed(() => ABAS.find((a) => a.id === abaAtiva.value))
+const estado = computed(() => estados.value[abaAtiva.value])
+const ranking = computed(() => estado.value.dados)
+
+async function carregar(abaId, pagina = 1) {
+  const chave = `${abaId}:${pagina}`
+  if (emVoo.has(chave)) return emVoo.get(chave)
+
+  const alvo = estados.value[abaId]
+  const config = ABAS.find((a) => a.id === abaId)
+  alvo.carregando = true
+  alvo.erro = null
+
+  const requisicao = api
+    .get(config.endpoint, { params: { page: pagina } })
+    .then(({ data }) => {
+      // Página 1 substitui; seguintes anexam ("carregar mais").
+      alvo.dados =
+        pagina === 1 || !alvo.dados
+          ? data
+          : { ...data, entries: [...alvo.dados.entries, ...data.entries] }
+    })
+    .catch(() => {
+      alvo.erro = 'Não deu para carregar o ranking. Tente de novo.'
+    })
+    .finally(() => {
+      alvo.carregando = false
+      emVoo.delete(chave)
+    })
+
+  emVoo.set(chave, requisicao)
+  return requisicao
+}
+
+async function trocarAba(abaId) {
+  if (abaId === abaAtiva.value) return
+
+  // A rolagem é do container da página, e cada aba tem uma lista de altura
+  // diferente — guardar por aba evita a lista nova "herdar" o scroll da antiga.
+  estados.value[abaAtiva.value].rolagem = conteudo.value?.scrollTop ?? 0
+  abaAtiva.value = abaId
+
+  if (!estados.value[abaId].dados) await carregar(abaId, 1)
+  await nextTick()
+  if (conteudo.value) conteudo.value.scrollTop = estados.value[abaId].rolagem
 }
 
 const temMais = computed(
@@ -47,41 +122,90 @@ const temMais = computed(
 
 const vazio = computed(() => ranking.value && !ranking.value.entries.length)
 
+// `me.played` é do ladder de batalha; `me.ranked`, dos de coleção. As duas
+// respondem à mesma pergunta: este aluno tem posição para mostrar?
+const noRanking = computed(() => {
+  const me = ranking.value?.me
+  return Boolean(me && (me.played ?? me.ranked))
+})
+
+/** Pontuação e detalhe de uma linha, conforme a aba. */
+function adaptar(entrada) {
+  if (abaAtiva.value === 'elo') {
+    return {
+      pontuacao: entrada.rating,
+      // Ex.: "🥉 Bronze · 1V·0D" — o emblema acompanha o nome do tier.
+      detalhe: [
+        [TIER_BADGE[entrada.tier], entrada.tier].filter(Boolean).join(' '),
+        `${entrada.wins}V·${entrada.losses}D`,
+      ].join(' · '),
+    }
+  }
+  if (abaAtiva.value === 'dex') {
+    return {
+      pontuacao: entrada.percent,
+      detalhe: `${entrada.total} de ${ranking.value?.dexTotal ?? '?'} professores`,
+    }
+  }
+  return { pontuacao: entrada.total, detalhe: null }
+}
+
 // Adapta o formato da API ao que o PointsLeaderboard consome.
 const jogadores = computed(() =>
   (ranking.value?.entries || []).map((entrada) => ({
     id: entrada.id,
     nome: entrada.name,
-    pontuacao: entrada.rating,
-    // Ex.: "🥉 Bronze · 1V·0D" — o emblema acompanha o nome do tier.
-    detalhe: [
-      [TIER_BADGE[entrada.tier], entrada.tier].filter(Boolean).join(' '),
-      `${entrada.wins}V·${entrada.losses}D`,
-    ].join(' · '),
     destaque: entrada.id === ranking.value?.me?.id,
+    ...adaptar(entrada),
   })),
 )
 
-onMounted(() => carregar(1))
+/** Linha do rodapé fixo: a posição do próprio aluno, na unidade da aba. */
+const minhaPosicao = computed(() => {
+  const me = ranking.value?.me
+  if (!me || !noRanking.value) return null
+  const { pontuacao, detalhe } = adaptar(me)
+  return {
+    position: me.position,
+    name: me.name,
+    resumo: [`${pontuacao} ${aba.value.unidade}`, detalhe].filter(Boolean).join(' · '),
+  }
+})
+
+onMounted(() => carregar(abaAtiva.value, 1))
 </script>
 
 <template>
   <div class="ranking-screen">
     <AppHeader title="RANKING" subtitle="TOP TREINADORES"><template #left><span aria-hidden="true">🏆</span></template></AppHeader>
 
-    <main class="ranking-page page">
+    <main ref="conteudo" class="ranking-page page">
       <TopTabs />
 
-      <p v-if="carregando && !ranking" class="ranking-hint">Carregando…</p>
-      <p v-else-if="erro" class="ranking-hint" role="alert">{{ erro }}</p>
-      <p v-else-if="vazio" class="ranking-hint">
-        Ninguém pontuou ainda — vença a primeira batalha do evento!
-      </p>
+      <!-- Abas INTERNAS: a mesma tela, três fontes de dados. -->
+      <div class="rank-abas" role="tablist" aria-label="Tipo de ranking">
+        <button
+          v-for="opcao in ABAS"
+          :key="opcao.id"
+          class="pixel rank-abas__btn"
+          :class="{ 'rank-abas__btn--ativa': opcao.id === abaAtiva }"
+          type="button"
+          role="tab"
+          :aria-selected="opcao.id === abaAtiva"
+          @click="trocarAba(opcao.id)"
+        >
+          {{ opcao.rotulo }}
+        </button>
+      </div>
+
+      <p v-if="estado.carregando && !ranking" class="ranking-hint">Carregando…</p>
+      <p v-else-if="estado.erro" class="ranking-hint" role="alert">{{ estado.erro }}</p>
+      <p v-else-if="vazio" class="ranking-hint">{{ aba.vazio }}</p>
 
       <PointsLeaderboard
         v-if="jogadores.length"
         :users="jogadores"
-        unidade="ELO"
+        :unidade="aba.unidade"
         :mostrar-cabecalho="false"
       />
 
@@ -89,24 +213,20 @@ onMounted(() => carregar(1))
         v-if="temMais"
         class="pixel ranking-more"
         type="button"
-        :disabled="carregando"
-        @click="carregar(ranking.page + 1)"
+        :disabled="estado.carregando"
+        @click="carregar(abaAtiva, ranking.page + 1)"
       >
-        {{ carregando ? '…' : 'CARREGAR MAIS' }}
+        {{ estado.carregando ? '…' : 'CARREGAR MAIS' }}
       </button>
 
       <!-- Sua posição, mesmo fora do topo da lista -->
       <div v-if="ranking?.me" class="rank-me">
-        <template v-if="ranking.me.played">
-          <span class="pixel rank-me__pos">#{{ ranking.me.position }}</span>
-          <span class="rank-me__name">Você · {{ ranking.me.name }}</span>
-          <span class="pixel rank-me__tier">
-            {{ TIER_BADGE[ranking.me.tier] }} {{ ranking.me.rating }} · {{ ranking.me.tier }}
-          </span>
+        <template v-if="minhaPosicao">
+          <span class="pixel rank-me__pos">#{{ minhaPosicao.position }}</span>
+          <span class="rank-me__name">Você · {{ minhaPosicao.name }}</span>
+          <span class="pixel rank-me__tier">{{ minhaPosicao.resumo }}</span>
         </template>
-        <span v-else class="rank-me__name">
-          Você ainda não pontuou — desafie alguém na aba Batalha!
-        </span>
+        <span v-else class="rank-me__name">{{ aba.semPosicao }}</span>
       </div>
     </main>
 
@@ -174,6 +294,53 @@ onMounted(() => carregar(1))
   opacity: 0.18;
   background-image: linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px);
   background-size: 100% 5px;
+}
+
+/* Segmented control das abas internas. Visualmente mais leve que o TopTabs de
+   propósito: são níveis diferentes de navegação e não podem competir. */
+.rank-abas {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+
+.rank-abas__btn {
+  min-height: 38px;
+  border: 0;
+  border-radius: calc(var(--radius) - 4px);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 8px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.rank-abas__btn--ativa {
+  background: var(--bg-surface);
+  color: var(--yellow);
+}
+
+.rank-abas__btn:focus-visible {
+  outline: 2px solid var(--unifil-gold);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .rank-abas__btn:not(.rank-abas__btn--ativa):hover {
+    color: var(--text);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rank-abas__btn {
+    transition: none;
+  }
 }
 
 .ranking-hint {

@@ -22,4 +22,22 @@ export class RankingsController {
   ) {
     return this.rankings.battleLeaderboard(req.user.id, Math.max(1, page));
   }
+
+  /** Quem resgatou mais exemplares. */
+  @Get('captures')
+  captures(
+    @Request() req: { user: { id: string } },
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+  ) {
+    return this.rankings.capturesLeaderboard(req.user.id, Math.max(1, page));
+  }
+
+  /** Quem tem mais professores DISTINTOS — o ranking de completar a dex. */
+  @Get('dex')
+  dex(
+    @Request() req: { user: { id: string } },
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+  ) {
+    return this.rankings.dexLeaderboard(req.user.id, Math.max(1, page));
+  }
 }
