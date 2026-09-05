@@ -16,32 +16,64 @@ import {
 import { buildMoveset, getMoveById, Move } from './engine/moves';
 import { typesForProfessor } from './engine/professor-types';
 import { RatingOutcome, RatingService } from './rating.service';
+import {
+  Action,
+  benchCombatant,
+  hasAlive,
+  isAlive,
+  MAX_TEAM_SIZE,
+  nextAliveIndex,
+  ownMemberView,
+  publicMemberView,
+  teamHp,
+  TeamMember,
+} from './team';
 
-export const PICK_TIMEOUT_MS = 60 * 1000;
-export const TURN_TIMEOUT_MS = 60 * 1000;
-// Turnos seguidos sem escolher = abandono (cobre rage quit e queda longa).
-export const MAX_MISSED_TURNS = 3;
+/**
+ * Um prazo só para todas as fases (seleção, preview/lead, turno, entrada após
+ * nocaute). Constantes diferentes por fase seriam mais um número para o jogador
+ * decorar e para o teste cobrir, sem ganho.
+ */
+export const PHASE_TIMEOUT_MS = 60 * 1000;
+
+/**
+ * Fases seguidas sem agir = abandono. O contador é ÚNICO por jogador: deixar o
+ * lead expirar, não escolher quem entra e não escolher golpe somam na mesma
+ * conta, e qualquer ação válida zera. Quem some do jogo sai por aqui.
+ */
+export const MAX_MISSED_PHASES = 3;
+
+/**
+ * Teto de turnos. Trocar não consome recurso (o motor não tem PP), então dois
+ * jogadores podem trocar para sempre — e a sala vive em memória, numa instância
+ * só. No teto vence quem tiver mais HP somado; empate se igual.
+ */
+export const MAX_TURNS = 40;
+
+type RoomPhase = 'picking' | 'preview' | 'active' | 'switching' | 'done';
 
 interface RoomPlayer {
   userId: string;
   name: string;
   key: CombatantKey; // 'player' = quem convidou (A) · 'enemy' = convidado (B)
-  // O exemplar escolhido, não o professor: é ele que carrega a combinação de
-  // tipos e o deck gravados na captura.
-  professor?: { id: string; slug: string; name: string };
-  captureId?: string;
-  types?: string[];
-  moves?: Move[];
-  ivs?: { ivHp: number; ivRigor: number; ivDidatica: number; ivRaciocinio: number };
-  missedTurns: number;
+  /** Até 3 exemplares, na ordem de seleção — que é o fallback de tudo. */
+  team: TeamMember[];
+  activeIndex: number;
+  /** Escolhido na fase de preview; até lá, indefinido. */
+  leadCaptureId?: string;
+  /** Está devendo escolher quem entra (fase `switching`). */
+  owesEntry: boolean;
+  /** Confirmação em voo: fecha a janela entre o `await` do banco e o time. */
+  picking?: boolean;
+  missedPhases: number;
 }
 
 interface Room {
   id: string;
-  phase: 'picking' | 'active' | 'done';
+  phase: RoomPhase;
   players: Record<CombatantKey, RoomPlayer>;
   state?: BattleState;
-  pending: Partial<Record<CombatantKey, string>>; // moveId escolhido no turno
+  pending: Partial<Record<CombatantKey, Action>>;
   turn: number;
   deadline: number;
   timer?: NodeJS.Timeout;
@@ -57,16 +89,22 @@ export interface RoomEmitter {
 type Ack = { ok: true } | { ok: false; message: string };
 
 /**
- * Ack do golpe. Carrega o turno em que o golpe foi ACEITO — que não é
- * necessariamente `room.turn` quando o ack chega ao cliente, porque este mesmo
- * golpe pode ter fechado a rodada e virado o turno. Ver `move()`.
+ * Ack da ação do turno. Carrega o turno em que ela foi ACEITA — que não é
+ * necessariamente `room.turn` quando o ack chega ao cliente, porque esta mesma
+ * ação pode ter fechado a rodada e virado o turno. Ver `submit()`.
  */
-type MoveAck = { ok: true; turn: number } | { ok: false; message: string };
+type ActionAck = { ok: true; turn: number } | { ok: false; message: string };
 
 /**
  * Salas de batalha PvP — estado em memória, timers no servidor, resultado no
- * banco. O motor (engine/) é quem resolve as rodadas; aqui ficam as regras de
- * SALA: seleção às cegas, turnos simultâneos com deadline, abandono, resync.
+ * banco. O motor (engine/) resolve as rodadas; as regras de time vivem em
+ * `team.ts`. Aqui fica a máquina de estados da SALA:
+ *
+ *   picking ──▶ preview ──▶ active ⇄ switching ──▶ done
+ *
+ * Cada jogador leva ATÉ 3 exemplares e os times podem ter tamanhos diferentes —
+ * não há compensação para quem leva menos: ter mais exemplares é a vantagem que
+ * paga a captura, que é o ponto do evento.
  */
 @Injectable()
 export class BattleRoomService implements OnModuleDestroy {
@@ -96,7 +134,9 @@ export class BattleRoomService implements OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     for (const room of [...this.rooms.values()]) {
       this.broadcast(room, 'battle:cancelled', { reason: 'server_shutdown' });
-      if (room.phase === 'active') {
+      // `active` e `switching` são a mesma batalha em andamento: as duas têm
+      // linha no banco e precisam ser anuladas.
+      if (room.phase === 'active' || room.phase === 'switching') {
         await this.prisma.battle
           .update({
             where: { id: room.id },
@@ -119,18 +159,30 @@ export class BattleRoomService implements OnModuleDestroy {
     inviter: { userId: string; name: string },
     invitee: { userId: string; name: string },
   ): { battleId: string; pickDeadline: number } {
+    const slot = (
+      p: { userId: string; name: string },
+      key: CombatantKey,
+    ): RoomPlayer => ({
+      ...p,
+      key,
+      team: [],
+      activeIndex: 0,
+      owesEntry: false,
+      missedPhases: 0,
+    });
+
     const room: Room = {
       id: randomUUID(),
       phase: 'picking',
       players: {
-        player: { ...inviter, key: 'player', missedTurns: 0 },
-        enemy: { ...invitee, key: 'enemy', missedTurns: 0 },
+        player: slot(inviter, 'player'),
+        enemy: slot(invitee, 'enemy'),
       },
       pending: {},
       turn: 0,
-      deadline: Date.now() + PICK_TIMEOUT_MS,
+      deadline: Date.now() + PHASE_TIMEOUT_MS,
     };
-    room.timer = setTimeout(() => this.onPickTimeout(room), PICK_TIMEOUT_MS);
+    room.timer = setTimeout(() => this.onPickTimeout(room), PHASE_TIMEOUT_MS);
 
     this.rooms.set(room.id, room);
     this.roomByUser.set(inviter.userId, room.id);
@@ -138,87 +190,232 @@ export class BattleRoomService implements OnModuleDestroy {
     return { battleId: room.id, pickDeadline: room.deadline };
   }
 
-  // ── Seleção às cegas do professor ─────────────────────────────────────────
+  // ── Seleção do time (às cegas) ────────────────────────────────────────────
 
-  async pick(userId: string, captureId: string): Promise<Ack> {
+  /**
+   * Confirma o time: de 1 a 3 exemplares, na ordem em que o jogador quer.
+   *
+   * A trava de repetição é por `captureId`, não por professor: dois exemplares
+   * do mesmo professor são personagens diferentes (tipos, deck e IVs próprios),
+   * então levar dois Erons é legítimo — levar o MESMO Eron duas vezes não é.
+   */
+  async pickTeam(userId: string, captureIds: string[]): Promise<Ack> {
     const room = this.roomOf(userId);
     if (!room || room.phase !== 'picking') {
       return { ok: false, message: 'Não há seleção em andamento.' };
     }
     const me = this.slotOf(room, userId);
-    if (me.professor) return { ok: false, message: 'Você já escolheu.' };
+    // `me.team` só é preenchido DEPOIS da consulta ao banco, e entre o `await`
+    // e a atribuição cabe uma segunda mensagem do mesmo socket (toque duplo,
+    // cliente reenviando, script). As duas passariam por aqui, as duas
+    // emitiriam `battle:pick:opponent` e as duas poderiam disparar o preview.
+    // A trava precisa ser marcada antes do await.
+    if (me.picking || me.team.length) {
+      return { ok: false, message: 'Você já escolheu.' };
+    }
+
+    if (!Array.isArray(captureIds) || captureIds.length === 0) {
+      return { ok: false, message: 'Escolha pelo menos um professor.' };
+    }
+    if (captureIds.length > MAX_TEAM_SIZE) {
+      return {
+        ok: false,
+        message: `Seu time pode ter no máximo ${MAX_TEAM_SIZE} professores.`,
+      };
+    }
+    if (new Set(captureIds).size !== captureIds.length) {
+      return {
+        ok: false,
+        message: 'O mesmo exemplar não pode entrar duas vezes no time.',
+      };
+    }
 
     // Só vale exemplar CAPTURADO pelo próprio usuário — validação no banco,
     // nunca no cliente. O `userId` no where é o que impede levar para a arena
     // o exemplar de outra pessoa.
-    const capture = await this.prisma.capture.findFirst({
-      where: { id: captureId, userId },
-      select: {
-        id: true,
-        moves: true,
-        ivHp: true,
-        ivRigor: true,
-        ivDidatica: true,
-        ivRaciocinio: true,
-        professor: { select: { id: true, slug: true, name: true } },
-        variant: { select: { types: true } },
-      },
-    });
-    if (!capture) {
+    me.picking = true;
+    const captures = await this.prisma.capture
+      .findMany({
+        where: { id: { in: captureIds }, userId },
+        select: {
+          id: true,
+          moves: true,
+          ivHp: true,
+          ivRigor: true,
+          ivDidatica: true,
+          ivRaciocinio: true,
+          professor: { select: { id: true, slug: true, name: true } },
+          variant: { select: { types: true } },
+        },
+      })
+      .catch((error: Error) => {
+        // Banco fora do ar não pode deixar o jogador travado sem poder tentar
+        // de novo até o timeout da fase.
+        this.logger.error(`Falha buscando capturas de ${userId}`, error);
+        return null;
+      });
+
+    if (captures === null) {
+      me.picking = false;
       return {
         ok: false,
-        message: 'Você só pode usar um professor que capturou.',
+        message: 'Não deu para confirmar o time. Tente de novo.',
+      };
+    }
+    if (captures.length !== captureIds.length) {
+      me.picking = false;
+      return {
+        ok: false,
+        message: 'Você só pode usar professores que capturou.',
       };
     }
 
-    // Tipos e deck vêm gravados na captura. O fallback cobre exemplares
-    // anteriores a este modelo, que o seed ainda não corrigiu.
-    const types = capture.variant?.types?.length
-      ? capture.variant.types
-      : typesForProfessor(capture.professor);
-    const moves = capture.moves
-      .map((id) => getMoveById(id))
-      .filter((move) => move !== null);
+    // A ordem do PEDIDO é a do time — `findMany` não garante ordem, e essa
+    // ordem é o fallback do lead e da entrada após nocaute.
+    const byId = new Map(captures.map((c) => [c.id, c]));
+    me.team = captureIds.map((id) => {
+      const capture = byId.get(id)!;
+      // Tipos e deck vêm gravados na captura. O fallback cobre exemplares
+      // anteriores a este modelo, que o seed ainda não corrigiu.
+      const types = capture.variant?.types?.length
+        ? capture.variant.types
+        : typesForProfessor(capture.professor);
+      const moves = capture.moves
+        .map((moveId) => getMoveById(moveId))
+        .filter((move): move is Move => move !== null);
+      const ivs = {
+        ivHp: capture.ivHp,
+        ivRigor: capture.ivRigor,
+        ivDidatica: capture.ivDidatica,
+        ivRaciocinio: capture.ivRaciocinio,
+      };
+      return {
+        captureId: capture.id,
+        professor: capture.professor,
+        types,
+        moves: moves.length ? moves : buildMoveset(types),
+        ivs,
+        combatant: createCombatant({
+          name: capture.professor.name,
+          types,
+          moves: moves.length ? moves : buildMoveset(types),
+          ivs,
+        }),
+      };
+    });
 
-    me.professor = capture.professor;
-    me.captureId = capture.id;
-    me.types = types;
-    me.moves = moves.length ? moves : buildMoveset(types);
-    me.ivs = {
-      ivHp: capture.ivHp,
-      ivRigor: capture.ivRigor,
-      ivDidatica: capture.ivDidatica,
-      ivRaciocinio: capture.ivRaciocinio,
-    };
-    // O oponente sabe QUE você escolheu, nunca QUAL (pick às cegas).
+    me.missedPhases = 0;
+    // O oponente sabe QUE você escolheu, nunca O QUÊ (pick às cegas).
     this.emitToOther(room, me.key, 'battle:pick:opponent', {});
 
-    const both = room.players.player.professor && room.players.enemy.professor;
-    if (both) await this.begin(room);
+    if (room.players.player.team.length && room.players.enemy.team.length) {
+      this.toPreview(room);
+    }
     return { ok: true };
   }
+
+  /**
+   * Timeout da seleção: vale o que foi confirmado.
+   *
+   * O formato já aceita times de tamanhos diferentes, então cancelar a partida
+   * de quem foi lento seria punir por uma regra que não existe. Só cancela
+   * quando alguém não escolheu NADA — aí não há batalha para começar, e nem
+   * pontos nem cooldown são consumidos (ninguém é punido na preparação).
+   */
+  private onPickTimeout(room: Room): void {
+    if (room.phase !== 'picking') return;
+    const vazios = (['player', 'enemy'] as const).filter(
+      (key) => room.players[key].team.length === 0,
+    );
+    if (vazios.length) {
+      for (const key of vazios) room.players[key].missedPhases += 1;
+      this.broadcast(room, 'battle:cancelled', { reason: 'pick_timeout' });
+      this.close(room);
+      return;
+    }
+    this.toPreview(room);
+  }
+
+  // ── Team preview e escolha do lead ────────────────────────────────────────
+
+  /**
+   * Revela os dois times e pede o lead.
+   *
+   * O preview vem DEPOIS de os dois confirmarem — é por isso que ele não
+   * devolve o counter-pick que a seleção às cegas existe para impedir. E o lead
+   * é escolhido depois de ver o time do adversário: sem isso o preview seria
+   * informação que não dá para usar, o pior dos dois mundos.
+   */
+  private toPreview(room: Room): void {
+    this.clearTimer(room);
+    room.phase = 'preview';
+    this.armTimer(room, () => this.onPreviewTimeout(room));
+
+    for (const key of ['player', 'enemy'] as const) {
+      const me = room.players[key];
+      const foe = room.players[this.otherKey(key)];
+      this.emitter.emitToUser(me.userId, 'battle:preview', {
+        battleId: room.id,
+        deadline: room.deadline,
+        // O seu time leva `captureId` porque é com ele que você escolhe o lead.
+        // O do adversário não leva — nem IVs, nem golpes.
+        you: { team: me.team.map(ownMemberView) },
+        foe: { name: foe.name, team: foe.team.map(publicMemberView) },
+      });
+    }
+  }
+
+  /** Quem entra primeiro. Às cegas: o adversário só sabe que você escolheu. */
+  async chooseLead(userId: string, captureId: string): Promise<Ack> {
+    const room = this.roomOf(userId);
+    if (!room || room.phase !== 'preview') {
+      return { ok: false, message: 'Não há seleção em andamento.' };
+    }
+    const me = this.slotOf(room, userId);
+    if (me.leadCaptureId) return { ok: false, message: 'Você já escolheu.' };
+
+    const index = me.team.findIndex((m) => m.captureId === captureId);
+    if (index < 0) {
+      return { ok: false, message: 'Esse professor não está no seu time.' };
+    }
+
+    me.leadCaptureId = captureId;
+    me.activeIndex = index;
+    me.missedPhases = 0;
+    this.emitToOther(room, me.key, 'battle:lead:opponent', {});
+
+    if (room.players.player.leadCaptureId && room.players.enemy.leadCaptureId) {
+      await this.begin(room);
+    }
+    return { ok: true };
+  }
+
+  private onPreviewTimeout(room: Room): void {
+    if (room.phase !== 'preview') return;
+    for (const key of ['player', 'enemy'] as const) {
+      const slot = room.players[key];
+      if (slot.leadCaptureId) continue;
+      // Fallback: o primeiro da ordem de seleção. A partida anda de qualquer
+      // jeito; quem não escolheu leva uma falta no contador de abandono.
+      slot.activeIndex = 0;
+      slot.leadCaptureId = slot.team[0].captureId;
+      slot.missedPhases += 1;
+    }
+    void this.begin(room).catch((error: unknown) =>
+      this.logger.error(`Falha iniciando ${room.id}`, error as Error),
+    );
+  }
+
+  // ── Início da batalha ─────────────────────────────────────────────────────
 
   private async begin(room: Room): Promise<void> {
     this.clearTimer(room);
     room.phase = 'active';
     room.turn = 1;
-
-    const combatants = {} as Record<
-      CombatantKey,
-      ReturnType<typeof createCombatant>
-    >;
-    for (const key of ['player', 'enemy'] as const) {
-      const slot = room.players[key];
-      // Tipos e deck já foram resolvidos no pick, a partir do exemplar
-      // capturado — a batalha não sorteia mais nada.
-      combatants[key] = createCombatant({
-        name: slot.professor!.name,
-        types: slot.types!,
-        moves: slot.moves!,
-        ivs: slot.ivs,
-      });
-    }
-    room.state = { player: combatants.player, enemy: combatants.enemy };
+    room.state = {
+      player: this.activeOf(room, 'player').combatant,
+      enemy: this.activeOf(room, 'enemy').combatant,
+    };
 
     // A partir daqui a batalha existe oficialmente: conta para o cooldown.
     await this.prisma.battle.create({
@@ -230,9 +427,18 @@ export class BattleRoomService implements OnModuleDestroy {
         ),
         playerAId: room.players.player.userId,
         playerBId: room.players.enemy.userId,
-        professorAId: room.players.player.professor!.id,
-        professorBId: room.players.enemy.professor!.id,
         status: 'active',
+        slots: {
+          create: (['player', 'enemy'] as const).flatMap((key) =>
+            room.players[key].team.map((m, i) => ({
+              side: key === 'player' ? 'a' : 'b',
+              slot: i,
+              captureId: m.captureId,
+              professorId: m.professor.id,
+              lead: i === room.players[key].activeIndex,
+            })),
+          ),
+        },
       },
     });
 
@@ -244,53 +450,79 @@ export class BattleRoomService implements OnModuleDestroy {
         battleId: room.id,
         turn: room.turn,
         deadline: room.deadline,
-        you: this.combatantView(room, key, true),
+        you: this.sideView(room, key, true),
         foe: {
           name: foe.name,
-          ...this.combatantView(room, this.otherKey(key), false),
+          ...this.sideView(room, this.otherKey(key), false),
         },
       });
     }
     this.logger.log(
-      `Batalha ${room.id}: ${room.players.player.professor!.slug} vs ${room.players.enemy.professor!.slug}`,
+      `Batalha ${room.id}: ${this.describeTeam(room, 'player')} vs ${this.describeTeam(room, 'enemy')}`,
     );
-  }
-
-  private onPickTimeout(room: Room): void {
-    // Alguém (ou os dois) não escolheu: cancela sem pontos e sem cooldown —
-    // ninguém é punido na preparação; o pick às cegas já impede dodge tático.
-    if (room.phase !== 'picking') return;
-    this.broadcast(room, 'battle:cancelled', { reason: 'pick_timeout' });
-    this.close(room);
   }
 
   // ── Turnos simultâneos ────────────────────────────────────────────────────
 
-  move(userId: string, moveId: string): MoveAck {
+  /** Golpe do turno. Alternativa a `switchTo` — uma ação por turno, nunca as duas. */
+  move(userId: string, moveId: string): ActionAck {
+    return this.submit(userId, (me) =>
+      me.team[me.activeIndex].moves.some((m) => m.id === moveId)
+        ? { kind: 'move', moveId }
+        : 'Esse golpe não está no seu conjunto.',
+    );
+  }
+
+  /**
+   * Troca do turno. Quem entra COME o golpe do adversário: é esse custo que faz
+   * a troca ser uma decisão, e não a jogada certa em todo turno.
+   */
+  switchTo(userId: string, captureId: string): ActionAck {
+    return this.submit(userId, (me) => {
+      const index = me.team.findIndex((m) => m.captureId === captureId);
+      if (index < 0) return 'Esse professor não está no seu time.';
+      if (index === me.activeIndex) return 'Esse professor já está em campo.';
+      if (!isAlive(me.team[index])) return 'Esse professor já caiu.';
+      return { kind: 'switch', captureId };
+    });
+  }
+
+  private submit(
+    userId: string,
+    build: (me: RoomPlayer) => Action | string,
+  ): ActionAck {
     const room = this.roomOf(userId);
-    if (!room || room.phase !== 'active') {
+    if (!room) return { ok: false, message: 'Nenhuma batalha em andamento.' };
+    if (room.phase === 'switching') {
+      return { ok: false, message: 'Escolha quem entra primeiro.' };
+    }
+    if (room.phase !== 'active') {
       return { ok: false, message: 'Nenhuma batalha em andamento.' };
     }
     const me = this.slotOf(room, userId);
-    if (room.pending[me.key])
+    if (room.pending[me.key]) {
       return { ok: false, message: 'Você já escolheu neste turno.' };
-    if (!me.moves?.some((m) => m.id === moveId)) {
-      return { ok: false, message: 'Esse golpe não está no seu conjunto.' };
     }
 
-    // Guardado ANTES de resolver: se este golpe fechar a rodada, `resolveRound`
+    const action = build(me);
+    if (typeof action === 'string') return { ok: false, message: action };
+
+    // Guardado ANTES de resolver: se esta ação fechar a rodada, `resolveRound`
     // incrementa `room.turn` ainda dentro desta chamada, e o ack sairia
     // carimbado com o turno seguinte — justamente o que o cliente usa para
     // decidir se o ack ainda vale.
     const turn = room.turn;
 
-    room.pending[me.key] = moveId;
+    room.pending[me.key] = action;
+    me.missedPhases = 0;
+    // O oponente sabe que você agiu, nunca se foi golpe ou troca — saber que
+    // vem uma troca entregaria a leitura do turno.
     this.emitToOther(room, me.key, 'battle:move:opponent', {});
 
     if (room.pending.player && room.pending.enemy) {
       // Atenção: isto emite `battle:round` de forma SÍNCRONA, ou seja, antes
-      // de o ack abaixo ser enviado. Para quem move em segundo, o cliente
-      // recebe a rodada nova e só depois a confirmação do próprio golpe — por
+      // de o ack abaixo ser enviado. Para quem age em segundo, o cliente
+      // recebe a rodada nova e só depois a confirmação da própria ação — por
       // isso o ack precisa dizer a que turno pertence.
       this.resolveRound(room).catch((error: unknown) =>
         this.logger.error(
@@ -316,11 +548,10 @@ export class BattleRoomService implements OnModuleDestroy {
     // Contabiliza inatividade ANTES de resolver: quem estourou o limite
     // abandona — e a rodada nem precisa acontecer.
     for (const key of ['player', 'enemy'] as const) {
-      const slot = room.players[key];
-      slot.missedTurns = room.pending[key] ? 0 : slot.missedTurns + 1;
+      if (!room.pending[key]) room.players[key].missedPhases += 1;
     }
-    const abandonedP = room.players.player.missedTurns >= MAX_MISSED_TURNS;
-    const abandonedE = room.players.enemy.missedTurns >= MAX_MISSED_TURNS;
+    const abandonedP = room.players.player.missedPhases >= MAX_MISSED_PHASES;
+    const abandonedE = room.players.enemy.missedPhases >= MAX_MISSED_PHASES;
     if (abandonedP || abandonedE) {
       await this.finish(room, {
         status: 'abandoned',
@@ -331,40 +562,94 @@ export class BattleRoomService implements OnModuleDestroy {
       return;
     }
 
-    const moveOf = (key: CombatantKey): Move | null =>
-      room.pending[key]
-        ? (room.players[key].moves!.find((m) => m.id === room.pending[key]) ??
-          null)
-        : null;
-
     const events: BattleEvent[] = [];
-    const order = turnOrder(state, moveOf('player'), moveOf('enemy'));
-    for (const entry of order) {
-      if (state.player.hp <= 0 || state.enemy.hp <= 0) break;
-      const up = upkeep(state, entry.key);
-      events.push(...up.events);
-      if (state.player.hp <= 0 || state.enemy.hp <= 0) break;
-      if (up.canAct && entry.move) {
-        events.push(...performMove(state, entry.key, entry.move));
-      } else if (up.canAct && !entry.move) {
-        events.push({
-          type: 'message',
-          text: `${state[entry.key].name} não escolheu a tempo e perdeu o turno!`,
-        });
+
+    // 1. As trocas resolvem ANTES de qualquer golpe, independente de
+    //    Raciocínio — é o padrão que o jogador reconhece, e é o que dá custo
+    //    real à troca: o que entra fica exposto ao ataque do adversário.
+    for (const key of ['player', 'enemy'] as const) {
+      const action = room.pending[key];
+      if (action?.kind !== 'switch') continue;
+      events.push(...this.applySwitch(room, key, action.captureId));
+    }
+
+    // 2. Se os DOIS trocaram, ninguém ataca — a rodada foi de reposicionamento.
+    const golpes = (['player', 'enemy'] as const).filter(
+      (key) => room.pending[key]?.kind === 'move',
+    );
+    if (golpes.length) {
+      const moveOf = (key: CombatantKey): Move | null => {
+        const action = room.pending[key];
+        if (action?.kind !== 'move') return null;
+        return (
+          room.players[key].team[room.players[key].activeIndex].moves.find(
+            (m) => m.id === action.moveId,
+          ) ?? null
+        );
+      };
+
+      const order = turnOrder(state, moveOf('player'), moveOf('enemy'));
+      for (const entry of order) {
+        if (state.player.hp <= 0 || state.enemy.hp <= 0) break;
+        // Quem trocou não passa por upkeep: ele gastou o turno na troca e o
+        // exemplar que entrou está fresco em campo.
+        if (room.pending[entry.key]?.kind === 'switch') continue;
+        const up = upkeep(state, entry.key);
+        events.push(...up.events);
+        if (state.player.hp <= 0 || state.enemy.hp <= 0) break;
+        if (!up.canAct) continue;
+        if (entry.move) {
+          events.push(...performMove(state, entry.key, entry.move));
+        } else {
+          events.push({
+            type: 'message',
+            text: `${state[entry.key].name} não escolheu a tempo e perdeu o turno!`,
+          });
+        }
       }
     }
 
     room.pending = {};
-    const deadP = state.player.hp <= 0;
-    const deadE = state.enemy.hp <= 0;
 
-    if (deadP || deadE) {
+    // 3. Nocaute: quem caiu sai de campo. Só acaba a batalha quando um lado
+    //    fica sem ninguém em pé.
+    const caidos = (['player', 'enemy'] as const).filter(
+      (key) => state[key].hp <= 0,
+    );
+    if (caidos.length) {
+      for (const key of caidos) benchCombatant(state[key]);
+      const semTime = caidos.filter((key) => !hasAlive(room.players[key].team));
+      if (semTime.length) {
+        await this.finish(
+          room,
+          {
+            status: 'finished',
+            winnerKey: semTime.length === 2 ? null : this.otherKey(semTime[0]),
+            reason: 'nocaute',
+          },
+          events,
+        );
+        return;
+      }
+      this.toSwitching(room, caidos, events);
+      return;
+    }
+
+    // 4. Teto de turnos: sem ele, dois jogadores trocando para sempre deixam a
+    //    sala aberta em memória indefinidamente.
+    if (room.turn >= MAX_TURNS) {
+      const hpP = teamHp(room.players.player.team);
+      const hpE = teamHp(room.players.enemy.team);
+      events.push({
+        type: 'message',
+        text: `Limite de ${MAX_TURNS} turnos! Vence quem tem mais vida somada.`,
+      });
       await this.finish(
         room,
         {
           status: 'finished',
-          winnerKey: deadP && deadE ? null : deadP ? 'enemy' : 'player',
-          reason: 'nocaute',
+          winnerKey: hpP === hpE ? null : hpP > hpE ? 'player' : 'enemy',
+          reason: 'limite_de_turnos',
         },
         events,
       );
@@ -373,16 +658,143 @@ export class BattleRoomService implements OnModuleDestroy {
 
     room.turn += 1;
     this.armTurnTimer(room);
+    this.broadcastRound(room, 'battle:round', events);
+  }
+
+  /** Aplica uma troca e devolve o evento que a UI anima. */
+  private applySwitch(
+    room: Room,
+    key: CombatantKey,
+    captureId: string,
+  ): BattleEvent[] {
+    const slot = room.players[key];
+    const index = slot.team.findIndex((m) => m.captureId === captureId);
+    if (index < 0 || index === slot.activeIndex || !isAlive(slot.team[index])) {
+      return []; // já validado no `switchTo`; aqui é só defesa
+    }
+    const sai = slot.team[slot.activeIndex];
+    benchCombatant(sai.combatant);
+    slot.activeIndex = index;
+    const entra = slot.team[index];
+    room.state![key] = entra.combatant;
+    return [
+      { type: 'switch', target: key, name: entra.professor.name },
+      {
+        type: 'message',
+        text: `${sai.professor.name} volta! ${entra.professor.name} entra em campo!`,
+      },
+    ];
+  }
+
+  // ── Entrada após nocaute ──────────────────────────────────────────────────
+
+  /**
+   * Pausa a rodada para quem perdeu o ativo escolher o substituto.
+   *
+   * O nocaute é onde a decisão pesa: entrada forçada faria metade das partidas
+   * ser decidida na seleção. O fallback por tempo garante que ninguém trave a
+   * batalha do outro.
+   */
+  private toSwitching(
+    room: Room,
+    caidos: CombatantKey[],
+    events: BattleEvent[],
+  ): void {
+    room.phase = 'switching';
+    for (const key of caidos) room.players[key].owesEntry = true;
+    this.armTimer(room, () => this.onSwitchingTimeout(room));
+
     for (const key of ['player', 'enemy'] as const) {
-      this.emitter.emitToUser(room.players[key].userId, 'battle:round', {
+      const me = room.players[key];
+      this.emitter.emitToUser(me.userId, 'battle:faint', {
         battleId: room.id,
-        turn: room.turn,
         deadline: room.deadline,
+        // Quem não deve entrada recebe o evento mesmo assim, para a tela poder
+        // mostrar "o adversário está escolhendo…" em vez de congelar.
+        youChoose: me.owesEntry,
         events: this.viewEvents(events, key),
-        you: this.combatantView(room, key, false),
-        foe: this.combatantView(room, this.otherKey(key), false),
+        you: this.sideView(room, key, true),
+        foe: this.sideView(room, this.otherKey(key), false),
       });
     }
+  }
+
+  /** Quem entra no lugar de quem caiu. */
+  enterWith(userId: string, captureId: string): Ack {
+    const room = this.roomOf(userId);
+    if (!room || room.phase !== 'switching') {
+      return { ok: false, message: 'Não há substituição em andamento.' };
+    }
+    const me = this.slotOf(room, userId);
+    if (!me.owesEntry)
+      return { ok: false, message: 'Você não precisa trocar.' };
+
+    const index = me.team.findIndex((m) => m.captureId === captureId);
+    if (index < 0) {
+      return { ok: false, message: 'Esse professor não está no seu time.' };
+    }
+    if (!isAlive(me.team[index])) {
+      return { ok: false, message: 'Esse professor já caiu.' };
+    }
+
+    me.activeIndex = index;
+    me.owesEntry = false;
+    me.missedPhases = 0;
+    room.state![me.key] = me.team[index].combatant;
+
+    if (!this.someoneOwesEntry(room)) this.resumeAfterSwitching(room);
+    return { ok: true };
+  }
+
+  private onSwitchingTimeout(room: Room): void {
+    if (room.phase !== 'switching') return;
+    for (const key of ['player', 'enemy'] as const) {
+      const slot = room.players[key];
+      if (!slot.owesEntry) continue;
+      const index = nextAliveIndex(slot.team, slot.activeIndex);
+      if (index < 0) continue; // não deveria acontecer: a batalha teria acabado
+      slot.activeIndex = index;
+      slot.owesEntry = false;
+      slot.missedPhases += 1;
+      room.state![key] = slot.team[index].combatant;
+    }
+    this.resumeAfterSwitching(room);
+  }
+
+  private someoneOwesEntry(room: Room): boolean {
+    return (['player', 'enemy'] as const).some(
+      (key) => room.players[key].owesEntry,
+    );
+  }
+
+  private resumeAfterSwitching(room: Room): void {
+    this.clearTimer(room);
+    // Abandono também vale aqui: quem deixou a entrada expirar três vezes some
+    // do jogo do mesmo jeito que quem não escolhe golpe.
+    const abandonedP = room.players.player.missedPhases >= MAX_MISSED_PHASES;
+    const abandonedE = room.players.enemy.missedPhases >= MAX_MISSED_PHASES;
+    if (abandonedP || abandonedE) {
+      void this.finish(room, {
+        status: 'abandoned',
+        winnerKey:
+          abandonedP && abandonedE ? null : abandonedP ? 'enemy' : 'player',
+        reason: 'abandono',
+      }).catch((error: unknown) =>
+        this.logger.error(`Falha encerrando ${room.id}`, error as Error),
+      );
+      return;
+    }
+
+    room.phase = 'active';
+    room.pending = {};
+    room.turn += 1;
+    this.armTurnTimer(room);
+    const entrou = (['player', 'enemy'] as const).map(
+      (key) => this.activeOf(room, key).professor.name,
+    );
+    this.broadcastRound(room, 'battle:round', [
+      { type: 'message', text: `${entrou.join(' e ')} em campo!` },
+    ]);
   }
 
   // ── Fim da batalha ────────────────────────────────────────────────────────
@@ -400,14 +812,25 @@ export class BattleRoomService implements OnModuleDestroy {
     this.clearTimer(room);
     const winner = outcome.winnerKey ? room.players[outcome.winnerKey] : null;
 
-    await this.prisma.battle.update({
-      where: { id: room.id },
-      data: {
-        status: outcome.status,
-        winnerId: winner?.userId ?? null,
-        finishedAt: new Date(),
-      },
-    });
+    const caidos = (['player', 'enemy'] as const).flatMap((key) =>
+      room.players[key].team.filter((m) => !isAlive(m)).map((m) => m.captureId),
+    );
+    await this.prisma.$transaction([
+      this.prisma.battle.update({
+        where: { id: room.id },
+        data: {
+          status: outcome.status,
+          winnerId: winner?.userId ?? null,
+          finishedAt: new Date(),
+        },
+      }),
+      // Quem sobreviveu é metade da leitura do painel ("qual professor aguenta
+      // mais"), e ela some se o slot não registrar o desfecho.
+      this.prisma.battleSlot.updateMany({
+        where: { battleId: room.id, captureId: { in: caidos } },
+        data: { fainted: true },
+      }),
+    ]);
 
     // Elo: nocaute/empate e abandono unilateral pontuam. Abandono DUPLO não —
     // ninguém jogou de verdade (mas o cooldown fica consumido, por design).
@@ -442,8 +865,8 @@ export class BattleRoomService implements OnModuleDestroy {
         result: !winner ? 'draw' : winner.key === key ? 'win' : 'loss',
         reason: outcome.reason,
         rating: myRating,
-        you: this.combatantView(room, key, false),
-        foe: this.combatantView(room, this.otherKey(key), false),
+        you: this.sideView(room, key, true),
+        foe: this.sideView(room, this.otherKey(key), false),
       });
     }
     // Métrica de engajamento, registrada no servidor: a batalha vale muitos
@@ -478,6 +901,10 @@ export class BattleRoomService implements OnModuleDestroy {
         reason: outcome.reason,
         winner: winner?.userId ?? null,
         turns: room.turn,
+        teams: {
+          a: room.players.player.team.length,
+          b: room.players.enemy.team.length,
+        },
         deltas: ratings ? { a: ratings.deltaA, b: ratings.deltaB } : null,
       }),
     );
@@ -490,55 +917,101 @@ export class BattleRoomService implements OnModuleDestroy {
     if (!room || room.phase === 'done') return null;
     const me = this.slotOf(room, userId);
     const foe = room.players[this.otherKey(me.key)];
+    const base = {
+      battleId: room.id,
+      phase: room.phase,
+      opponent: { id: foe.userId, name: foe.name },
+      deadline: room.deadline,
+    };
 
     if (room.phase === 'picking') {
       return {
-        battleId: room.id,
-        phase: 'picking',
-        opponent: { id: foe.userId, name: foe.name },
-        deadline: room.deadline,
-        youPicked: !!me.professor,
-        foePicked: !!foe.professor,
+        ...base,
+        youPicked: me.team.length > 0,
+        foePicked: foe.team.length > 0,
+      };
+    }
+    if (room.phase === 'preview') {
+      return {
+        ...base,
+        you: { team: me.team.map(ownMemberView) },
+        foe: { name: foe.name, team: foe.team.map(publicMemberView) },
+        youPicked: !!me.leadCaptureId,
+        foePicked: !!foe.leadCaptureId,
       };
     }
     return {
-      battleId: room.id,
-      phase: 'active',
-      opponent: { id: foe.userId, name: foe.name },
+      ...base,
       turn: room.turn,
-      deadline: room.deadline,
+      youChoose: me.owesEntry,
       youMoved: !!room.pending[me.key],
       foeMoved: !!room.pending[foe.key],
-      you: this.combatantView(room, me.key, true),
-      foe: { name: foe.name, ...this.combatantView(room, foe.key, false) },
+      you: this.sideView(room, me.key, true),
+      foe: { name: foe.name, ...this.sideView(room, foe.key, false) },
     };
   }
 
   // ── Auxiliares ────────────────────────────────────────────────────────────
 
+  private armTimer(room: Room, onTimeout: () => void): void {
+    room.deadline = Date.now() + PHASE_TIMEOUT_MS;
+    room.timer = setTimeout(onTimeout, PHASE_TIMEOUT_MS);
+  }
+
   private armTurnTimer(room: Room): void {
-    room.deadline = Date.now() + TURN_TIMEOUT_MS;
-    room.timer = setTimeout(() => this.onTurnTimeout(room), TURN_TIMEOUT_MS);
+    this.armTimer(room, () => this.onTurnTimeout(room));
+  }
+
+  private activeOf(room: Room, key: CombatantKey): TeamMember {
+    const slot = room.players[key];
+    return slot.team[slot.activeIndex];
   }
 
   /**
-   * Visão de um combatente. `withMoves` só para o DONO (o moveset do oponente
-   * não é segredo absoluto, mas não dar de graça dificulta ferramentas de
-   * auxílio). O professor do oponente só é revelado com a batalha ativa.
+   * Visão de um lado: o exemplar em campo mais o time inteiro (para a HUD dos
+   * reservas). `own` só para o DONO — é o que carrega os golpes e o `captureId`.
+   *
+   * O time do adversário já foi revelado no preview, então esconder o HP dos
+   * reservas dele não criaria segredo: só obrigaria o jogador a memorizar o
+   * que viu em campo.
    */
-  private combatantView(room: Room, key: CombatantKey, withMoves: boolean) {
+  private sideView(room: Room, key: CombatantKey, own: boolean) {
     const slot = room.players[key];
-    const c = room.state?.[key];
-    if (!c) return null;
+    const active = slot.team[slot.activeIndex];
+    if (!active) return null;
+    const c = active.combatant;
     return {
       userId: slot.userId,
-      professor: slot.professor,
+      professor: active.professor,
       types: c.types,
-      hp: c.hp,
+      hp: Math.max(0, c.hp),
       maxHp: c.maxHp,
       status: statusLabel(c.status),
-      ...(withMoves ? { moves: slot.moves } : {}),
+      activeCaptureId: own ? active.captureId : undefined,
+      team: slot.team.map(own ? ownMemberView : publicMemberView),
+      ...(own ? { moves: active.moves } : {}),
     };
+  }
+
+  private describeTeam(room: Room, key: CombatantKey): string {
+    return room.players[key].team.map((m) => m.professor.slug).join('/');
+  }
+
+  private broadcastRound(
+    room: Room,
+    event: string,
+    events: BattleEvent[],
+  ): void {
+    for (const key of ['player', 'enemy'] as const) {
+      this.emitter.emitToUser(room.players[key].userId, event, {
+        battleId: room.id,
+        turn: room.turn,
+        deadline: room.deadline,
+        events: this.viewEvents(events, key),
+        you: this.sideView(room, key, true),
+        foe: this.sideView(room, this.otherKey(key), false),
+      });
+    }
   }
 
   /** Espelha a perspectiva: para o convidado (enemy), 'player' é o rival. */

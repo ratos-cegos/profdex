@@ -318,16 +318,32 @@ export class BattleGateway
 
   // ── Batalha ───────────────────────────────────────────────────────────────
 
+  /**
+   * Confirma o time: até 3 exemplares, na ordem em que o jogador quer.
+   * A validação de dono, de repetição e de tamanho é toda do serviço — aqui só
+   * se garante que veio uma lista de strings.
+   */
   @SubscribeMessage('battle:pick')
   async onBattlePick(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: unknown,
   ): Promise<Ack> {
     const me = this.userOf(client);
-    // O exemplar, não o professor: é ele que carrega tipos e deck.
+    const captureIds = this.readStringArray(body, 'captureIds');
+    if (!captureIds) return { ok: false, message: 'Escolha inválida.' };
+    return this.rooms.pickTeam(me.id, captureIds);
+  }
+
+  /** Quem entra primeiro, escolhido depois do team preview. */
+  @SubscribeMessage('battle:lead')
+  async onBattleLead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: unknown,
+  ): Promise<Ack> {
+    const me = this.userOf(client);
     const captureId = this.readString(body, 'captureId');
     if (!captureId) return { ok: false, message: 'Escolha inválida.' };
-    return this.rooms.pick(me.id, captureId);
+    return this.rooms.chooseLead(me.id, captureId);
   }
 
   @SubscribeMessage('battle:move')
@@ -339,6 +355,30 @@ export class BattleGateway
     const moveId = this.readString(body, 'moveId');
     if (!moveId) return { ok: false, message: 'Golpe inválido.' };
     return this.rooms.move(me.id, moveId);
+  }
+
+  /** Troca no turno — alternativa ao golpe, nunca as duas. */
+  @SubscribeMessage('battle:switch')
+  onBattleSwitch(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: unknown,
+  ): Ack {
+    const me = this.userOf(client);
+    const captureId = this.readString(body, 'captureId');
+    if (!captureId) return { ok: false, message: 'Escolha inválida.' };
+    return this.rooms.switchTo(me.id, captureId);
+  }
+
+  /** Quem entra no lugar de quem acabou de cair. */
+  @SubscribeMessage('battle:enter')
+  onBattleEnter(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: unknown,
+  ): Ack {
+    const me = this.userOf(client);
+    const captureId = this.readString(body, 'captureId');
+    if (!captureId) return { ok: false, message: 'Escolha inválida.' };
+    return this.rooms.enterWith(me.id, captureId);
   }
 
   @SubscribeMessage('battle:resync')
@@ -425,6 +465,21 @@ export class BattleGateway
     if (typeof body !== 'object' || body === null) return null;
     const value = (body as Record<string, unknown>)[key];
     return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
+  /**
+   * Lista de strings não vazia. O teto de tamanho e a checagem de repetição
+   * ficam no serviço, junto da regra; aqui é só a forma do payload — um socket
+   * pode mandar qualquer coisa, inclusive um array de 10 mil itens.
+   */
+  private readStringArray(body: unknown, key: string): string[] | null {
+    if (typeof body !== 'object' || body === null) return null;
+    const value = (body as Record<string, unknown>)[key];
+    if (!Array.isArray(value) || value.length === 0) return null;
+    if (value.length > 16) return null;
+    return value.every((v) => typeof v === 'string' && v.length > 0)
+      ? (value as string[])
+      : null;
   }
 
   private formatRemaining(until: Date): string {

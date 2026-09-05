@@ -152,6 +152,29 @@ export const useBattleStore = defineStore('battle', () => {
       if (pvp.value) pvp.value.foePicked = true
     })
 
+    // Os dois confirmaram o time: agora os dois se veem. O preview acontece
+    // DEPOIS da confirmação — é o que impede que ele devolva o counter-pick que
+    // a seleção às cegas existe para eliminar.
+    socket.on('battle:preview', ({ battleId, deadline, you, foe }) => {
+      pvp.value = {
+        ...(pvp.value ?? { battleId }),
+        battleId,
+        phase: 'preview',
+        pickDeadline: deadline,
+        you,
+        foe,
+        youPicked: false, // volta a significar "já escolhi o lead?"
+        foePicked: false,
+        pendingEvents: [],
+        result: null,
+      }
+      goTo('pvp-pick')
+    })
+
+    socket.on('battle:lead:opponent', () => {
+      if (pvp.value) pvp.value.foePicked = true
+    })
+
     socket.on('battle:cancelled', () => {
       pvp.value = null
       lastError.value = 'A seleção expirou — batalha cancelada.'
@@ -183,8 +206,29 @@ export const useBattleStore = defineStore('battle', () => {
       if (!pvp.value) return
       pvp.value = {
         ...pvp.value,
+        // A rodada também é o que tira a arena da fase de substituição.
+        phase: 'active',
+        youChoose: false,
         turn,
         deadline,
+        you: { ...pvp.value.you, ...you },
+        foe: { ...pvp.value.foe, ...foe },
+        youMoved: false,
+        foeMoved: false,
+        pendingEvents: events,
+      }
+    })
+
+    // Um ativo caiu. Quem perdeu escolhe quem entra (`youChoose`); o outro lado
+    // recebe o mesmo evento só para a tela dizer que está esperando, em vez de
+    // congelar sem explicação.
+    socket.on('battle:faint', ({ deadline, youChoose, events, you, foe }) => {
+      if (!pvp.value) return
+      pvp.value = {
+        ...pvp.value,
+        phase: 'switching',
+        deadline,
+        youChoose,
         you: { ...pvp.value.you, ...you },
         foe: { ...pvp.value.foe, ...foe },
         youMoved: false,
@@ -213,33 +257,36 @@ export const useBattleStore = defineStore('battle', () => {
     // `syncedAt` marca cada snapshot: como ele não traz fila de eventos para
     // animar, é o sinal que a arena usa para realinhar as barras de HP.
     socket.on('battle:resync', (snap) => {
-      if (snap.phase === 'picking') {
+      const base = {
+        battleId: snap.battleId,
+        opponent: snap.opponent,
+        phase: snap.phase,
+        pendingEvents: [],
+        result: null,
+        syncedAt: Date.now(),
+      }
+      // `picking` e `preview` são as duas etapas da mesma tela: em picking o
+      // jogador monta o time, em preview escolhe o lead vendo o rival.
+      if (snap.phase === 'picking' || snap.phase === 'preview') {
         pvp.value = {
-          battleId: snap.battleId,
-          opponent: snap.opponent,
-          phase: 'picking',
+          ...base,
           pickDeadline: snap.deadline,
           youPicked: snap.youPicked,
           foePicked: snap.foePicked,
-          pendingEvents: [],
-          result: null,
-          syncedAt: Date.now(),
+          you: snap.you ?? null,
+          foe: snap.foe ?? null,
         }
         goTo('pvp-pick')
-      } else if (snap.phase === 'active') {
+      } else if (snap.phase === 'active' || snap.phase === 'switching') {
         pvp.value = {
-          battleId: snap.battleId,
-          opponent: snap.opponent,
-          phase: 'active',
+          ...base,
           turn: snap.turn,
           deadline: snap.deadline,
           you: snap.you,
           foe: snap.foe,
           youMoved: snap.youMoved,
           foeMoved: snap.foeMoved,
-          pendingEvents: [],
-          result: null,
-          syncedAt: Date.now(),
+          youChoose: snap.youChoose ?? false,
         }
         goTo('pvp-arena')
       }
@@ -339,10 +386,40 @@ export const useBattleStore = defineStore('battle', () => {
 
   // Manda o EXEMPLAR, não o professor: é ele que carrega a combinação de tipos
   // e o deck sorteados na captura.
-  async function pickCapture(captureId) {
-    const ack = await command('battle:pick', { captureId })
+  /** Confirma o time: de 1 a 3 exemplares, na ordem escolhida na tela. */
+  async function pickTeam(captureIds) {
+    const ack = await command('battle:pick', { captureIds })
     if (ack.ok && pvp.value) pvp.value.youPicked = true
     else if (!ack.ok) lastError.value = ack.message
+    return ack
+  }
+
+  /** Quem entra primeiro, escolhido depois de ver o time do rival. */
+  async function chooseLead(captureId) {
+    const ack = await command('battle:lead', { captureId })
+    if (ack.ok && pvp.value) pvp.value.youPicked = true
+    else if (!ack.ok) lastError.value = ack.message
+    return ack
+  }
+
+  /**
+   * Troca no turno — alternativa ao golpe. Segue o mesmo cuidado de
+   * `submitMove` com o turno do ack: a troca também pode fechar a rodada.
+   */
+  async function switchTo(captureId) {
+    if (!pvp.value) return { ok: false, message: 'Sem batalha em andamento.' }
+    const turnAtSend = pvp.value.turn
+    pvp.value.youMoved = true
+    const ack = await command('battle:switch', { captureId })
+    applyMoveAck(pvp.value, { ack, turnAtSend })
+    if (!ack.ok) lastError.value = ack.message
+    return ack
+  }
+
+  /** Quem entra no lugar de quem caiu (fase de substituição). */
+  async function enterWith(captureId) {
+    const ack = await command('battle:enter', { captureId })
+    if (!ack.ok) lastError.value = ack.message
     return ack
   }
 
@@ -409,7 +486,10 @@ export const useBattleStore = defineStore('battle', () => {
     sendInvite,
     acceptInvite,
     declineInvite,
-    pickCapture,
+    pickTeam,
+    chooseLead,
+    switchTo,
+    enterWith,
     submitMove,
     requestResync,
     consumeEvents,

@@ -125,11 +125,17 @@ async function main() {
 
   const a = await criarConta('Smoke Ana')
   const b = await criarConta('Smoke Bia')
+  // Dois exemplares por lado: é o mínimo para exercitar troca e revezamento.
+  // A segunda captura de Ana é da MESMA variante da primeira, de propósito —
+  // dois exemplares do mesmo professor são legítimos no mesmo time, e é a
+  // trava por captureId (não por professor) que precisa estar valendo.
   const capA = await capturar(a, varA)
+  const capA2 = await capturar(a, varA)
   const capB = await capturar(b, varB)
+  const capB2 = await capturar(b, varB)
   ok(
-    `capturas: Ana→${varA.professor.slug} (${varA.typeKey}), ` +
-      `Bia→${varB.professor.slug} (${varB.typeKey}); ficha única confirmada`,
+    `capturas: Ana→2× ${varA.professor.slug} (${varA.typeKey}), ` +
+      `Bia→2× ${varB.professor.slug} (${varB.typeKey}); ficha única confirmada`,
   )
 
   const sockA = connect(a.cookie)
@@ -149,14 +155,37 @@ async function main() {
   await Promise.all([startA, startB])
   ok('convite aceito, seleção aberta')
 
+  // O mesmo exemplar duas vezes tem de ser recusado — é a trava de repetição.
+  ack = await command(sockA, 'battle:pick', { captureIds: [capA.id, capA.id] })
+  if (ack.ok) fail('aceitou o mesmo exemplar repetido no time')
+  ok('time com exemplar repetido recusado')
+
+  const previewA = waitEvent(sockA, 'battle:preview')
+  const previewB = waitEvent(sockB, 'battle:preview')
+  ack = await command(sockA, 'battle:pick', { captureIds: [capA.id, capA2.id] })
+  if (!ack.ok) fail('pick A: ' + ack.message)
+  ack = await command(sockB, 'battle:pick', { captureIds: [capB.id, capB2.id] })
+  if (!ack.ok) fail('pick B: ' + ack.message)
+  const prevA = await previewA
+  await previewB
+
+  // O preview revela professor e tipos — nunca o deck nem o captureId do rival.
+  if (prevA.foe.team.length !== 2) fail('preview sem o time completo do rival')
+  for (const m of prevA.foe.team) {
+    if (m.captureId || m.moves) fail('preview vazou captureId/deck do rival')
+  }
+  ok(`team preview: 2 × 2, sem vazar deck do rival`)
+
   const beginA = waitEvent(sockA, 'battle:begin')
   const beginB = waitEvent(sockB, 'battle:begin')
-  ack = await command(sockA, 'battle:pick', { captureId: capA.id })
-  if (!ack.ok) fail('pick A: ' + ack.message)
-  ack = await command(sockB, 'battle:pick', { captureId: capB.id })
-  if (!ack.ok) fail('pick B: ' + ack.message)
+  ack = await command(sockA, 'battle:lead', { captureId: capA.id })
+  if (!ack.ok) fail('lead A: ' + ack.message)
+  ack = await command(sockB, 'battle:lead', { captureId: capB.id })
+  if (!ack.ok) fail('lead B: ' + ack.message)
   let stateA = await beginA
   let stateB = await beginB
+  if (stateA.you.team?.length !== 2) fail('battle:begin sem o time do jogador')
+  ok('lead escolhido e batalha iniciada')
 
   // A arena tem que receber o deck e os tipos gravados no exemplar, não um
   // sorteio novo — é essa a diferença que o resgate por ficha introduziu.
@@ -169,26 +198,95 @@ async function main() {
   }
   ok(`batalha: ${stateA.you.professor.name} vs ${stateA.foe.professor.name} (deck e tipos do exemplar)`)
 
+  /** Reservas vivos de um lado — quem dá para pôr em campo agora. */
+  const reservasDe = (state) =>
+    (state.you.team ?? []).filter(
+      (m) => !m.fainted && m.captureId !== state.you.activeCaptureId,
+    )
+
   let finished = null
-  for (let round = 1; round <= 60 && !finished; round++) {
-    const nextA = Promise.race([
-      waitEvent(sockA, 'battle:round', 15000).then((p) => ({ kind: 'round', p })),
-      waitEvent(sockA, 'battle:end', 15000).then((p) => ({ kind: 'end', p })),
-    ])
-    const nextB = Promise.race([
-      waitEvent(sockB, 'battle:round', 15000).then((p) => ({ kind: 'round', p })),
-      waitEvent(sockB, 'battle:end', 15000).then((p) => ({ kind: 'end', p })),
-    ])
-    await command(sockA, 'battle:move', { moveId: attackOf(stateA.you.moves).id })
+  let trocou = false
+  let entrouAposNocaute = false
+
+  for (let round = 1; round <= 80 && !finished; round++) {
+    const proximo = (sock) =>
+      Promise.race([
+        waitEvent(sock, 'battle:round', 15000).then((p) => ({ kind: 'round', p })),
+        waitEvent(sock, 'battle:faint', 15000).then((p) => ({ kind: 'faint', p })),
+        waitEvent(sock, 'battle:end', 15000).then((p) => ({ kind: 'end', p })),
+      ])
+    const nextA = proximo(sockA)
+    const nextB = proximo(sockB)
+
+    // Uma troca de verdade no primeiro turno, para exercitar o caminho: Ana
+    // troca, Bia bate. Quem entra tem de comer o golpe.
+    if (round === 1 && reservasDe(stateA).length) {
+      const reserva = reservasDe(stateA)[0]
+      const r = await command(sockA, 'battle:switch', { captureId: reserva.captureId })
+      if (!r.ok) fail('troca A: ' + r.message)
+      trocou = true
+    } else {
+      await command(sockA, 'battle:move', { moveId: attackOf(stateA.you.moves).id })
+    }
     await command(sockB, 'battle:move', { moveId: attackOf(stateB.you.moves).id })
+
     const [rA, rB] = await Promise.all([nextA, nextB])
-    if (rA.kind === 'end') finished = { a: rA.p, b: rB.p }
-    else {
-      stateA = { you: { ...stateA.you, ...rA.p.you }, foe: rA.p.foe }
-      stateB = { you: { ...stateB.you, ...rB.p.you }, foe: rB.p.foe }
+    if (rA.kind === 'end') {
+      finished = { a: rA.p, b: rB.p }
+      break
+    }
+
+    const houveNocaute = rA.kind === 'faint' || rB.kind === 'faint'
+
+    // Os listeners do que vem DEPOIS da substituição são registrados ANTES de
+    // enviar `battle:enter`: o servidor resolve a entrada de forma síncrona
+    // dentro do handler, então o `battle:round` chega junto com — ou antes de —
+    // o ack. Registrar depois do await perde o evento (o cliente real não sofre
+    // disso: `stores/battle.js` assina os eventos uma vez, na conexão).
+    const posEntrada = houveNocaute
+      ? Promise.all([
+          Promise.race([
+            waitEvent(sockA, 'battle:round', 15000).then((p) => ({ kind: 'round', p })),
+            waitEvent(sockA, 'battle:end', 15000).then((p) => ({ kind: 'end', p })),
+          ]),
+          Promise.race([
+            waitEvent(sockB, 'battle:round', 15000).then((p) => ({ kind: 'round', p })),
+            waitEvent(sockB, 'battle:end', 15000).then((p) => ({ kind: 'end', p })),
+          ]),
+        ])
+      : null
+
+    // Nocaute com reserva vivo: a batalha pausa e quem perdeu escolhe a entrada.
+    for (const [sock, r, state] of [
+      [sockA, rA, stateA],
+      [sockB, rB, stateB],
+    ]) {
+      if (r.kind !== 'faint' || !r.p.youChoose) continue
+      const vivo = (r.p.you.team ?? []).find((m) => !m.fainted)
+      if (!vivo) fail('pediu entrada sem reserva vivo')
+      const ackEntrada = await command(sock, 'battle:enter', { captureId: vivo.captureId })
+      if (!ackEntrada.ok) fail('entrada: ' + ackEntrada.message)
+      entrouAposNocaute = true
+      state.you = { ...state.you, ...r.p.you }
+    }
+
+    if (rA.kind === 'round') stateA = { you: { ...stateA.you, ...rA.p.you }, foe: rA.p.foe }
+    if (rB.kind === 'round') stateB = { you: { ...stateB.you, ...rB.p.you }, foe: rB.p.foe }
+
+    // Depois de uma substituição vem um battle:round com o campo novo.
+    if (posEntrada) {
+      const [novoA, novoB] = await posEntrada
+      if (novoA.kind === 'end') finished = { a: novoA.p, b: novoB.p }
+      else {
+        stateA = { you: { ...stateA.you, ...novoA.p.you }, foe: novoA.p.foe }
+        stateB = { you: { ...stateB.you, ...novoB.p.you }, foe: novoB.p.foe }
+      }
     }
   }
-  if (!finished) fail('não terminou em 60 rodadas')
+  if (!finished) fail('não terminou em 80 rodadas')
+  if (!trocou) fail('a troca voluntária nunca foi exercitada')
+  if (!entrouAposNocaute) fail('o revezamento após nocaute nunca foi exercitado')
+  ok('troca voluntária e revezamento após nocaute exercitados')
   ok(`fim: Ana=${finished.a.result} Bia=${finished.b.result} (${finished.a.reason})`)
 
   const winSide = finished.a.result === 'win' ? finished.a : finished.b

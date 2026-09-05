@@ -58,7 +58,11 @@ export type BattleEvent =
   | { type: 'heal'; target: CombatantKey; amount: number }
   | { type: 'status'; target: CombatantKey }
   | { type: 'effectiveness'; level: 'super4' | 'super' | 'weak' | 'weak4' }
-  | { type: 'faint'; target: CombatantKey };
+  | { type: 'faint'; target: CombatantKey }
+  // Emitido pela SALA (team.ts / battle-room.service.ts), nunca pelo motor: o
+  // motor não sabe que existe time. Fica no tipo porque a fila de eventos é o
+  // contrato único entre servidor e UI, e é ela que anima a troca.
+  | { type: 'switch'; target: CombatantKey; name: string };
 
 interface Shield {
   mode: 'block' | 'reduce' | 'reflect' | 'evade';
@@ -125,7 +129,12 @@ export function createCombatant(init: {
   types?: string | string[];
   maxHp?: number;
   moves?: Move[];
-  ivs?: { ivHp?: number; ivRigor?: number; ivDidatica?: number; ivRaciocinio?: number };
+  ivs?: {
+    ivHp?: number;
+    ivRigor?: number;
+    ivDidatica?: number;
+    ivRaciocinio?: number;
+  };
 }): Combatant {
   const { name, type, types, moves = [], ivs = {} } = init;
   const maxHp = init.maxHp ?? DEFAULT_MAX_HP + Math.round(ivBonus(ivs.ivHp));
@@ -166,7 +175,10 @@ function stageMultiplier(stage: number): number {
 }
 
 export function effectiveStat(combatant: Combatant, stat: Stat): number {
-  return ((combatant.baseStats[stat] ?? 100) / 100) * stageMultiplier(combatant.stages[stat]);
+  return (
+    ((combatant.baseStats[stat] ?? 100) / 100) *
+    stageMultiplier(combatant.stages[stat])
+  );
 }
 
 const rand = (min: number, max: number) => min + Math.random() * (max - min);

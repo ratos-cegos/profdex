@@ -1,10 +1,12 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import BancoDeReservas from '../components/BancoDeReservas.vue'
 import BattleHpBar from '../components/BattleHpBar.vue'
 import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
 import DamagePopup from '../components/DamagePopup.vue'
 import MoveButton from '../components/MoveButton.vue'
+import ProfessorFace from '../components/ProfessorFace.vue'
 import { useBattleStore } from '../stores/battle'
 import { spriteUrlForProfessor } from '../data/professorSprites'
 
@@ -55,15 +57,21 @@ let lastResyncAt = 0
 
 function resyncIfStuck() {
   const p = pvp.value
-  if (!p || p.phase !== 'active' || animating.value) return
+  if (!p || (p.phase !== 'active' && p.phase !== 'switching') || animating.value) return
   if (now.value < p.deadline + RESYNC_GRACE_MS) return
   if (now.value - lastResyncAt < RESYNC_COOLDOWN_MS) return
   lastResyncAt = now.value
   battle.requestResync()
 }
 
+// `switching` também tem prazo: quem não escolhe quem entra leva o próximo da
+// ordem — e uma falta no contador de abandono.
+const emJogo = computed(
+  () => pvp.value?.phase === 'active' || pvp.value?.phase === 'switching',
+)
+
 const secondsLeft = computed(() => {
-  if (!pvp.value?.deadline || pvp.value.phase !== 'active') return 0
+  if (!pvp.value?.deadline || !emJogo.value) return 0
   return Math.max(0, Math.ceil((pvp.value.deadline - now.value) / 1000))
 })
 
@@ -71,6 +79,35 @@ const canAct = computed(
   () =>
     pvp.value?.phase === 'active' && !pvp.value.youMoved && !animating.value && !showResult.value,
 )
+
+// ── Time ───────────────────────────────────────────────────────────────────
+// Painel de troca aberto (fase `active`). A escolha de entrada, na fase
+// `switching`, não é opcional e por isso não usa este estado.
+const trocaAberta = ref(false)
+
+/** Reservas vivos: quem dá para pôr em campo agora. */
+const reservas = computed(() =>
+  (pvp.value?.you?.team ?? []).filter(
+    (m) => !m.fainted && m.captureId !== pvp.value?.you?.activeCaptureId,
+  ),
+)
+
+const precisaEntrar = computed(
+  () => pvp.value?.phase === 'switching' && pvp.value?.youChoose,
+)
+
+async function trocarPara(membro) {
+  if (!canAct.value) return
+  trocaAberta.value = false
+  const ack = await battle.switchTo(membro.captureId)
+  if (ack.ok) message.value = pvp.value?.foeMoved ? 'Resolvendo…' : 'Aguardando o rival…'
+}
+
+async function entrarCom(membro) {
+  if (!precisaEntrar.value) return
+  const ack = await battle.enterWith(membro.captureId)
+  if (ack.ok) message.value = `${membro.professor.name} entra em campo!`
+}
 
 // Sprites 2D, não .glb: dois modelos de dezenas de MB por partida faziam o
 // Safari do iPhone descartar a aba no meio da batalha.
@@ -154,6 +191,15 @@ async function play(events) {
         if (ev.target === 'enemy') foeFainted.value = true
         await delay(300)
         break
+      // A troca sai da SALA, não do motor: quem entra assume o lugar em campo.
+      // O sprite e a barra vêm do `you`/`foe` já atualizados no fim da fila, e
+      // aqui só se limpa o estado de "caído" do slot, que agora é de outro.
+      case 'switch':
+        if (ev.target === 'player') youFainted.value = false
+        if (ev.target === 'enemy') foeFainted.value = false
+        message.value = `${ev.name} entra em campo!`
+        await delay(700)
+        break
       default:
         break
     }
@@ -165,6 +211,10 @@ async function play(events) {
 
   if (pvp.value?.phase === 'done') {
     showResult.value = true
+  } else if (pvp.value?.phase === 'switching') {
+    message.value = pvp.value.youChoose
+      ? 'Quem entra agora?'
+      : `${pvp.value.opponent.name} está escolhendo…`
   } else if (pvp.value?.phase === 'active') {
     message.value = 'Escolha seu golpe!'
   }
@@ -224,7 +274,9 @@ watch(
 
 onMounted(() => {
   battle.connect() // idempotente; cobre refresh (o resync reconstrói a tela)
-  if (!pvp.value || pvp.value.phase === 'picking') {
+  // `picking` e `preview` são as duas etapas da tela de seleção — chegar na
+  // arena em qualquer uma delas é deep link ou F5 fora de hora.
+  if (!pvp.value || pvp.value.phase === 'picking' || pvp.value.phase === 'preview') {
     router.replace({ name: pvp.value ? 'pvp-pick' : 'batalha' })
     return
   }
@@ -260,6 +312,10 @@ onUnmounted(() => clock && clearInterval(clock))
         :hp="foeHp"
         :max-hp="pvp.foe.maxHp"
       />
+      <!-- Reservas do rival. O time dele já foi revelado no preview e o HP de
+           cada um foi visto em campo — esconder aqui não criaria segredo, só
+           obrigaria a decorar. -->
+      <BancoDeReservas :team="pvp.foe.team ?? []" foe />
       <img
         class="pvp-arena__model pvp-arena__model--foe"
         :class="{ 'pvp-arena__model--hit': foeHit, 'pvp-arena__model--fainted': foeFainted }"
@@ -281,6 +337,10 @@ onUnmounted(() => clock && clearInterval(clock))
       />
       <DamagePopup v-for="item in youFeedback" :key="item.id" v-bind="item" />
       <BattleHpBar :name="pvp.you.professor?.name ?? 'Você'" :hp="youHp" :max-hp="pvp.you.maxHp" />
+      <BancoDeReservas
+        :team="pvp.you.team ?? []"
+        :active-capture-id="pvp.you.activeCaptureId"
+      />
     </div>
 
     <!-- HUD -->
@@ -288,7 +348,7 @@ onUnmounted(() => clock && clearInterval(clock))
       <div class="pvp-arena__msgrow">
         <p class="pvp-arena__message">{{ message }}</p>
         <span
-          v-if="pvp.phase === 'active'"
+          v-if="emJogo"
           class="pixel pvp-arena__timer"
           :class="{ 'pvp-arena__timer--low': secondsLeft <= 10 }"
         >
@@ -296,16 +356,76 @@ onUnmounted(() => clock && clearInterval(clock))
         </span>
       </div>
 
-      <div class="pvp-arena__moves">
-        <MoveButton
-          v-for="move in pvp.you.moves"
-          :key="move.id"
-          :move="move"
-          :opponent-types="pvp.foe.types"
-          :disabled="!canAct"
-          @select="useMove"
-        />
+      <!-- Escolher quem entra não é opcional: enquanto está pendente, ela toma
+           o lugar dos comandos em vez de dividir espaço com eles. -->
+      <div v-if="pvp.phase === 'switching'" class="entrada">
+        <template v-if="precisaEntrar">
+          <p class="entrada__titulo">Quem entra agora?</p>
+          <div class="entrada__opcoes">
+            <button
+              v-for="m in reservas"
+              :key="m.captureId"
+              class="entrada__opcao"
+              type="button"
+              @click="entrarCom(m)"
+            >
+              <ProfessorFace class="entrada__face" :slug="m.professor.slug" :name="m.professor.name" />
+              <span class="entrada__nome">{{ m.professor.name }}</span>
+              <span class="entrada__hp">{{ m.hp }}/{{ m.maxHp }}</span>
+            </button>
+          </div>
+        </template>
+        <p v-else class="pvp-arena__waiting">
+          {{ pvp.opponent.name }} está escolhendo quem entra…
+        </p>
       </div>
+
+      <template v-else>
+        <!-- Painel de troca, sobreposto aos golpes: a ação do turno é uma só. -->
+        <div v-if="trocaAberta" class="entrada">
+          <p class="entrada__titulo">Trocar por quem?</p>
+          <div class="entrada__opcoes">
+            <button
+              v-for="m in reservas"
+              :key="m.captureId"
+              class="entrada__opcao"
+              type="button"
+              :disabled="!canAct"
+              @click="trocarPara(m)"
+            >
+              <ProfessorFace class="entrada__face" :slug="m.professor.slug" :name="m.professor.name" />
+              <span class="entrada__nome">{{ m.professor.name }}</span>
+              <span class="entrada__hp">{{ m.hp }}/{{ m.maxHp }}</span>
+            </button>
+          </div>
+          <button class="entrada__cancelar" type="button" @click="trocaAberta = false">
+            Voltar aos golpes
+          </button>
+        </div>
+
+        <template v-else>
+          <div class="pvp-arena__moves">
+            <MoveButton
+              v-for="move in pvp.you.moves"
+              :key="move.id"
+              :move="move"
+              :opponent-types="pvp.foe.types"
+              :disabled="!canAct"
+              @select="useMove"
+            />
+          </div>
+
+          <button
+            v-if="reservas.length"
+            class="pvp-arena__trocar"
+            type="button"
+            :disabled="!canAct"
+            @click="trocaAberta = true"
+          >
+            ⇄ Trocar ({{ reservas.length }})
+          </button>
+        </template>
+      </template>
 
       <p v-if="pvp.youMoved && pvp.phase === 'active' && !animating" class="pvp-arena__waiting">
         {{ pvp.foeMoved ? 'Resolvendo a rodada…' : `Aguardando ${pvp.opponent.name}…` }}
@@ -546,6 +666,88 @@ onUnmounted(() => clock && clearInterval(clock))
   font-size: 12px;
   color: var(--text-muted);
   text-align: center;
+}
+
+/* ── Troca e entrada após nocaute ────────────────────────────────────────── */
+.entrada {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.entrada__titulo {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--yellow, #ffcb05);
+  text-align: center;
+}
+
+.entrada__opcoes {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.entrada__opcao {
+  min-width: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px;
+  border: 2px solid var(--border, #2a2f3a);
+  border-radius: var(--radius, 8px);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text, #fff);
+  cursor: pointer;
+}
+
+.entrada__opcao:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.entrada__face {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.entrada__nome {
+  font-size: 11px;
+}
+
+.entrada__hp {
+  font-size: 10px;
+  color: var(--text-muted, #8b93a7);
+  font-variant-numeric: tabular-nums;
+}
+
+.entrada__cancelar {
+  align-self: center;
+  border: 0;
+  background: none;
+  color: var(--text-muted, #8b93a7);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pvp-arena__trocar {
+  min-height: 40px;
+  border: 2px solid var(--border, #2a2f3a);
+  border-radius: var(--radius, 8px);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text, #fff);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pvp-arena__trocar:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .pvp-result {
