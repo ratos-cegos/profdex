@@ -6,6 +6,7 @@ import { QuizService } from './quiz.service';
 
 const QUESTION = {
   id: 'q-1',
+  code: '4821',
   theme: 'banco',
   difficulty: 'facil',
   prompt: 'Qual comando SQL consulta dados?',
@@ -13,7 +14,31 @@ const QUESTION = {
   answer: 1,
 };
 
-function createSubject() {
+/** Questão de banco só com o que o sorteio olha. */
+function questao(id: string, difficulty = 'facil') {
+  return {
+    id,
+    code: id.replace(/\D/g, '').padStart(4, '1'),
+    theme: 'banco',
+    difficulty,
+    prompt: `Enunciado ${id}`,
+    options: ['a', 'b', 'c', 'd'],
+    answer: 0,
+  };
+}
+
+/** Linha do `groupBy` de tentativas: questão vista, e quando pela última vez. */
+function vista(questionId: string, quando: Date) {
+  return { questionId, _max: { createdAt: quando } };
+}
+
+interface SubjectOptions {
+  questions?: ReturnType<typeof questao>[];
+  /** RNG fixo: sem ele o sorteio não é observável em teste. */
+  rng?: () => number;
+}
+
+function createSubject(options: SubjectOptions = {}) {
   const prisma = {
     user: {
       findUnique: jest.fn().mockResolvedValue({
@@ -23,7 +48,7 @@ function createSubject() {
       }),
     },
     quizQuestion: {
-      findMany: jest.fn().mockResolvedValue([QUESTION]),
+      findMany: jest.fn().mockResolvedValue(options.questions ?? [QUESTION]),
       groupBy: jest.fn().mockResolvedValue([]),
     },
     // Espelho do mock do treino: se a bancada algum dia ler daqui, o aluno que
@@ -49,9 +74,14 @@ function createSubject() {
   const service = new QuizService(
     prisma as unknown as PrismaService,
     metrics as unknown as MetricsService,
+    options.rng ?? Math.random,
   );
   return { metrics, prisma, service };
 }
+
+/** Enunciado da questão sorteada — é o que a bancada devolve, e o id não sai. */
+const sorteada = (aberta: { question: { prompt: string } }) =>
+  aberta.question.prompt;
 
 describe('QuizService', () => {
   it('nunca sorteia questão do banco de treino', async () => {
@@ -73,6 +103,18 @@ describe('QuizService', () => {
     expect(aberta.question.options).toHaveLength(4);
     expect(JSON.stringify(aberta.question)).not.toContain('answer');
     expect(aberta.question).not.toHaveProperty('correctIndex');
+  });
+
+  it('mostra o código de 4 dígitos na questão e no resultado', async () => {
+    // É por ele que o aluno contesta a questão — e ele descobre que discorda
+    // depois de ver o gabarito, então precisa aparecer nos dois momentos.
+    const { service } = createSubject();
+
+    const aberta = await service.start('202312345', 'banco');
+    const resultado = await service.answer('admin-1', aberta.sessionId, 0);
+
+    expect(aberta.question.code).toBe('4821');
+    expect(resultado.code).toBe('4821');
   });
 
   it('accepts the shuffled index of the right option', async () => {
@@ -179,6 +221,80 @@ describe('QuizService', () => {
       NotFoundException,
     );
     expect(prisma.quizAttempt.create).not.toHaveBeenCalled();
+  });
+
+  it('nunca repete questão já respondida enquanto houver inédita', async () => {
+    // O aluno passa o dia no estande: com 20 questões por tema e cooldown de
+    // 10min, ver de novo uma que ele já respondeu é falha visível na fila.
+    const questoes = [questao('q-1'), questao('q-2'), questao('q-3')];
+    const respondidas = [
+      vista('q-1', new Date('2026-09-04T10:00:00Z')),
+      vista('q-2', new Date('2026-09-04T10:30:00Z')),
+    ];
+
+    // Os dois extremos do RNG: nenhum sorteio pode alcançar as respondidas.
+    for (const rng of [() => 0, () => 0.999999]) {
+      const { prisma, service } = createSubject({ questions: questoes, rng });
+      prisma.quizAttempt.groupBy.mockResolvedValue(respondidas);
+
+      const aberta = await service.start('202312345', 'banco');
+
+      expect(sorteada(aberta)).toBe('Enunciado q-3');
+    }
+  });
+
+  it('esgotado o banco, repete a mais antiga e nunca a recém-respondida', async () => {
+    const questoes = [questao('q-1'), questao('q-2'), questao('q-3')];
+    const { prisma, service } = createSubject({
+      questions: questoes,
+      rng: () => 0.5,
+    });
+    // Todas vistas: q-3 é a que ele acabou de responder, q-1 a mais antiga.
+    prisma.quizAttempt.groupBy.mockResolvedValue([
+      vista('q-1', new Date('2026-09-04T09:00:00Z')),
+      vista('q-2', new Date('2026-09-04T09:40:00Z')),
+      vista('q-3', new Date('2026-09-04T10:20:00Z')),
+    ]);
+
+    const aberta = await service.start('202312345', 'banco');
+
+    expect(sorteada(aberta)).toBe('Enunciado q-1');
+  });
+
+  it('não devolve de novo a questão que o aluno abriu e abandonou', async () => {
+    // A tentativa só é gravada em `answer`: sem contabilizar o descarte, o
+    // aluno que desistiu (ou o tablet que travou) reencontra a mesma questão.
+    const { service } = createSubject({
+      questions: [questao('q-1'), questao('q-2')],
+      rng: () => 0,
+    });
+
+    const primeira = await service.start('202312345', 'banco');
+    const segunda = await service.start('202312345', 'banco');
+
+    expect(sorteada(primeira)).toBe('Enunciado q-1');
+    expect(sorteada(segunda)).toBe('Enunciado q-2');
+  });
+
+  it('sorteia a dificuldade pela proporção do seed, não pelo tamanho do pool', async () => {
+    // Pool desbalanceado (1 fácil, 5 difíceis) — o que acontece com quem já
+    // respondeu as fáceis do tema. Com 0.5 uniforme no pool sairia uma difícil;
+    // pelos pesos 4/3, metade do intervalo ainda cai na fácil.
+    const { service } = createSubject({
+      questions: [
+        questao('q-facil', 'facil'),
+        questao('q-d1', 'dificil'),
+        questao('q-d2', 'dificil'),
+        questao('q-d3', 'dificil'),
+        questao('q-d4', 'dificil'),
+        questao('q-d5', 'dificil'),
+      ],
+      rng: () => 0.5,
+    });
+
+    const aberta = await service.start('202312345', 'banco');
+
+    expect(sorteada(aberta)).toBe('Enunciado q-facil');
   });
 
   it('points the student to the professors of the theme', async () => {

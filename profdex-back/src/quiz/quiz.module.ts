@@ -3,6 +3,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 import { MetricsModule } from '../metrics/metrics.module';
 import { QuizPracticeController } from './quiz-practice.controller';
 import { QuizPracticeService } from './quiz-practice.service';
+import { QUIZ_RNG } from './quiz.constants';
 import { QuizController } from './quiz.controller';
 import { QuizService } from './quiz.service';
 
@@ -19,6 +20,11 @@ import { QuizService } from './quiz.service';
 @Module({
   imports: [MetricsModule],
   controllers: [QuizController, QuizPracticeController],
-  providers: [QuizService, QuizPracticeService, AdminGuard],
+  providers: [
+    QuizService,
+    QuizPracticeService,
+    AdminGuard,
+    { provide: QUIZ_RNG, useValue: Math.random },
+  ],
 })
 export class QuizModule {}

@@ -30,5 +30,30 @@ export const ANSWER_GRACE_MS = 3_000;
 /** Cooldown por aluno e por tema. */
 export const THEME_COOLDOWN_MS = 10 * 60_000;
 
-/** Quantas questões recentes evitar repetir para o mesmo aluno no tema. */
-export const AVOID_LAST_QUESTIONS = 5;
+/**
+ * Proporção alvo de dificuldade, a mesma do seed (4 fáceis / 3 médias / 3
+ * difíceis por tema).
+ *
+ * O sorteio escolhe a DIFICULDADE por estes pesos antes de escolher a questão,
+ * renormalizando entre as dificuldades que ainda têm questão disponível. Sortear
+ * uniformemente sobre o pool daria outra coisa: quem já respondeu as fáceis
+ * cairia num pool quase só de difíceis e o quiz endureceria sozinho ao longo do
+ * dia, justo para quem mais participou.
+ */
+export const QUIZ_DIFFICULTY_MIX: Readonly<Record<QuizDifficulty, number>> = {
+  facil: 4,
+  media: 3,
+  dificil: 3,
+};
+
+/**
+ * Fatia do fim da fila considerada quando o aluno já viu TODAS as questões do
+ * tema: sorteia dentro do terço visto há mais tempo. Repetir a mais antiga
+ * sempre seria previsível; repetir qualquer uma traria de volta a que ele
+ * acabou de responder.
+ */
+export const REPEAT_OLDEST_FRACTION = 3;
+
+/** RNG do quiz. Injetado para o teste conseguir fixar sorteio e embaralho. */
+export const QUIZ_RNG = Symbol('QUIZ_RNG');
+export type RandomSource = () => number;

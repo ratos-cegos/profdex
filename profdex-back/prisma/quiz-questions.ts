@@ -1,13 +1,18 @@
 /**
- * Banco de questões do quiz de bancada — 10 por tema da roda de tipos.
+ * Banco de questões do quiz de bancada — 20 por tema da roda de tipos.
  *
  * Fonte para o seed (`npm run db:seed-quiz`); em runtime o servidor lê da
  * tabela `quiz_questions`, nunca deste arquivo. O enunciado é a chave: mudar o
  * texto cria uma questão nova, mudar as alternativas atualiza a existente.
  *
- * Cada tema tem 4 fáceis, 3 médias e 3 difíceis. A ordem das alternativas aqui
- * é só a de cadastro — o servidor embaralha a cada aplicação, senão a fila da
- * bancada decoraria a posição da resposta.
+ * Cada tema tem 8 fáceis, 6 médias e 6 difíceis — a proporção 4:3:3 que o
+ * sorteio usa como peso (ver `QUIZ_DIFFICULTY_MIX`). O tamanho não é estético:
+ * o aluno nunca recebe uma questão que já respondeu no tema enquanto houver
+ * inédita, e com 10 por tema quem passava o dia no estande esgotava o banco
+ * antes do fim do evento.
+ *
+ * A ordem das alternativas aqui é só a de cadastro — o servidor embaralha a
+ * cada aplicação, senão a fila da bancada decoraria a posição da resposta.
  */
 
 export type QuizDifficulty = 'facil' | 'media' | 'dificil';
@@ -92,12 +97,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     theme: 'logica',
     difficulty: 'dificil',
     prompt: 'Pela lei de De Morgan, "não (p E q)" equivale a:',
-    options: [
-      'não p E não q',
-      'não p OU não q',
-      'p OU q',
-      'não (p OU q)',
-    ],
+    options: ['não p E não q', 'não p OU não q', 'p OU q', 'não (p OU q)'],
     answer: 1,
   },
   {
@@ -119,6 +119,104 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     prompt: 'Qual das proposições abaixo é uma tautologia?',
     options: ['p E não p', 'p OU não p', 'p → não p', 'não (p OU p)'],
     answer: 1,
+  },
+  {
+    theme: 'logica',
+    difficulty: 'facil',
+    prompt: 'Qual é o valor de "falso OU falso"?',
+    options: ['Verdadeiro', 'Falso', 'Indefinido', 'Depende da ordem'],
+    answer: 1,
+  },
+  {
+    theme: 'logica',
+    difficulty: 'facil',
+    prompt: 'Qual é a negação de "nenhum aluno faltou"?',
+    options: [
+      'Todo aluno faltou',
+      'Nenhum aluno compareceu',
+      'Pelo menos um aluno faltou',
+      'Todos compareceram',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'logica',
+    difficulty: 'facil',
+    prompt: 'Quantas linhas tem a tabela-verdade de 2 proposições simples?',
+    options: ['2', '4', '6', '8'],
+    answer: 1,
+  },
+  {
+    theme: 'logica',
+    difficulty: 'facil',
+    prompt: 'O conectivo "E" (conjunção) só é verdadeiro quando:',
+    options: [
+      'Pelo menos uma das partes é verdadeira',
+      'As duas partes são verdadeiras',
+      'As duas partes são falsas',
+      'Uma das partes é falsa',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'logica',
+    difficulty: 'media',
+    prompt: 'Qual é a recíproca de "se p, então q"?',
+    options: [
+      'Se não q, então não p',
+      'Se não p, então não q',
+      'Se q, então p',
+      'p e não q',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'logica',
+    difficulty: 'media',
+    prompt:
+      'Em quantas linhas da tabela-verdade a proposição "p OU q" é falsa?',
+    options: ['Nenhuma', 'Uma', 'Duas', 'Três'],
+    answer: 1,
+  },
+  {
+    theme: 'logica',
+    difficulty: 'media',
+    prompt: 'Pela lei de De Morgan, "não (p OU q)" equivale a:',
+    options: [
+      '(não p) OU (não q)',
+      '(não p) E (não q)',
+      'p E q',
+      'p OU (não q)',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'logica',
+    difficulty: 'dificil',
+    prompt:
+      'Como se chama a proposição que é falsa em todas as linhas da tabela-verdade?',
+    options: ['Tautologia', 'Contingência', 'Contradição', 'Bicondicional'],
+    answer: 2,
+  },
+  {
+    theme: 'logica',
+    difficulty: 'dificil',
+    prompt: 'A bicondicional "p ↔ q" é verdadeira exatamente quando:',
+    options: [
+      'p e q têm o mesmo valor lógico',
+      'p é verdadeira e q é falsa',
+      'Pelo menos uma das duas é verdadeira',
+      'As duas são falsas',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'logica',
+    difficulty: 'dificil',
+    prompt:
+      'Pelo modus tollens, de "se p, então q" e "não q" o que se conclui?',
+    options: ['q', 'p', 'não p', 'Nada se conclui'],
+    answer: 2,
   },
 
   // ── Cálculo ───────────────────────────────────────────────────────────────
@@ -195,6 +293,86 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     difficulty: 'dificil',
     prompt: 'Quanto vale a integral de x² dx no intervalo de 0 a 1?',
     options: ['1/4', '1/3', '1/2', '1'],
+    answer: 1,
+  },
+  {
+    theme: 'calculo',
+    difficulty: 'facil',
+    prompt: 'Qual é a derivada de f(x) = 5x?',
+    options: ['0', '5', '5x', 'x'],
+    answer: 1,
+  },
+  {
+    theme: 'calculo',
+    difficulty: 'facil',
+    prompt: 'Pela regra da potência, qual é a derivada de f(x) = x³?',
+    options: ['3x', 'x²', '3x²', '3x³'],
+    answer: 2,
+  },
+  {
+    theme: 'calculo',
+    difficulty: 'facil',
+    prompt: 'Quanto vale o limite de x² quando x tende a 3?',
+    options: ['3', '6', '9', 'Não existe'],
+    answer: 2,
+  },
+  {
+    theme: 'calculo',
+    difficulty: 'facil',
+    prompt: 'Qual é a integral indefinida de dx?',
+    options: ['0 + C', 'x + C', 'x²/2 + C', '1/x + C'],
+    answer: 1,
+  },
+  {
+    theme: 'calculo',
+    difficulty: 'media',
+    prompt: 'Qual é a derivada de cos(x)?',
+    options: ['sen(x)', '-sen(x)', 'cos(x)', '-cos(x)'],
+    answer: 1,
+  },
+  {
+    theme: 'calculo',
+    difficulty: 'media',
+    prompt: 'Qual é a derivada de ln(x), para x > 0?',
+    options: ['1/x', 'ln(x)/x', 'x·ln(x)', 'e^x'],
+    answer: 0,
+  },
+  {
+    theme: 'calculo',
+    difficulty: 'media',
+    prompt: 'Pela regra da cadeia, como se calcula a derivada de f(g(x))?',
+    options: ["f'(x) · g'(x)", "f'(g(x)) · g'(x)", "f'(g'(x))", "f(g'(x))"],
+    answer: 1,
+  },
+  {
+    theme: 'calculo',
+    difficulty: 'dificil',
+    prompt: 'Qual é a integral indefinida de 1/x dx, para x > 0?',
+    options: ['ln(x) + C', '1/x² + C', '-1/x² + C', 'x·ln(x) + C'],
+    answer: 0,
+  },
+  {
+    theme: 'calculo',
+    difficulty: 'dificil',
+    prompt: 'Pela regra do quociente, a derivada de f(x)/g(x) é:',
+    options: [
+      "(f'·g + f·g') / g²",
+      "f' / g'",
+      "(f'·g - f·g') / g²",
+      "(f·g' - f'·g) / g²",
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'calculo',
+    difficulty: 'dificil',
+    prompt: 'Uma função f é contínua em x = a quando:',
+    options: [
+      'f(a) existe, ainda que o limite não exista',
+      'o limite de f em a existe e é igual a f(a)',
+      'a derivada de f em a existe',
+      'apenas o limite lateral à direita existe',
+    ],
     answer: 1,
   },
 
@@ -284,7 +462,12 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     difficulty: 'dificil',
     prompt:
       'Em uma base muito desbalanceada, qual métrica é mais informativa que a acurácia?',
-    options: ['F1-score', 'Erro quadrático médio', 'Número de épocas', 'Perplexidade'],
+    options: [
+      'F1-score',
+      'Erro quadrático médio',
+      'Número de épocas',
+      'Perplexidade',
+    ],
     answer: 0,
   },
   {
@@ -308,6 +491,126 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
       'Penalizar pesos grandes e reduzir o overfitting',
       'Acelerar a convergência do gradiente',
       'Balancear as classes do conjunto',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'ia-ml',
+    difficulty: 'facil',
+    prompt: 'O que caracteriza o underfitting?',
+    options: [
+      'O modelo decora o conjunto de treino',
+      'O modelo é simples demais e erra até no treino',
+      'O modelo dispensa dados rotulados',
+      'O modelo tem acurácia perfeita',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'ia-ml',
+    difficulty: 'facil',
+    prompt: 'O que é uma feature em aprendizado de máquina?',
+    options: [
+      'Um atributo de entrada usado pelo modelo',
+      'O valor que o modelo prevê',
+      'O erro cometido pelo modelo',
+      'O número de camadas da rede',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'ia-ml',
+    difficulty: 'facil',
+    prompt: 'Qual destes é um problema de regressão?',
+    options: [
+      'Dizer se um e-mail é spam',
+      'Classificar fotos em cão ou gato',
+      'Prever o preço de um imóvel',
+      'Agrupar clientes parecidos',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'ia-ml',
+    difficulty: 'facil',
+    prompt: 'Um conjunto de dados rotulado é exigido por qual abordagem?',
+    options: [
+      'Aprendizado supervisionado',
+      'Aprendizado não supervisionado',
+      'Agrupamento',
+      'Redução de dimensionalidade',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'ia-ml',
+    difficulty: 'media',
+    prompt: 'O que a acurácia de um classificador mede?',
+    options: [
+      'A proporção de previsões corretas sobre o total',
+      'Apenas os acertos da classe positiva',
+      'O erro médio quadrático',
+      'O tempo gasto no treino',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'ia-ml',
+    difficulty: 'media',
+    prompt: 'O que a validação cruzada (cross-validation) estima?',
+    options: [
+      'O tamanho ideal do conjunto de dados',
+      'O desempenho do modelo usando várias divisões dos dados',
+      'O número mínimo de atributos necessários',
+      'O rótulo correto de cada exemplo não rotulado',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'ia-ml',
+    difficulty: 'media',
+    prompt: 'O que é a taxa de aprendizado (learning rate)?',
+    options: [
+      'A porcentagem de dados separada para treino',
+      'A acurácia mínima aceita',
+      'O tamanho do passo na atualização dos pesos',
+      'O número de épocas de treino',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'ia-ml',
+    difficulty: 'dificil',
+    prompt: 'Na matriz de confusão, o que o recall (revocação) mede?',
+    options: [
+      'A fração dos positivos reais que o modelo encontrou',
+      'A fração das previsões positivas que estavam certas',
+      'O total de acertos sobre o total de exemplos',
+      'O erro absoluto médio',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'ia-ml',
+    difficulty: 'dificil',
+    prompt: 'Para que serve a função de ativação em uma rede neural?',
+    options: [
+      'Normalizar os dados de entrada',
+      'Introduzir não linearidade entre as camadas',
+      'Reduzir o número de neurônios',
+      'Calcular o gradiente automaticamente',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'ia-ml',
+    difficulty: 'dificil',
+    prompt: 'O que o gradiente descendente faz durante o treino?',
+    options: [
+      'Sorteia os pesos iniciais da rede',
+      'Ajusta os pesos na direção que reduz a função de perda',
+      'Aumenta a função de perda para explorar o espaço',
+      'Remove os atributos irrelevantes',
     ],
     answer: 1,
   },
@@ -419,6 +722,126 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     ],
     answer: 1,
   },
+  {
+    theme: 'robotica',
+    difficulty: 'facil',
+    prompt: 'O que um atuador faz em um robô?',
+    options: [
+      'Converte um comando em ação física',
+      'Mede grandezas do ambiente',
+      'Armazena o programa em execução',
+      'Comunica o robô com a rede',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'robotica',
+    difficulty: 'facil',
+    prompt: 'Para que serve um motor de passo?',
+    options: [
+      'Medir a temperatura do circuito',
+      'Girar em incrementos angulares precisos',
+      'Gerar energia para os sensores',
+      'Amplificar o sinal do encoder',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'robotica',
+    difficulty: 'facil',
+    prompt: 'Qual é a função do microcontrolador em um robô?',
+    options: [
+      'Fornecer torque ao eixo',
+      'Isolar o circuito de potência',
+      'Executar o programa e comandar os periféricos',
+      'Medir a distância até o obstáculo',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'robotica',
+    difficulty: 'facil',
+    prompt: 'Um sensor de proximidade indutivo detecta:',
+    options: [
+      'A presença de objetos metálicos sem contato',
+      'A temperatura da superfície',
+      'A cor do objeto à frente',
+      'A carga restante da bateria',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'robotica',
+    difficulty: 'media',
+    prompt: 'Em um controlador PID, o termo proporcional (P) reage a quê?',
+    options: [
+      'Ao erro atual',
+      'Ao acúmulo do erro ao longo do tempo',
+      'À velocidade de variação do erro',
+      'Apenas ao valor desejado',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'robotica',
+    difficulty: 'media',
+    prompt: 'O que é odometria em um robô móvel?',
+    options: [
+      'Detectar obstáculos por ultrassom',
+      'Planejar a trajetória de menor custo',
+      'Estimar a posição a partir do movimento das rodas',
+      'Controlar a corrente do motor',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'robotica',
+    difficulty: 'media',
+    prompt: 'Para que serve uma ponte H no acionamento de um motor?',
+    options: [
+      'Inverter o sentido de rotação',
+      'Medir a corrente consumida',
+      'Converter sinal analógico em digital',
+      'Alimentar os sensores em 3,3 V',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'robotica',
+    difficulty: 'dificil',
+    prompt: 'O que a cinemática direta calcula?',
+    options: [
+      'Os ângulos das juntas a partir da posição desejada',
+      'A posição do efetuador a partir dos ângulos das juntas',
+      'A força necessária em cada junta',
+      'O tempo de resposta do controlador',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'robotica',
+    difficulty: 'dificil',
+    prompt: 'Por que um controle em malha fechada usa realimentação?',
+    options: [
+      'Para corrigir o comando a partir do erro medido',
+      'Para dispensar o uso de sensores',
+      'Para reduzir o consumo do motor',
+      'Para acelerar o processamento do microcontrolador',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'robotica',
+    difficulty: 'dificil',
+    prompt: 'O que é o espaço de configuração de um robô?',
+    options: [
+      'A área física ocupada pela base',
+      'A memória disponível no controlador',
+      'O conjunto de todas as posições possíveis das juntas',
+      'A faixa de tensão de operação',
+    ],
+    answer: 2,
+  },
 
   // ── Arquitetura ───────────────────────────────────────────────────────────
   {
@@ -525,6 +948,121 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
       'Pelo número de instruções do programa',
     ],
     answer: 1,
+  },
+  {
+    theme: 'arquitetura',
+    difficulty: 'facil',
+    prompt: 'Quantos bytes tem 1 kibibyte (KiB)?',
+    options: ['512', '1000', '1024', '2048'],
+    answer: 2,
+  },
+  {
+    theme: 'arquitetura',
+    difficulty: 'facil',
+    prompt: 'Qual registrador guarda o endereço da próxima instrução?',
+    options: [
+      'O contador de programa (PC)',
+      'A unidade lógica e aritmética',
+      'O cache L2',
+      'O barramento de dados',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'arquitetura',
+    difficulty: 'facil',
+    prompt: 'A memória ROM caracteriza-se por:',
+    options: [
+      'Ser mais rápida que o cache L1',
+      'Não perder o conteúdo ao desligar o computador',
+      'Ser volátil como a RAM',
+      'Existir apenas em servidores',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'arquitetura',
+    difficulty: 'facil',
+    prompt: 'O que trafega pelo barramento de dados?',
+    options: [
+      'Apenas endereços de memória',
+      'Apenas sinais de controle',
+      'Os valores lidos e escritos na memória',
+      'A energia vinda da fonte',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'arquitetura',
+    difficulty: 'media',
+    prompt: 'O que caracteriza a arquitetura de von Neumann?',
+    options: [
+      'Dados e instruções compartilham a mesma memória',
+      'Dados e instruções ficam em memórias fisicamente separadas',
+      'Não existe unidade de controle',
+      'O processador é obrigatoriamente multinúcleo',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'arquitetura',
+    difficulty: 'media',
+    prompt: 'Quando ocorre um cache hit?',
+    options: [
+      'Quando o dado precisa ser buscado na memória principal',
+      'Quando o dado procurado já está no cache',
+      'Quando o pipeline é esvaziado',
+      'Quando há erro de paridade na memória',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'arquitetura',
+    difficulty: 'media',
+    prompt: 'O que a memória virtual oferece a cada processo?',
+    options: [
+      'Uma frequência de operação maior no processador',
+      'Um substituto para o cache L1 em sistemas antigos',
+      'Um espaço de endereços maior que a RAM física disponível',
+      'Um barramento de endereços dedicado',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'arquitetura',
+    difficulty: 'dificil',
+    prompt: 'O princípio da localidade espacial diz que:',
+    options: [
+      'Endereços vizinhos ao acessado tendem a ser acessados em seguida',
+      'O mesmo endereço tende a ser acessado de novo em breve',
+      'O cache precisa ser maior que a memória principal',
+      'As instruções são sempre executadas fora de ordem',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'arquitetura',
+    difficulty: 'dificil',
+    prompt: 'Um hazard de controle no pipeline é causado por:',
+    options: [
+      'Duas instruções que disputam o mesmo registrador',
+      'Desvios condicionais cujo destino ainda não é conhecido',
+      'Falta de energia no barramento',
+      'Um cache totalmente associativo',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'arquitetura',
+    difficulty: 'dificil',
+    prompt: 'Para que serve a previsão de desvio (branch prediction)?',
+    options: [
+      'Reduzir o consumo de energia da ULA',
+      'Aumentar o tamanho efetivo do cache',
+      'Ordenar os acessos à memória principal',
+      'Evitar bolhas no pipeline antecipando o caminho do desvio',
+    ],
+    answer: 3,
   },
 
   // ── NPI ───────────────────────────────────────────────────────────────────
@@ -639,13 +1177,132 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
   {
     theme: 'npi',
     difficulty: 'dificil',
-    prompt:
-      'Qual é a diferença entre entrega contínua e implantação contínua?',
+    prompt: 'Qual é a diferença entre entrega contínua e implantação contínua?',
     options: [
       'Não há diferença, são sinônimos',
       'Na implantação contínua todo commit aprovado vai a produção automaticamente',
       'A entrega contínua dispensa testes',
       'A implantação contínua exige aprovação manual de cada versão',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'npi',
+    difficulty: 'facil',
+    prompt: 'O que é um commit em um sistema de controle de versão?',
+    options: [
+      'Um conjunto de alterações registrado no histórico',
+      'Uma cópia completa do repositório remoto',
+      'Um conflito entre duas branches',
+      'Um arquivo de configuração do projeto',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'npi',
+    difficulty: 'facil',
+    prompt: 'Para que serve criar uma branch?',
+    options: [
+      'Apagar o histórico do projeto',
+      'Isolar um trabalho em andamento da linha principal',
+      'Publicar o sistema em produção',
+      'Executar os testes automatizados',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'npi',
+    difficulty: 'facil',
+    prompt: 'O que é um requisito funcional?',
+    options: [
+      'Quão rápido o sistema deve responder',
+      'O orçamento previsto para o projeto',
+      'O que o sistema deve fazer',
+      'A linguagem de programação escolhida',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'npi',
+    difficulty: 'facil',
+    prompt: 'Qual é o papel de um protótipo?',
+    options: [
+      'Validar uma ideia antes de construí-la por inteiro',
+      'Substituir a documentação do sistema',
+      'Encerrar formalmente o projeto',
+      'Medir a cobertura dos testes',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'npi',
+    difficulty: 'media',
+    prompt: 'O que caracteriza um requisito NÃO funcional?',
+    options: [
+      'Descreve uma tela específica do sistema',
+      'Descreve qualidades como desempenho, segurança e usabilidade',
+      'É sempre opcional para a entrega',
+      'Só se aplica a bancos de dados',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'npi',
+    difficulty: 'media',
+    prompt: 'Para que serve a integração contínua?',
+    options: [
+      'Publicar o aplicativo nas lojas',
+      'Escrever a documentação do usuário',
+      'Integrar e testar as mudanças automaticamente a cada envio',
+      'Priorizar os itens do backlog',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'npi',
+    difficulty: 'media',
+    prompt: 'O que é um conflito de merge?',
+    options: [
+      'Duas alterações no mesmo trecho que o versionador não sabe unir',
+      'Um teste automatizado que falhou',
+      'Uma branch criada sem nenhum commit',
+      'Um repositório local sem remoto configurado',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'npi',
+    difficulty: 'dificil',
+    prompt: 'Por que testes automatizados reduzem o custo de mudança?',
+    options: [
+      'Porque substituem o code review',
+      'Porque dispensam o levantamento de requisitos',
+      'Porque detectam regressões cedo, quando corrigir ainda é barato',
+      'Porque diminuem o tamanho dos commits',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'npi',
+    difficulty: 'dificil',
+    prompt: 'O que caracteriza o scope creep em um projeto?',
+    options: [
+      'Novas exigências entram sem replanejar prazo e esforço',
+      'O escopo é fechado em contrato antes de começar',
+      'O time entrega antes do prazo combinado',
+      'O backlog está priorizado e revisado',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'npi',
+    difficulty: 'dificil',
+    prompt: 'Qual é o propósito de uma prova de conceito (PoC)?',
+    options: [
+      'Entregar o produto final ao cliente',
+      'Verificar se uma abordagem técnica é viável',
+      'Documentar um sistema já pronto',
+      'Treinar os usuários finais',
     ],
     answer: 1,
   },
@@ -724,7 +1381,12 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     theme: 'redes',
     difficulty: 'dificil',
     prompt: 'Qual é a sequência do three-way handshake do TCP?',
-    options: ['SYN, ACK, FIN', 'SYN, SYN-ACK, ACK', 'ACK, SYN, ACK', 'SYN, FIN, ACK'],
+    options: [
+      'SYN, ACK, FIN',
+      'SYN, SYN-ACK, ACK',
+      'ACK, SYN, ACK',
+      'SYN, FIN, ACK',
+    ],
     answer: 1,
   },
   {
@@ -745,6 +1407,111 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
       'Identificar o protocolo de transporte',
     ],
     answer: 1,
+  },
+  {
+    theme: 'redes',
+    difficulty: 'facil',
+    prompt: 'Qual é a porta padrão do HTTP?',
+    options: ['21', '25', '80', '443'],
+    answer: 2,
+  },
+  {
+    theme: 'redes',
+    difficulty: 'facil',
+    prompt: 'O que um servidor DHCP faz?',
+    options: [
+      'Distribui endereços IP automaticamente na rede',
+      'Traduz nomes de domínio em endereços',
+      'Filtra pacotes maliciosos',
+      'Criptografa todo o tráfego da rede',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'redes',
+    difficulty: 'facil',
+    prompt: 'A que corresponde o endereço 127.0.0.1?',
+    options: [
+      'Ao gateway padrão da rede',
+      'Ao próprio host (loopback)',
+      'Ao servidor DNS público',
+      'Ao endereço de broadcast',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'redes',
+    difficulty: 'facil',
+    prompt: 'Qual dispositivo interliga redes diferentes?',
+    options: ['O repetidor', 'O switch', 'O roteador', 'O hub'],
+    answer: 2,
+  },
+  {
+    theme: 'redes',
+    difficulty: 'media',
+    prompt: 'Em qual camada do modelo OSI atua um switch?',
+    options: [
+      'Camada 1 (física)',
+      'Camada 2 (enlace)',
+      'Camada 3 (rede)',
+      'Camada 4 (transporte)',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'redes',
+    difficulty: 'media',
+    prompt: 'O que o protocolo ARP resolve?',
+    options: [
+      'O endereço MAC correspondente a um endereço IP',
+      'O nome de domínio correspondente a um IP',
+      'A melhor rota até o destino',
+      'A porta usada por um serviço',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'redes',
+    difficulty: 'media',
+    prompt: 'Para que serve uma VLAN?',
+    options: [
+      'Aumentar a velocidade nominal do cabo',
+      'Criptografar o tráfego dentro do switch',
+      'Separar logicamente redes que compartilham o mesmo switch',
+      'Substituir o roteador de borda',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'redes',
+    difficulty: 'dificil',
+    prompt: 'Quantos endereços de host utilizáveis tem uma sub-rede /26?',
+    options: ['30', '62', '64', '126'],
+    answer: 1,
+  },
+  {
+    theme: 'redes',
+    difficulty: 'dificil',
+    prompt: 'O que o TLS acrescenta ao HTTP?',
+    options: [
+      'Compressão dos dados transmitidos',
+      'Roteamento entre redes distintas',
+      'Confidencialidade e autenticação do servidor',
+      'Controle de congestionamento',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'redes',
+    difficulty: 'dificil',
+    prompt: 'Para que serve o controle de congestionamento do TCP?',
+    options: [
+      'Ajustar a taxa de envio ao que a rede suporta',
+      'Garantir a ordem de entrega dos pacotes',
+      'Traduzir endereços privados em públicos',
+      'Descobrir a rota mais curta até o destino',
+    ],
+    answer: 0,
   },
 
   // ── Banco de Dados ────────────────────────────────────────────────────────
@@ -853,6 +1620,116 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     ],
     answer: 2,
   },
+  {
+    theme: 'banco',
+    difficulty: 'facil',
+    prompt: 'Qual comando SQL insere novas linhas em uma tabela?',
+    options: ['INSERT', 'SELECT', 'UPDATE', 'DROP'],
+    answer: 0,
+  },
+  {
+    theme: 'banco',
+    difficulty: 'facil',
+    prompt: 'Qual comando SQL altera dados já existentes?',
+    options: ['SELECT', 'UPDATE', 'INSERT', 'CREATE'],
+    answer: 1,
+  },
+  {
+    theme: 'banco',
+    difficulty: 'facil',
+    prompt: 'O que a cláusula WHERE faz em um SELECT?',
+    options: [
+      'Ordena o resultado',
+      'Agrupa as linhas por um campo',
+      'Filtra quais linhas entram no resultado',
+      'Junta duas tabelas',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'banco',
+    difficulty: 'facil',
+    prompt: 'Em SQL, o que o valor NULL representa?',
+    options: [
+      'Ausência de valor',
+      'O número zero',
+      'Uma string vazia',
+      'O valor booleano falso',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'banco',
+    difficulty: 'media',
+    prompt: 'Para que serve a cláusula GROUP BY?',
+    options: [
+      'Ordenar o resultado da consulta',
+      'Agrupar linhas para aplicar funções de agregação',
+      'Remover linhas duplicadas do filtro',
+      'Criar um índice na tabela',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'banco',
+    difficulty: 'media',
+    prompt: 'O que a cláusula ORDER BY faz?',
+    options: [
+      'Filtra as linhas do resultado',
+      'Agrupa as linhas por um campo',
+      'Ordena as linhas do resultado',
+      'Limita a quantidade de linhas retornadas',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'banco',
+    difficulty: 'media',
+    prompt: 'Qual é a diferença entre DELETE e TRUNCATE?',
+    options: [
+      'DELETE remove linhas com filtro; TRUNCATE esvazia a tabela inteira',
+      'TRUNCATE aceita WHERE e DELETE não',
+      'DELETE apaga a tabela; TRUNCATE apaga o banco',
+      'Não há diferença entre os dois',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'banco',
+    difficulty: 'dificil',
+    prompt: 'Nas propriedades ACID, o que significa o "A"?',
+    options: [
+      'Acessibilidade dos dados a qualquer usuário',
+      'Auditoria de todas as operações',
+      'Alta disponibilidade do servidor',
+      'Atomicidade: a transação vale por inteiro ou não vale',
+    ],
+    answer: 3,
+  },
+  {
+    theme: 'banco',
+    difficulty: 'dificil',
+    prompt: 'O que a segunda forma normal (2FN) exige?',
+    options: [
+      'Que todo atributo não chave dependa da chave primária inteira',
+      'Que nenhuma coluna aceite valores nulos',
+      'Que exista um índice em cada coluna',
+      'Que a tabela tenha no máximo dez colunas',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'banco',
+    difficulty: 'dificil',
+    prompt: 'Por que um índice pode deixar a escrita mais lenta?',
+    options: [
+      'Porque bloqueia a tabela inteira a cada consulta',
+      'Porque cada gravação precisa atualizar também a estrutura do índice',
+      'Porque duplica todas as linhas da tabela',
+      'Porque desativa o cache do banco',
+    ],
+    answer: 1,
+  },
 
   // ── Algoritmos ────────────────────────────────────────────────────────────
   {
@@ -865,21 +1742,24 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
   {
     theme: 'algoritmos',
     difficulty: 'facil',
-    prompt: 'Qual estrutura de dados segue a regra "último a entrar, primeiro a sair"?',
+    prompt:
+      'Qual estrutura de dados segue a regra "último a entrar, primeiro a sair"?',
     options: ['Fila', 'Pilha', 'Lista ligada', 'Árvore'],
     answer: 1,
   },
   {
     theme: 'algoritmos',
     difficulty: 'facil',
-    prompt: 'Qual estrutura de dados segue a regra "primeiro a entrar, primeiro a sair"?',
+    prompt:
+      'Qual estrutura de dados segue a regra "primeiro a entrar, primeiro a sair"?',
     options: ['Pilha', 'Fila', 'Grafo', 'Tabela hash'],
     answer: 1,
   },
   {
     theme: 'algoritmos',
     difficulty: 'facil',
-    prompt: 'Na busca linear em uma lista de n elementos, quantas comparações o pior caso exige?',
+    prompt:
+      'Na busca linear em uma lista de n elementos, quantas comparações o pior caso exige?',
     options: ['1', 'log n', 'n', 'n²'],
     answer: 2,
   },
@@ -939,5 +1819,103 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     prompt: 'Qual é a complexidade média de inserção em uma tabela hash?',
     options: ['O(1)', 'O(log n)', 'O(n)', 'O(n log n)'],
     answer: 0,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt:
+      'Qual é a complexidade de acessar um elemento de um vetor pelo índice?',
+    options: ['O(1)', 'O(log n)', 'O(n)', 'O(n log n)'],
+    answer: 0,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'O que cada nó de uma lista encadeada guarda?',
+    options: [
+      'Apenas o valor armazenado',
+      'O valor e a referência para o próximo nó',
+      'O índice e o tamanho da lista',
+      'Uma cópia do vetor inteiro',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'Qual é a complexidade do bubble sort no pior caso?',
+    options: ['O(n)', 'O(log n)', 'O(n log n)', 'O(n²)'],
+    answer: 3,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'O que um algoritmo de ordenação faz?',
+    options: [
+      'Organiza os elementos segundo um critério',
+      'Remove os elementos repetidos',
+      'Localiza um elemento específico',
+      'Conta quantos elementos existem',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'Qual é a complexidade do merge sort em qualquer caso?',
+    options: ['O(n)', 'O(n log n)', 'O(n²)', 'O(log n)'],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'Em uma árvore binária de busca equilibrada, quanto custa a busca?',
+    options: ['O(1)', 'O(n)', 'O(log n)', 'O(n log n)'],
+    answer: 2,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'Como um algoritmo guloso (greedy) toma cada decisão?',
+    options: [
+      'Escolhe o melhor local a cada passo, sem revisar a decisão',
+      'Testa todas as combinações possíveis',
+      'Divide o problema ao meio a cada chamada',
+      'Guarda a solução de cada subproblema resolvido',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt:
+      'Qual é a complexidade de inserir no início de uma lista encadeada?',
+    options: ['O(n)', 'O(log n)', 'O(1)', 'O(n²)'],
+    answer: 2,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt: 'O que a notação O(f(n)) descreve?',
+    options: [
+      'O tempo exato de execução em segundos',
+      'Um limite superior para o crescimento do custo',
+      'O consumo de memória, e apenas ele',
+      'O número de linhas do código-fonte',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt:
+      'Qual é a diferença entre busca em largura (BFS) e em profundidade (DFS)?',
+    options: [
+      'BFS usa pilha e DFS usa fila',
+      'BFS só funciona em árvores; DFS, em grafos',
+      'BFS explora por níveis; DFS desce por um ramo até o fim',
+      'DFS sempre encontra o caminho mais curto',
+    ],
+    answer: 2,
   },
 ];
