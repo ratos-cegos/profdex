@@ -3,6 +3,14 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
+import { VitePWA } from 'vite-plugin-pwa'
+
+// Cor da marca (`--unifil-orange` em src/style.css) e o fundo do app
+// (`--bg-deep`). Ficam aqui como literais porque o manifest é gerado em tempo
+// de build, fora do CSS — mas o valor tem de ser UM SÓ: o `theme-color` do
+// index.html usa o mesmo.
+const COR_MARCA = '#995200'
+const COR_FUNDO = '#121418'
 
 // https://vite.dev/config/
 export default defineConfig(async ({ mode }) => {
@@ -56,6 +64,97 @@ export default defineConfig(async ({ mode }) => {
         },
       }),
       vueDevTools(),
+      // ── PWA ───────────────────────────────────────────────────────────────
+      // Instalável importa por três razões concretas do evento: o aluno anda
+      // pelo campus (atalho na home evita re-login e a barra do navegador), a
+      // câmera ocupa a tela toda (standalone ganha área útil) e a rede é ruim
+      // (o shell em cache abre offline em vez de página em branco).
+      VitePWA({
+        // `prompt`, não `autoUpdate`: recarregar sozinho no meio de uma batalha
+        // PvP derruba a partida (o estado do Socket.IO é em memória).
+        registerType: 'prompt',
+        includeAssets: ['favicon.ico', 'icons/apple-touch-icon.png'],
+        manifest: {
+          name: 'ProfDex',
+          short_name: 'ProfDex',
+          description:
+            'Capture professores da UNIFIL, monte sua coleção e batalhe no evento.',
+          lang: 'pt-BR',
+          categories: ['education', 'games'],
+          // `/profdex`, e não `/`: quem já tem sessão é redirecionado de `/`, e
+          // isso custaria uma navegação a mais em cada abertura do app.
+          start_url: '/profdex',
+          scope: '/',
+          display: 'standalone',
+          orientation: 'portrait',
+          background_color: COR_FUNDO,
+          theme_color: COR_MARCA,
+          icons: [
+            { src: '/icons/pwa-192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/icons/pwa-512.png', sizes: '512x512', type: 'image/png' },
+            {
+              // Com 20% de safe zone: o Android recorta o ícone na forma do
+              // launcher, e sem a margem a asa da águia é cortada.
+              src: '/icons/pwa-maskable-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable',
+            },
+          ],
+        },
+        workbox: {
+          // Só o SHELL: HTML, JS, CSS e os ícones da interface. Os retratos dos
+          // professores ficam de fora e vêm por runtime caching (abaixo) — são
+          // ~90KB cada e crescem a cada professor novo, então precacheá-los
+          // faria a instalação pesar mais a cada evento.
+          globPatterns: ['**/*.{js,css,html,woff2}', 'favicon.ico', 'icons/*.png'],
+          // Os modelos 3D pesam 28MB, 28MB e 74MB. Precachear isso estoura o
+          // armazenamento do celular e trava a instalação — eles continuam
+          // vindo da rede, sob demanda, como hoje. Os markers de AR (um deles
+          // tem 4MB) saem pelo mesmo motivo e só são usados na tela de AR.
+          globIgnores: [
+            '**/models/**',
+            '**/*.glb',
+            '**/markers.mind',
+            '**/professors/*-marker.png',
+          ],
+          // Rede de segurança: qualquer asset novo acima disto fica de fora do
+          // precache em vez de inchar a instalação sem ninguém perceber.
+          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+          navigateFallbackDenylist: [/^\/api/, /^\/landing/],
+          runtimeCaching: [
+            {
+              // Sessão por cookie + WebSocket não podem passar por cache: uma
+              // resposta servida do SW mostraria dados de outro aluno depois de
+              // uma troca de conta, e o Socket.IO nem funcionaria.
+              urlPattern: ({ url }) =>
+                url.pathname.startsWith('/api') ||
+                url.pathname.includes('/socket.io'),
+              handler: 'NetworkOnly',
+            },
+            {
+              // Retratos dos professores e a marca: é o que mais pesa na
+              // primeira abertura da dex, e na prática nunca mudam durante o
+              // evento. Os markers de AR não entram — 4MB não cabem num cache
+              // que o navegador pode despejar a qualquer momento.
+              urlPattern: ({ url }) =>
+                /^\/(professors|marca)\/.*\.(png|jpg|webp)$/.test(url.pathname) &&
+                !url.pathname.endsWith('-marker.png'),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'profdex-imagens',
+                expiration: { maxEntries: 120, maxAgeSeconds: 30 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+          ],
+        },
+        devOptions: {
+          // Desligado em dev: um SW ativo no `npm run dev` serve bundle velho
+          // depois de cada edição e faz parecer que o HMR quebrou.
+          enabled: false,
+        },
+      }),
     ],
     resolve: {
       alias: {

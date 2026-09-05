@@ -8,10 +8,17 @@
          inferior fica sob a home indicator. Zoom liberado de propósito
          (bloqueá-lo quebra a WCAG 1.4.4). -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#CC0000" />
+    <!-- Mesmo valor de `--unifil-orange` (src/style.css) e do `theme_color` do
+         manifest, gerado em vite.config.js. Era #CC0000, do vermelho antigo, e
+         a barra do navegador destoava do cabeçalho do app. -->
+    <meta name="theme-color" content="#995200" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ProfDex" />
+    <!-- O iOS IGNORA os ícones do manifest: sem esta linha, o atalho na tela de
+         início sai como um retrato da página. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />

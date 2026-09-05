@@ -2,6 +2,7 @@
 import { useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
 import AppHeader from '../components/AppHeader.vue'
+import BotaoInstalar from '../components/BotaoInstalar.vue'
 import { getLandingCreditsUrl } from '../services/public-links.js'
 import { useAuthStore } from '../stores/auth.js'
 
@@ -31,6 +32,18 @@ async function leave() {
           <p>{{ auth.user?.matricula ?? 'Conta ProfDex' }}</p>
         </div>
       </section>
+      <!-- Só aparece quando dá para instalar e o app ainda não está instalado
+           (ver BotaoInstalar). Fica aqui, e não numa tela do fluxo principal,
+           porque instalar é algo que se faz uma vez. -->
+      <section class="profile__app">
+        <h2 class="pixel">APP</h2>
+        <p>
+          Instalado, o ProfDex abre em tela cheia — mais espaço para a câmera do
+          scanner e da arena — e não pede login de novo a cada visita.
+        </p>
+        <BotaoInstalar />
+      </section>
+
       <section class="profile__account">
         <h2 class="pixel">CONTA</h2>
         <p>Sair encerra a sessão e desconecta você do lobby de batalha.</p>
@@ -74,7 +87,8 @@ async function leave() {
   gap: 16px;
 }
 .profile-card,
-.profile__account {
+.profile__account,
+.profile__app {
   padding: 18px;
   border: 2px solid var(--border);
   border-radius: var(--radius-lg);
@@ -100,15 +114,20 @@ async function leave() {
   font-size: 18px;
 }
 .profile-card p,
-.profile__account p {
+.profile__account p,
+.profile__app p {
   margin-top: 5px;
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;
 }
-.profile__account h2 {
+.profile__account h2,
+.profile__app h2 {
   color: var(--unifil-gold);
   font-size: 9px;
+}
+.profile__app p {
+  margin-bottom: 14px;
 }
 .profile__logout {
   width: 100%;

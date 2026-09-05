@@ -279,34 +279,42 @@ function reduzir(img, alturaAlvo) {
   return { largura: larguraAlvo, altura: alturaAlvo, pixels: saida }
 }
 
+// Os utilitários de PNG são reaproveitados por `build-pwa-icons.cjs`, que gera
+// os ícones de INSTALAÇÃO a partir da eagle-ball. Exportá-los evita uma segunda
+// implementação de decode/encode no repositório.
+module.exports = { decodificar, codificar, recortar_bbox, reduzir }
+
 // ── Execução ────────────────────────────────────────────────────────────────
+// Só quando chamado direto: importar este módulo não pode disparar a leitura da
+// pasta de arte, que vive fora do repositório.
+if (require.main === module) {
+  fs.mkdirSync(DESTINO, { recursive: true })
 
-fs.mkdirSync(DESTINO, { recursive: true })
+  for (const icone of ICONES) {
+    const origem = path.join(ORIGEM, icone.entrada)
+    const buf = fs.readFileSync(origem)
+    const img = decodificar(buf)
 
-for (const icone of ICONES) {
-  const origem = path.join(ORIGEM, icone.entrada)
-  const buf = fs.readFileSync(origem)
-  const img = decodificar(buf)
+    let removidos = 0
+    if (icone.removerPreto) removidos = removerFundoPreto(img)
 
-  let removidos = 0
-  if (icone.removerPreto) removidos = removerFundoPreto(img)
+    const cortado = recortar_bbox(img)
+    const pequeno = reduzir(cortado, TAMANHO)
+    const png = codificar(pequeno.largura, pequeno.altura, pequeno.pixels)
 
-  const cortado = recortar_bbox(img)
-  const pequeno = reduzir(cortado, TAMANHO)
-  const png = codificar(pequeno.largura, pequeno.altura, pequeno.pixels)
+    const destino = path.join(DESTINO, icone.saida)
+    fs.writeFileSync(destino, png)
 
-  const destino = path.join(DESTINO, icone.saida)
-  fs.writeFileSync(destino, png)
+    const kbAntes = (buf.length / 1024).toFixed(0)
+    const kbDepois = (png.length / 1024).toFixed(1)
+    const proporcao = (pequeno.largura / pequeno.altura).toFixed(2)
+    console.log(
+      `${icone.entrada.padEnd(22)} ${img.largura}x${img.altura} (${kbAntes}KB)` +
+      ` → conteúdo ${cortado.largura}x${cortado.altura}` +
+      ` → ${icone.saida} ${pequeno.largura}x${pequeno.altura} (proporção ${proporcao}, ${kbDepois}KB)` +
+      (icone.removerPreto ? `  [${removidos} px de fundo removidos]` : ''),
+    )
+  }
 
-  const kbAntes = (buf.length / 1024).toFixed(0)
-  const kbDepois = (png.length / 1024).toFixed(1)
-  const proporcao = (pequeno.largura / pequeno.altura).toFixed(2)
-  console.log(
-    `${icone.entrada.padEnd(22)} ${img.largura}x${img.altura} (${kbAntes}KB)` +
-    ` → conteúdo ${cortado.largura}x${cortado.altura}` +
-    ` → ${icone.saida} ${pequeno.largura}x${pequeno.altura} (proporção ${proporcao}, ${kbDepois}KB)` +
-    (icone.removerPreto ? `  [${removidos} px de fundo removidos]` : ''),
-  )
+  console.log(`\nGravado em ${DESTINO}`)
 }
-
-console.log(`\nGravado em ${DESTINO}`)

@@ -21,6 +21,18 @@ export default defineConfig([
     },
   },
 
+  {
+    // Scripts de build e a config do Vite rodam no Node, não no navegador:
+    // sem isto, `require`, `module`, `Buffer` e `process` viram `no-undef`.
+    name: 'app/node-scripts',
+    files: ['scripts/**/*.{js,cjs,mjs}', '*.config.{js,cjs,mjs}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+
   js.configs.recommended,
   ...pluginVue.configs['flat/essential'],
 
