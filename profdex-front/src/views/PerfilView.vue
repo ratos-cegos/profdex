@@ -32,16 +32,25 @@ async function leave() {
           <p>{{ auth.user?.matricula ?? 'Conta ProfDex' }}</p>
         </div>
       </section>
-      <!-- Só aparece quando dá para instalar e o app ainda não está instalado
-           (ver BotaoInstalar). Fica aqui, e não numa tela do fluxo principal,
-           porque instalar é algo que se faz uma vez. -->
-      <section class="profile__app">
-        <h2 class="pixel">APP</h2>
-        <p>
-          Instalado, o ProfDex abre em tela cheia — mais espaço para a câmera do
-          scanner e da arena — e não pede login de novo a cada visita.
-        </p>
-        <BotaoInstalar />
+      <!-- Sem seção em volta: o botão traz o próprio rótulo e some sozinho
+           quando o app já está instalado (ver BotaoInstalar) — um cabeçalho
+           fixo ficaria com título e nada embaixo. Fica no perfil, e não numa
+           tela do fluxo principal, porque instalar é algo que se faz uma vez. -->
+      <BotaoInstalar />
+
+      <!-- Só para contas administrativas (@unifil.br). O v-if é navegação, não
+           segurança: quem barra de verdade é o AdminGuard, que confere o papel
+           no banco a cada request. -->
+      <section v-if="auth.user?.role === 'admin'" class="profile__admin">
+        <h2 class="pixel">ADMINISTRAÇÃO</h2>
+        <p>Métricas do evento, quiz da bancada, errata e fichas de captura.</p>
+        <button
+          class="profile__admin-botao"
+          type="button"
+          @click="router.push({ name: 'admin-metricas' })"
+        >
+          Abrir painel administrativo
+        </button>
       </section>
 
       <section class="profile__account">
@@ -88,7 +97,7 @@ async function leave() {
 }
 .profile-card,
 .profile__account,
-.profile__app {
+.profile__admin {
   padding: 18px;
   border: 2px solid var(--border);
   border-radius: var(--radius-lg);
@@ -115,19 +124,26 @@ async function leave() {
 }
 .profile-card p,
 .profile__account p,
-.profile__app p {
+.profile__admin p {
   margin-top: 5px;
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;
 }
 .profile__account h2,
-.profile__app h2 {
+.profile__admin h2 {
   color: var(--unifil-gold);
   font-size: 9px;
 }
-.profile__app p {
-  margin-bottom: 14px;
+.profile__admin-botao {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 18px;
+  border: 2px solid var(--unifil-gold);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--unifil-gold);
+  font-weight: 800;
 }
 .profile__logout {
   width: 100%;

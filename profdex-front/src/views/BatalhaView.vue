@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
 import AppHeader from '../components/AppHeader.vue'
 import TopTabs from '../components/TopTabs.vue'
-import { useAuthStore } from '../stores/auth'
 import { useProfessorsStore } from '../stores/professors'
 import { useBattleStore } from '../stores/battle'
 
@@ -12,7 +11,6 @@ const router = useRouter()
 const route = useRoute()
 const store = useProfessorsStore()
 const battle = useBattleStore()
-const auth = useAuthStore()
 
 // Relógio para as contagens regressivas dos convites (1 tick/segundo).
 const now = ref(Date.now())
@@ -242,17 +240,9 @@ function goBack() {
           <span class="pixel option-label">Instruções de Batalha</span>
         </button>
 
-        <!-- Só para contas administrativas (@unifil.br): métricas (leitura) e
-             a bancada do quiz do evento. -->
-        <button
-          v-if="auth.user?.role === 'admin'"
-          class="battle-option battle-option--admin"
-          type="button"
-          @click="router.push({ name: 'admin-metricas' })"
-        >
-          <span class="option-icon">📊</span>
-          <span class="pixel option-label">Painel Administrativo</span>
-        </button>
+        <!-- O painel administrativo saiu daqui: no meio da lista do fluxo
+             ranqueado ele parecia parte da batalha. Agora mora no Perfil,
+             junto com o resto do que é da conta. -->
       </section>
     </main>
 
@@ -748,10 +738,6 @@ function goBack() {
 
 .battle-option--guide {
   border-color: var(--ds-green);
-}
-
-.battle-option--admin {
-  border-color: var(--text-muted);
 }
 
 .option-icon {
