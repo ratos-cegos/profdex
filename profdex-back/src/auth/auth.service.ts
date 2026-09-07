@@ -54,7 +54,7 @@ export class AuthService {
    * `role` viaja no token só para o app saber se mostra a entrada do painel.
    * NÃO é a fonte de autorização: o AdminGuard confere o papel no banco a cada
    * request, então promover ou revogar um admin vale na hora, sem esperar a
-   * sessão de 15min expirar.
+   * sessão expirar — o que agora levaria 8 horas (ver SESSION_MAX_AGE).
    */
   private sign(userId: string, matricula: string, name: string, role: string) {
     return {

@@ -207,7 +207,7 @@ npm run db:set-admin -- 202312345 --remover
 ```
 
 A conta precisa entrar de novo para o app mostrar o painel: o papel viaja no
-cookie de sessão (15min). A **autorização**, porém, é conferida no banco a cada
+cookie de sessão (8h, ver SESSION_MAX_AGE). A **autorização**, porém, é conferida no banco a cada
 request pelo `AdminGuard` — revogar um admin vale na hora.
 
 ## Endpoints

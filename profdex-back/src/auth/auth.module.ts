@@ -6,6 +6,7 @@ import { MailModule } from '../mail/mail.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthRateLimitService } from './auth-rate-limit.service';
+import { SESSION_MAX_AGE } from './auth-session';
 import { AuthService } from './auth.service';
 import { GoogleAuthService } from './google-auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -22,7 +23,9 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '15m' },
+        // Mesma duração do cookie, de uma constante só: cookie vivo com JWT
+        // expirado desloga do mesmo jeito, mas fica difícil de diagnosticar.
+        signOptions: { expiresIn: SESSION_MAX_AGE },
       }),
       inject: [ConfigService],
     }),

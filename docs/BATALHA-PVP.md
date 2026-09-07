@@ -34,8 +34,9 @@ Criado em **02/08/2026**. Feature para a semana tecnológica (1000+ alunos).
 >   cooldown) via shutdown hook — preferir janelas calmas mesmo assim.
 > - Auditoria: cada fim de batalha loga uma linha JSON `audit: battle_end`
 >   com dupla, status, turnos e deltas.
-> - A sessão (cookie) dura 15 min — batalha mais longa que isso perde o
->   reconnect após F5 (limitação pré-existente do auth, não do PvP).
+> - A sessão (cookie + JWT) dura **8h** desde 07/09/2026. Eram 15 min, e uma
+>   batalha 3v3 passava disso: quem dava F5 no meio voltava para o login com a
+>   sala ainda viva e perdia por abandono. Ver `SESSION_MAX_AGE`.
 
 ## Decisões já tomadas (com o Gustavo)
 

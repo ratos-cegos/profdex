@@ -10,7 +10,8 @@ import { PrismaService } from '../../prisma/prisma.service';
  * Libera apenas contas com `role = 'admin'`.
  *
  * A checagem vai ao banco em vez de ler um claim do JWT: promover ou revogar um
- * administrador passa a valer na hora, sem esperar a sessão de 15min expirar.
+ * administrador passa a valer na hora, sem esperar a sessão expirar — o que
+ * agora levaria 8 horas (ver SESSION_MAX_AGE em auth-session.ts).
  * O custo é irrelevante — são poucas rotas e pouquíssimo tráfego.
  *
  * Usado sempre DEPOIS do JwtAuthGuard, que é quem popula `request.user`.

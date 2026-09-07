@@ -29,7 +29,7 @@ quadrado da população online — e o pior caso não é o uso normal, é a
 | 8 | `emitToUser` re-serializa por socket | 🟢 Baixo | ✅ Corrigido (junto do 1) |
 | 9 | Ranking sem cache e sem índice utilizável | 🟢 Baixo | Aberto |
 | 10 | Vazamentos no `InviteService` | 🟢 Baixo | Aberto |
-| 11 | Sessão de 15min vs. evento de horas | 🟡 Médio | Aberto |
+| 11 | Sessão de 15min vs. evento de horas | 🟡 Médio | ✅ Corrigido (8h) |
 
 ---
 
@@ -258,19 +258,33 @@ monotonicamente ao longo de um evento de semanas.
 **Correção:** apagar a chave quando o `Set` ficar vazio e varrer o `sentLog`
 periodicamente (ou trocar por um LRU com TTL).
 
-## 11. 🟡 Sessão de 15 minutos num evento de horas
+## 11. ✅ Sessão de 15 minutos num evento de horas — CORRIGIDO (07/09/2026)
 
-`SESSION_MAX_AGE_MS` e o `expiresIn` do JWT são **15 min**, e a sessão só é
-verificada **no handshake**. Um socket aberto continua valendo indefinidamente,
-mas **qualquer reconexão depois de 15 min falha**.
+`SESSION_MAX_AGE_MS` e o `expiresIn` do JWT eram **15 min**, e a sessão só é
+verificada **no handshake**. Um socket aberto continuava valendo
+indefinidamente, mas **qualquer reconexão depois de 15 min falhava**.
 
 Combinado com o item 3: blip de rede após 20 min de evento → todo mundo
 reconecta → todo mundo recebe `error:unauthorized` → o front derruba o socket e
-exige login novo (`stores/battle.js:69-73`). Um blip vira um re-login em massa —
-que cai direto no item 2.
+exige login novo (`stores/battle.js:69-73`). Um blip virava um re-login em massa
+— que cai direto no item 2.
 
-**Correções:** aumentar o TTL da sessão para a duração plausível de uma sessão de
-uso, ou implementar refresh silencioso do cookie enquanto o socket está vivo.
+Na prática o limite aparecia antes disso: uma batalha 3v3 entre dois celulares
+passa de 15 min com folga, e quem dava F5 no meio voltava para o login com a
+sala ainda viva no servidor — a partida morria por abandono.
+
+**Correção aplicada:** `SESSION_MAX_AGE` = **8h**, um dia de evento, com o
+`expiresIn` do JWT lendo a mesma constante (`auth-session.ts`). Um teste trava
+o alinhamento entre os dois: cookie e JWT com prazos diferentes produzem
+"deslogou do nada" nas duas direções e são caros de diagnosticar.
+
+**Custo assumido:** um cookie roubado vale o dia todo em vez de 15 minutos.
+Aceito para um evento de campus — o cookie é HttpOnly, `secure` em produção, e
+a conta não dá acesso a nada além da própria coleção.
+
+**Se um dia isso não bastar:** refresh silencioso do cookie enquanto o socket
+está vivo (sessão deslizante) resolve sem alargar a janela de risco, ao custo
+de um interceptor no auth.
 
 ---
 

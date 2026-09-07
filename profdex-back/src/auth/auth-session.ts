@@ -1,7 +1,25 @@
 import { CookieOptions, Request } from 'express';
 
 export const SESSION_COOKIE_NAME = 'profdex_session';
-export const SESSION_MAX_AGE_MS = 15 * 60 * 1000;
+
+/**
+ * Duração da sessão: um dia de evento.
+ *
+ * Eram 15 minutos, e isso não sobrevive ao uso real: uma batalha 3v3 com dois
+ * celulares passa disso com folga, e quem dava F5 no meio perdia o reconnect —
+ * a sala continuava viva no servidor, mas o jogador voltava para o login e a
+ * partida morria por abandono. O mesmo valia para o aluno que guardava o
+ * celular no bolso entre um estande e outro.
+ *
+ * O custo é declarado: um cookie roubado vale o dia todo em vez de 15 minutos.
+ * Aceito para um evento de campus, onde o cookie é HttpOnly, `secure` em
+ * produção, e a conta não dá acesso a nada além da própria coleção.
+ *
+ * Precisa continuar igual ao `expiresIn` do JwtModule (ver auth.module.ts):
+ * cookie vivo com JWT expirado é o mesmo logout, só que confuso de diagnosticar.
+ */
+export const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000;
+export const SESSION_MAX_AGE = '8h';
 
 export function getSessionCookieOptions(isProduction: boolean): CookieOptions {
   return {
