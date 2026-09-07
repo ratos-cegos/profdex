@@ -387,19 +387,38 @@ export const useBattleStore = defineStore('battle', () => {
   // Manda o EXEMPLAR, não o professor: é ele que carrega a combinação de tipos
   // e o deck sorteados na captura.
   /** Confirma o time: de 1 a 3 exemplares, na ordem escolhida na tela. */
-  async function pickTeam(captureIds) {
-    const ack = await command('battle:pick', { captureIds })
-    if (ack.ok && pvp.value) pvp.value.youPicked = true
-    else if (!ack.ok) lastError.value = ack.message
+  /**
+   * Marca "já escolhi" só se a etapa ainda for a mesma de quando o pedido saiu.
+   *
+   * O servidor resolve dentro do próprio handler e emite o evento da etapa
+   * SEGUINTE (`battle:preview` depois do pick, `battle:begin` depois do lead)
+   * de forma síncrona — ou seja, antes de o ack voltar. Aplicar o ack sem
+   * conferir a fase remarcava `youPicked` numa etapa que já tinha começado, e
+   * era isso que travava a escolha do lead: quem confirmasse o time por último
+   * caía no preview com todos os cards desabilitados e "COMEÇANDO…" na tela,
+   * sem nunca poder escolher quem entra primeiro.
+   *
+   * Mesma família do ack de golpe carimbado com o turno (ver `submitMove` e
+   * docs/BUG-BATALHA-TRAVANDO.md).
+   */
+  async function marcarEscolhaSeAindaVale(evento, payload) {
+    const faseAoEnviar = pvp.value?.phase
+    const ack = await command(evento, payload)
+    if (!ack.ok) {
+      lastError.value = ack.message
+      return ack
+    }
+    if (pvp.value && pvp.value.phase === faseAoEnviar) pvp.value.youPicked = true
     return ack
   }
 
+  function pickTeam(captureIds) {
+    return marcarEscolhaSeAindaVale('battle:pick', { captureIds })
+  }
+
   /** Quem entra primeiro, escolhido depois de ver o time do rival. */
-  async function chooseLead(captureId) {
-    const ack = await command('battle:lead', { captureId })
-    if (ack.ok && pvp.value) pvp.value.youPicked = true
-    else if (!ack.ok) lastError.value = ack.message
-    return ack
+  function chooseLead(captureId) {
+    return marcarEscolhaSeAindaVale('battle:lead', { captureId })
   }
 
   /**

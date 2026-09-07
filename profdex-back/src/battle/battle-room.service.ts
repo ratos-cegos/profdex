@@ -74,6 +74,8 @@ interface Room {
   players: Record<CombatantKey, RoomPlayer>;
   state?: BattleState;
   pending: Partial<Record<CombatantKey, Action>>;
+  /** Lados que devem entrada nesta fase `switching` — vira evento `switch`. */
+  entrando?: CombatantKey[];
   turn: number;
   deadline: number;
   timer?: NodeJS.Timeout;
@@ -701,6 +703,7 @@ export class BattleRoomService implements OnModuleDestroy {
     events: BattleEvent[],
   ): void {
     room.phase = 'switching';
+    room.entrando = [...caidos];
     for (const key of caidos) room.players[key].owesEntry = true;
     this.armTimer(room, () => this.onSwitchingTimeout(room));
 
@@ -789,12 +792,26 @@ export class BattleRoomService implements OnModuleDestroy {
     room.pending = {};
     room.turn += 1;
     this.armTurnTimer(room);
-    const entrou = (['player', 'enemy'] as const).map(
-      (key) => this.activeOf(room, key).professor.name,
-    );
-    this.broadcastRound(room, 'battle:round', [
-      { type: 'message', text: `${entrou.join(' e ')} em campo!` },
-    ]);
+
+    // Eventos `switch`, e não uma mensagem solta: é por eles que a arena sabe
+    // que o campo mudou e desfaz o estado de "caído" do lado que trocou. Só
+    // para quem REALMENTE entrou — anunciar os dois ativos dizia "Eron e Mário
+    // em campo!" mesmo quando um deles nunca saiu.
+    const eventos: BattleEvent[] = [];
+    for (const key of room.entrando ?? []) {
+      const entrou = this.activeOf(room, key);
+      eventos.push({
+        type: 'switch',
+        target: key,
+        name: entrou.professor.name,
+      });
+      eventos.push({
+        type: 'message',
+        text: `${entrou.professor.name} entra em campo!`,
+      });
+    }
+    room.entrando = [];
+    this.broadcastRound(room, 'battle:round', eventos);
   }
 
   // ── Fim da batalha ────────────────────────────────────────────────────────

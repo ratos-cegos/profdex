@@ -526,6 +526,35 @@ describe('BattleRoomService', () => {
       );
     });
 
+    // A arena desfaz o estado de "caído" ao ver um evento `switch`. Sem ele, a
+    // entrada pós-nocaute chegava como mensagem solta e o sprite do substituto
+    // continuava cinza e tombado — na tela, todo mundo depois do primeiro morto
+    // parecia morto também.
+    it('a entrada emite evento switch, e só para quem realmente entrou', async () => {
+      await startBattle([0, 1], [0, 1]);
+      nocauteNoProximoGolpe('player');
+      service.move(ana.userId, meusGolpes(ana)[0].id);
+      service.move(bia.userId, meusGolpes(bia)[0].id);
+      await Promise.resolve();
+
+      service.enterWith(ana.userId, idsDe(ana, 1)[0]);
+      await flush();
+
+      const trocas = lastPayload(ana.userId, 'battle:round').events.filter(
+        (e: any) => e.type === 'switch',
+      );
+      expect(trocas).toHaveLength(1);
+      expect(trocas[0].target).toBe('player');
+      expect(trocas[0].name).toBe(capturas[ana.userId][1].professor.name);
+
+      // Espelhado para o rival: quem entrou foi o adversário dele.
+      const doRival = lastPayload(bia.userId, 'battle:round').events.filter(
+        (e: any) => e.type === 'switch',
+      );
+      expect(doRival).toHaveLength(1);
+      expect(doRival[0].target).toBe('enemy');
+    });
+
     it('recusa entrar com quem já caiu ou não é do time', async () => {
       await startBattle([0, 1], [0]);
       nocauteNoProximoGolpe('player');

@@ -85,6 +85,27 @@ const canAct = computed(
 // `switching`, não é opcional e por isso não usa este estado.
 const trocaAberta = ref(false)
 
+/**
+ * O time como a TELA mostra, que atrasa de propósito em relação ao servidor.
+ *
+ * `pvp.you.team` chega com o resultado final da rodada no instante em que o
+ * `battle:round` aterrissa — antes de a fila de eventos ser animada. Ligado
+ * direto na HUD, o banco de reservas descontava a vida (e marcava o caído)
+ * enquanto a barra grande ainda estava descendo: a mesma pancada aparecia duas
+ * vezes, e a miniatura sempre "sabia" antes.
+ *
+ * Aqui a cópia exibida só é atualizada quando a animação alcança o servidor
+ * (fim de `play`, ou `syncFromServer` fora de animação).
+ */
+const timeExibido = ref({ you: [], foe: [] })
+
+function sincronizarTimeExibido() {
+  timeExibido.value = {
+    you: pvp.value?.you?.team ?? [],
+    foe: pvp.value?.foe?.team ?? [],
+  }
+}
+
 /** Reservas vivos: quem dá para pôr em campo agora. */
 const reservas = computed(() =>
   (pvp.value?.you?.team ?? []).filter(
@@ -224,8 +245,15 @@ function syncFromServer() {
   if (!pvp.value?.you) return
   youHp.value = pvp.value.you.hp
   foeHp.value = pvp.value.foe.hp
-  if (youHp.value <= 0) youFainted.value = true
-  if (foeHp.value <= 0) foeFainted.value = true
+  // Atribuição, não `if (…) = true`: com o time, quem está em campo MUDA. Só
+  // ligar a bandeira deixava o sprite caído para sempre — depois do primeiro
+  // nocaute, todo substituto entrava cinza e tombado, como se já estivesse
+  // morto, porque nada nunca a desligava.
+  youFainted.value = youHp.value <= 0
+  foeFainted.value = foeHp.value <= 0
+  // O banco só acompanha depois que a animação alcança o servidor (ver
+  // `timeExibido`): o HP dos reservas é a mesma verdade da barra grande.
+  sincronizarTimeExibido()
 }
 
 async function useMove(move) {
@@ -315,7 +343,7 @@ onUnmounted(() => clock && clearInterval(clock))
       <!-- Reservas do rival. O time dele já foi revelado no preview e o HP de
            cada um foi visto em campo — esconder aqui não criaria segredo, só
            obrigaria a decorar. -->
-      <BancoDeReservas :team="pvp.foe.team ?? []" foe />
+      <BancoDeReservas :team="timeExibido.foe" foe />
       <img
         class="pvp-arena__model pvp-arena__model--foe"
         :class="{ 'pvp-arena__model--hit': foeHit, 'pvp-arena__model--fainted': foeFainted }"
@@ -338,7 +366,7 @@ onUnmounted(() => clock && clearInterval(clock))
       <DamagePopup v-for="item in youFeedback" :key="item.id" v-bind="item" />
       <BattleHpBar :name="pvp.you.professor?.name ?? 'Você'" :hp="youHp" :max-hp="pvp.you.maxHp" />
       <BancoDeReservas
-        :team="pvp.you.team ?? []"
+        :team="timeExibido.you"
         :active-capture-id="pvp.you.activeCaptureId"
       />
     </div>
@@ -552,7 +580,12 @@ onUnmounted(() => clock && clearInterval(clock))
 }
 
 .pvp-arena__model--foe {
-  align-self: flex-start;
+  /* À direita, como a barra e o banco do rival — o `flex-start` de antes puxava
+     só o sprite para a esquerda, contra o `align-items: flex-end` do bloco, e
+     os dois combatentes acabavam empilhados na mesma coluna com metade da tela
+     vazia ao lado. Rival em cima à direita, você embaixo à esquerda: a diagonal
+     que qualquer arena de turnos usa, e que funciona igual no celular. */
+  align-self: flex-end;
   object-position: top center;
 }
 
