@@ -33,7 +33,9 @@
     "db:set-admin": "node scripts/set-admin.js",
     "load:pvp": "artillery run scripts/loadtest/pvp-load.yml",
     "db:seed-quiz-treino": "ts-node prisma/training-seed.ts",
-    "gen:quiz-treino": "ts-node scripts/gerar-questoes-treino.ts"
+    "gen:quiz-treino": "ts-node scripts/gerar-questoes-treino.ts",
+    "db:seed-treinadores": "ts-node scripts/seed-dois-treinadores.ts",
+    "pvp:bot": "node scripts/bot-bia.js"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
