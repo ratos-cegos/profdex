@@ -63,3 +63,9 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Cache incremental do tsc (gerado por `tsc -p tsconfig.build.json`).
 /*.tsbuildinfo
+
+# Schema SQLite de desenvolvimento local. O comentario no topo dele ja dizia
+# "ignorado em .gitignore", mas a linha nunca existiu — o arquivo so nunca
+# tinha sido adicionado. Ele esta obsoleto (ver o aviso no proprio arquivo) e
+# versiona-lo convidaria a usar um schema que nao roda o app.
+/prisma/schema.local.prisma
