@@ -1,3 +1,25 @@
+// ⚠️ DESATUALIZADO — NÃO USE. Mantido só como referência histórica.
+//
+// Este schema parou de ser mantido há várias features e NÃO roda o app atual.
+// Falta nele, entre outras coisas: ProfessorVariant, CaptureToken, os IVs da
+// captura, quiz, errata, vouchers, métricas, login com Google e QrBatch. Além
+// disso `Capture` ainda tem `@@unique([userId, professorId])`, que o modelo
+// atual removeu de propósito (o mesmo professor pode ser capturado várias
+// vezes), e `Professor.captureTokenHash`, que morreu quando as variantes
+// entraram.
+//
+// Ele não é atualizável de graça: SQLite não tem `String[]`, e `types`,
+// `moves` e `variantIds` dependem disso. Portar exigiria uma tabela de junção
+// para cada um — é uma tarefa própria, não um ajuste.
+//
+// **Para desenvolver local, use o Postgres do docker-compose**, que roda o
+// mesmo provider do deploy e não tem divergência nenhuma:
+//
+//   npm run db:up && npm run db:migrate && npm run db:seed
+//   npm run db:seed-treinadores   # duas contas com 3 exemplares, para o PvP
+//
+// ─────────────────────────────────────────────────────────────────────────
+//
 // Schema APENAS para desenvolvimento local, em SQLite — não vai para o Git
 // (ignorado em `.gitignore`). O `schema.prisma` continua sendo o oficial, em
 // PostgreSQL, e é ele que o deploy usa.

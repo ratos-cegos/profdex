@@ -742,3 +742,53 @@ presos dentro.
   Aceito para esta entrega; a tela de treino deve deixar isso explícito.
 - **Elo zerado pela segunda vez.** Mesmo argumento do reset dos IVs: partidas de
   antes e depois medem jogos diferentes.
+
+---
+
+## Resultado da entrega (07/09/2026) — ENTREGUE
+
+As três fases foram implementadas, testadas e estão em produção. O que esta
+seção registra é o que **só apareceu depois**, e que a spec não previu.
+
+### O que a spec acertou e o que ela não viu
+
+O desenho de produto sobreviveu inteiro ao contato com o uso real: nenhuma
+decisão da entrevista precisou ser revista. O que quebrou foi a **borda entre
+servidor e tela** — e nenhum dos defeitos aparecia nos testes unitários, porque
+todos dependiam de *quando* a mensagem chega, não de *o quê* ela diz.
+
+| Defeito | Como escapou |
+|---|---|
+| Não dava para escolher o lead (cards travados em "COMEÇANDO…") | Só acontecia com quem confirmasse o time **por último** — o unit test não tem ordem de chegada |
+| Todo substituto entrava cinza e tombado | A bandeira de nocaute só era ligada, nunca desligada; com 1 exemplar por lado isso nunca aparece |
+| A vida caía antes no banco de reservas que na barra | O banco lia o estado autoritativo; a barra, o animado. Os dois "certos" isoladamente |
+| Sprites empilhados numa coluna só | Defeito **anterior** ao time de 3, exposto quando a tela passou a ter mais coisa |
+
+Os três primeiros têm a mesma raiz e estão documentados em `BATALHA-PVP.md`,
+seção "O servidor emite ANTES de o ack voltar".
+
+### O que faltava para testar isso
+
+Reproduzir qualquer um exigia dois jogadores de verdade, e um navegador só tem
+um cookie de sessão por domínio. Ficou no repositório:
+
+- `npm run db:seed-treinadores` — `ana` e `bia` (senha `senha123`) com 3
+  exemplares cada, nascidos de fichas reais (com variante, deck e IVs).
+- `npm run pvp:bot -- --convidar` — adversário automatizado que joga a partida
+  inteira e loga o time dos dois lados a cada evento, que é o que se compara
+  com a HUD.
+
+**Lição para a próxima feature de tempo real:** o teste que encontrou tudo isso
+foi jogar uma partida do começo ao fim, olhando a tela. Vale planejar o
+ferramental que torna isso barato *antes* de precisar dele.
+
+### Ajustes feitos fora do escopo original
+
+- **Sessão de 15 min → 8h** (`SESSION_MAX_AGE`). Uma batalha 3v3 passava do
+  prazo e o F5 no meio matava a partida por abandono. Fecha o item 11 do
+  `CARGA-PVP.md`.
+- **QRs da folha em SVG, não PNG.** O encoder PNG do `qrcode` é JS puro e escala
+  com a área: 800×800 custava ~7s **por ficha**, contra ~1,7ms do SVG. Vetor
+  ainda imprime melhor.
+- **`inventory()` agrega no banco.** A primeira versão trazia toda a tabela
+  `capture_tokens` para filtrar em JS.
