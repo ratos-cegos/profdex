@@ -231,7 +231,9 @@ describe('BattleRoomService', () => {
     it('libera nova tentativa quando a confirmação é recusada', async () => {
       service.create(ana, bia);
 
-      expect((await service.pickTeam(ana.userId, idsDe(bia, 0))).ok).toBe(false);
+      expect((await service.pickTeam(ana.userId, idsDe(bia, 0))).ok).toBe(
+        false,
+      );
       // A trava não pode prender quem errou até o timeout da fase.
       expect((await service.pickTeam(ana.userId, idsDe(ana, 0))).ok).toBe(true);
     });

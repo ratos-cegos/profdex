@@ -98,3 +98,22 @@ Ordem:
 - Incluir teste de regressão junto à correção.
 - Explicar risco e rollback para migrations, auth e progressão.
 - Revisar código gerado e alterações automáticas antes de aceitar.
+
+### `eslint --fix` não é só formatação
+
+`profdex-back` tem erros de Prettier acumulados em arquivos antigos, e a
+tentação é rodar `eslint --fix "src/**/*.ts"` de uma vez. **Não faça sem ler o
+diff.** Em 07/09/2026 esse comando, além de reindentar, removeu asserções de
+tipo em `engine/iv-balance.spec.ts` e deixou o import de `BattleState` órfão —
+mudança semântica escondida no meio de um diff de 84 linhas que parecia
+cosmético.
+
+Corrija por arquivo, e só os que você está mexendo:
+
+```bash
+npx eslint --fix src/caminho/do/arquivo.ts && git diff -- src/caminho/do/arquivo.ts
+```
+
+Os erros restantes em arquivos alheios são dívida conhecida — limpá-los é uma
+tarefa própria, com o diff revisado e os testes rodados, não um efeito colateral
+de outro trabalho.

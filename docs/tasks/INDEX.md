@@ -29,6 +29,7 @@ inteiro como prompt para um agente de código.
 | 6 | [06-correcoes-e-ux.md](06-correcoes-e-ux.md) | Correções pontuais + revisão da arquitetura de informação, estrelas por exemplar, fraquezas | Alta (é o pacote de UX) |
 | 7 | [07-foto-ar-derrota-marca-unifil.md](07-foto-ar-derrota-marca-unifil.md) | Foto na RA + compartilhar, feedback de derrota, marca UNIFIL, quem somos | Média |
 | 8 | [08-modo-treino.md](08-modo-treino.md) | Hub de treino: quiz sem valer nada + batalha contra bot | Média |
+| 9 | [09-correcoes-criticas-pr4-pr5.md](09-correcoes-criticas-pr4-pr5.md) | Correções exigidas na revisão dos PRs #4 (Quiz Treino) e #5 (IVs, foto RA, marca) | Concluída (os dois PRs entraram) |
 | 10 | [10-batalha-em-time-e-painel-qr.md](10-batalha-em-time-e-painel-qr.md) | Batalha com time de até 3 professores, painel acessado pelo perfil, aba de fichas de captura | Alta (F1 serve à operação; F2 muda o formato ranqueado) |
 
 ## Ordem sugerida de execução

@@ -4,13 +4,21 @@ Criado em **02/08/2026**. Feature para a semana tecnológica (1000+ alunos).
 
 > **Status: IMPLEMENTADO** (todas as 5 fases). Como validar:
 >
-> - Unit: `npm test` em `profdex-back` (91 testes — presença, convites,
->   cooldown, motor portado, salas, Elo, shutdown).
+> - Unit: `npm test` em `profdex-back` (245 testes — presença, convites,
+>   cooldown, motor portado, salas, time, Elo, shutdown).
 > - Integração: com o backend de dev no ar, `npm run pvp:smoke` em
 >   `profdex-back` percorre pela rede o fluxo inteiro — registro → lobby →
->   convite → aceite → pick às cegas → turnos até nocaute → Elo → ranking →
->   cooldown bloqueando rematch.
-> - Manual: dois navegadores/celulares logados → aba Batalha → Desafiar.
+>   convite → aceite → pick de time → preview → lead → turnos com troca →
+>   nocaute → entrada → Elo → ranking → cooldown bloqueando rematch.
+> - Manual, **sem precisar de dois aparelhos**:
+>   `npm run db:seed-treinadores` cria `ana` e `bia` (senha `senha123`) com 3
+>   exemplares cada, nascidos de fichas reais (passam pelo resgate, então têm
+>   variante, deck e IVs de verdade). Depois `npm run pvp:bot -- --convidar`
+>   entra como a bia, convida, monta time, escolhe lead, joga os turnos e
+>   entra após nocaute — e loga o time dos DOIS lados a cada evento, que é o
+>   que se compara com a HUD para achar divergência de animação.
+>   Um navegador só tem um cookie de sessão por domínio; é por isso que o
+>   adversário é um processo, e não uma segunda aba.
 >
 > Mapa do código: back em `profdex-back/src/battle/` (gateway Socket.IO,
 > `presence/invite/cooldown/battle-room/rating/rankings`, regras de time em
@@ -280,6 +288,47 @@ ladder pelo mesmo motivo: cadastro não é ranking.
 - **PvpPickView**: cobre as duas fases da preparação. Em `picking`, a navegação de dois níveis (professor → exemplar) mais uma **faixa de 3 slots** e o botão "Confirmar". Em `preview`, os dois times lado a lado e a escolha do lead.
 - **PvpArenaView**: sem IA e sem motor local; anima `battle:round` (mesmo formato que `useBattle.js` já consome), timer de 60s visível. Ganhou o **banco de reservas** (foto + barra de HP dos dois lados), o botão **Trocar** ao lado dos golpes e o painel de **entrada após nocaute**.
 - **Ranking**: `PointsLeaderboard` deixa de usar o mock `data/ranking.js` e consome a API, exibindo tier + pontos.
+
+### O servidor emite ANTES de o ack voltar — e isso já quebrou a tela 3 vezes
+
+O gateway resolve a intenção **dentro do próprio handler** e emite o evento da
+etapa seguinte de forma síncrona. Ou seja, o cliente recebe `battle:round` /
+`battle:preview` / `battle:begin` **antes** da confirmação da ação que os
+causou. Quem escreve no estado depois de um `await command(...)` está,
+sem querer, escrevendo em cima de uma etapa que já começou.
+
+Três defeitos reais saíram daí:
+
+| Sintoma | Causa |
+|---|---|
+| Botões de golpe mortos até o F5 | ack do golpe carimbava um turno que já tinha virado (ver `docs/BUG-BATALHA-TRAVANDO.md`) |
+| Não dava para escolher o lead: cards desabilitados e "COMEÇANDO…" | ack do `battle:pick` remarcava `youPicked` já na fase `preview`. Só acontecia com quem confirmava o time **por último** — o que dispara o preview |
+| `pvp:smoke` estourando em `timeout esperando battle:round` | o teste registrava o listener **depois** do `await` do `battle:enter`, e o round chegava antes |
+
+**Regra ao mexer aqui:** todo estado derivado de um ack precisa ser carimbado
+com a etapa/turno em que a ação foi aceita, e descartado se a etapa mudou —
+é o que `marcarEscolhaSeAindaVale` e o `turn` do ack de golpe fazem. Em teste,
+registre os listeners **antes** de enviar o comando.
+
+O cliente real não sofre do problema do smoke porque `stores/battle.js` assina
+os eventos uma única vez, na conexão.
+
+### A tela atrasa de propósito em relação ao servidor
+
+`pvp.you`/`pvp.foe` chegam com o resultado **final** da rodada no instante do
+`battle:round`; a arena então anima a fila de eventos até alcançá-lo. Quem
+renderizar direto do store mostra o desfecho antes da animação:
+
+- o **banco de reservas** descontava a vida e marcava o caído na hora — a mesma
+  pancada aparecia duas vezes e a miniatura sempre "sabia" antes da barra
+  grande. Por isso existe `timeExibido`, uma cópia que só é sincronizada no fim
+  de `play()`;
+- `youFainted`/`foeFainted` precisam ser **atribuídos**, não só ligados: com
+  time, quem está em campo muda, e uma bandeira que nunca desliga fazia todo
+  substituto entrar cinza e tombado depois do primeiro nocaute.
+
+A entrada após nocaute emite evento `switch` (só para quem realmente entrou) —
+é por ele que a arena sabe que o campo mudou.
 
 ## Produção e boas práticas
 

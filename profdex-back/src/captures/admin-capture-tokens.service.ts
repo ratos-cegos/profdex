@@ -102,14 +102,17 @@ export class AdminCaptureTokensService {
       await Promise.all([
         contar({ redeemedAt: null }),
         contar({ redeemedAt: { not: null } }),
-        lastBatch ? contar({ batch: lastBatch.batch, redeemedAt: null }) : semTiragem,
+        lastBatch
+          ? contar({ batch: lastBatch.batch, redeemedAt: null })
+          : semTiragem,
         lastBatch
           ? contar({ batch: lastBatch.batch, redeemedAt: { not: null } })
           : semTiragem,
       ]);
 
-    const mapear = (linhas: { variantId: string; _count: { _all: number } }[]) =>
-      new Map(linhas.map((l) => [l.variantId, l._count._all]));
+    const mapear = (
+      linhas: { variantId: string; _count: { _all: number } }[],
+    ) => new Map(linhas.map((l) => [l.variantId, l._count._all]));
     const porVariante = {
       vivas: mapear(vivas),
       resgatadas: mapear(resgatadas),
