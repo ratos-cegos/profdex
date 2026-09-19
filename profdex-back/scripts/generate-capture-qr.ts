@@ -11,8 +11,8 @@
  * de cada combinação de tipos.
  *
  * O professor não tem um QR só: tem um por combinação dos tipos dele. Eron
- * (Arquitetura + IA/ML) rende três — só Arquitetura, só IA/ML, e as duas — de
- * modo que existe "o Eron de IA/ML" como exemplar distinto na coleção.
+ * (Arquitetura + IA) rende três — só Arquitetura, só IA, e as duas — de
+ * modo que existe "o Eron de IA" como exemplar distinto na coleção.
  * As combinações vêm da tabela `professor_variants`, populada pelo seed a
  * partir de PROFESSOR_TYPES (ver src/battle/engine/professor-types.ts).
  *

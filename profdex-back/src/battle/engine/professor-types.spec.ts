@@ -11,31 +11,31 @@ describe('combinações de tipos', () => {
   });
 
   it('professor de dois tipos rende três: cada um sozinho e os dois juntos', () => {
-    expect(typeCombinations(['arquitetura', 'ia-ml'])).toEqual([
+    expect(typeCombinations(['arquitetura', 'ia'])).toEqual([
       ['arquitetura'],
-      ['ia-ml'],
-      ['arquitetura', 'ia-ml'],
+      ['ia'],
+      ['arquitetura', 'ia'],
     ]);
   });
 
   it('a ordem em que os tipos chegam não muda a tiragem', () => {
-    expect(typeCombinations(['ia-ml', 'arquitetura'])).toEqual(
-      typeCombinations(['arquitetura', 'ia-ml']),
+    expect(typeCombinations(['ia', 'arquitetura'])).toEqual(
+      typeCombinations(['arquitetura', 'ia']),
     );
-    expect(typeKeyOf(['ia-ml', 'arquitetura'])).toBe('arquitetura+ia-ml');
+    expect(typeKeyOf(['ia', 'arquitetura'])).toBe('arquitetura+ia');
   });
 
   it('tipo repetido não duplica variante', () => {
-    expect(typeCombinations(['logica', 'logica'])).toEqual([['logica']]);
+    expect(typeCombinations(['humanas', 'humanas'])).toEqual([['humanas']]);
   });
 
   it('as variantes do Eron cobrem as três combinações', () => {
     const eron = { id: 'prof-eron', slug: 'eron', name: 'Eron' };
-    expect(typesForProfessor(eron)).toEqual(['arquitetura', 'ia-ml']);
+    expect(typesForProfessor(eron)).toEqual(['arquitetura', 'ia']);
     expect(variantsForProfessor(eron).map((v) => v.typeKey)).toEqual([
       'arquitetura',
-      'ia-ml',
-      'arquitetura+ia-ml',
+      'ia',
+      'arquitetura+ia',
     ]);
   });
 

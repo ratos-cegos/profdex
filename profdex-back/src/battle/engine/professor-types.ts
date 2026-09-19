@@ -7,17 +7,17 @@ import { typeIdFromSeed } from './types';
 export const PROFESSOR_TYPES: Record<string, string[]> = {
   gustavo: ['arquitetura'],
   mario: ['algoritmos'],
-  'ricardo-petri': ['ia-ml'],
-  ricardo: ['ia-ml'],
-  simone: ['npi'],
-  eron: ['arquitetura', 'ia-ml'],
-  't-camis': ['calculo', 'logica'],
-  camis: ['calculo', 'logica'],
-  joao: ['logica', 'algoritmos'],
-  marcelo: ['logica'], // Programação → Lógica
-  guilherme: ['logica'],
-  renata: ['npi'],
-  serginho: ['ia-ml'],
+  'ricardo-petri': ['ia'],
+  ricardo: ['ia'],
+  simone: ['engenharia-software'],
+  eron: ['arquitetura', 'ia'],
+  't-camis': ['matematica', 'algoritmos'],
+  camis: ['matematica', 'algoritmos'],
+  joao: ['algoritmos'], // Lógica + Algoritmos colapsaram no mesmo tipo
+  marcelo: ['algoritmos'], // Programação → Algoritmos
+  guilherme: ['algoritmos'],
+  renata: ['engenharia-software'],
+  serginho: ['ia'],
   marcos: ['banco'], // Banco (+Segurança descartada)
   igor: ['robotica', 'redes'],
   edson: ['banco'], // Segurança descartada → Banco
@@ -53,7 +53,7 @@ export function typesForProfessor(professor: {
 }
 
 // Chave estável de uma combinação de tipos: ids ordenados e unidos por "+".
-// A ordenação é o que faz ["ia-ml","logica"] e ["logica","ia-ml"] serem a mesma
+// A ordenação é o que faz ["ia","humanas"] e ["humanas","ia"] serem a mesma
 // variante, sem depender da ordem em que a tabela lista os tipos.
 export function typeKeyOf(types: string[]): string {
   return [...new Set(types)].sort().join('+');

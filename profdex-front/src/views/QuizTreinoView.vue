@@ -62,8 +62,8 @@ const temasExibidos = computed(() =>
     ...t,
     questoes: temas.value.find((x) => x.theme === t.id)?.questoes ?? 0,
     // O ícone herda `currentColor`. A cor canônica do tipo é feita para
-    // PREENCHER área, não para virar traço sobre fundo escuro: o NPI (#495057)
-    // daria 1,7:1 no fundo do card e sumiria. `legibleColor` clareia até 4,5:1
+    // PREENCHER área, não para virar traço sobre fundo escuro: a Eng. de
+    // Software (#495057) daria 1,7:1 no card e sumiria. `legibleColor` clareia
     // mantendo o matiz.
     corIcone: legibleColor(t.color),
   })),

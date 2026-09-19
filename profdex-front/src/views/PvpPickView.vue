@@ -67,8 +67,8 @@ const secondsLeft = computed(() => {
   return Math.max(0, Math.ceil((deadline - now.value) / 1000))
 })
 
-// Os tipos de cada exemplar, não os do professor: um Eron de IA/ML e um de
-// Arquitetura + IA/ML aparecem com badges diferentes.
+// Os tipos de cada exemplar, não os do professor: um Eron de IA e um de
+// Arquitetura + IA aparecem com badges diferentes.
 function typesOf(professor) {
   const combinacoes = new Set()
   for (const exemplar of professor.exemplares) {

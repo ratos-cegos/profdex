@@ -21,22 +21,22 @@ export const NEUTRAL = 1
 
 export const TYPE_CYCLE = [
   {
-    id: 'logica',
-    label: 'Lógica',
-    icon: '🧩',
+    id: 'humanas',
+    label: 'Humanas',
+    icon: '📚',
     color: '#6C4DE0',
-    description: 'Prova formal, dedução e abstração pura.',
+    description: 'Ética, impacto social e o lado humano da tecnologia.',
   },
   {
-    id: 'calculo',
-    label: 'Cálculo',
+    id: 'matematica',
+    label: 'Matemática',
     icon: '📐',
     color: '#F03E3E',
-    description: 'Limites, derivadas e otimização contínua.',
+    description: 'Cálculo, estatística e otimização.',
   },
   {
-    id: 'ia-ml',
-    label: 'IA / ML',
+    id: 'ia',
+    label: 'IA',
     icon: '🧠',
     color: '#12B886',
     description: 'Redes neurais, aprendizado e previsão.',
@@ -56,11 +56,11 @@ export const TYPE_CYCLE = [
     description: 'Hardware, pipelines e baixo nível.',
   },
   {
-    id: 'npi',
-    label: 'NPI',
-    icon: '🧑‍🏫',
+    id: 'engenharia-software',
+    label: 'Engenharia de Software',
+    icon: '📋',
     color: '#495057',
-    description: 'Práticas integradoras: projetos, code review e entregas.',
+    description: 'Requisitos, modelagem e processo de entrega.',
   },
   {
     id: 'redes',
@@ -150,9 +150,9 @@ export function typeMultiplier(attackType, defenderTypes) {
  * Preto ou branco sobre a cor do tipo, escolhido por luminância relativa
  * (WCAG 2.1) em vez de no olho.
  *
- * Necessário porque a paleta dos 9 tipos vai de #495057 (NPI, quase preto) a
- * #F5A623 (Arquitetura, laranja claro): uma cor de texto fixa reprovaria em
- * metade das badges.
+ * Necessário porque a paleta dos 9 tipos vai de #495057 (Eng. de Software,
+ * quase preto) a #F5A623 (Arquitetura, laranja claro): uma cor de texto fixa
+ * reprovaria em metade das badges.
  */
 export function onColor(hex) {
   const channel = (v) => {
@@ -174,9 +174,10 @@ export function onColor(hex) {
  * Versão da cor do tipo que dá para LER sobre o fundo escuro da página.
  *
  * A paleta canônica foi desenhada para preencher áreas (setores da roda,
- * badges), não para virar cor de texto. O NPI (`#495057`) sobre `--bg-deep`
- * (`#121418`) dá 1,7:1 — some. Este helper clareia a cor até passar em 4,5:1,
- * mantendo o matiz: continua sendo "a cor do NPI", só que visível.
+ * badges), não para virar cor de texto. A Eng. de Software (`#495057`) sobre
+ * `--bg-deep` (`#121418`) dá 1,7:1 — some. Este helper clareia a cor até passar
+ * em 4,5:1, mantendo o matiz: continua sendo "a cor da Eng. de Software", só
+ * que visível.
  *
  * @param {string} hex Cor canônica do tipo.
  * @param {number} minContrast Contraste mínimo desejado (4.5 = AA para texto).

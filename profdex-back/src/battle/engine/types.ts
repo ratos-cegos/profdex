@@ -10,12 +10,12 @@ export const NOT_EFFECTIVE = 0.5;
 export const NEUTRAL = 1;
 
 export const TYPE_CYCLE = [
-  'logica',
-  'calculo',
-  'ia-ml',
+  'humanas',
+  'matematica',
+  'ia',
   'robotica',
   'arquitetura',
-  'npi',
+  'engenharia-software',
   'redes',
   'banco',
   'algoritmos',

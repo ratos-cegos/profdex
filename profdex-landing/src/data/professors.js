@@ -7,8 +7,8 @@
 // apelido — o mapa registra slug e nome porque `typesForProfessor` tenta os
 // dois ao casar o que vem da API:
 //
-//     'ricardo-petri' ≡ 'ricardo'   (ambos ['ia-ml'])
-//     't-camis'       ≡ 'camis'     (ambos ['calculo', 'logica'])
+//     'ricardo-petri' ≡ 'ricardo'   (ambos ['ia'])
+//     't-camis'       ≡ 'camis'     (ambos ['matematica', 'algoritmos'])
 //
 // Logo: 14 professores distintos, 3 com arte. A landing NUNCA digita esses
 // números — eles saem de `TOTAL_PROFESSORS` e `LOCKED_COUNT`, derivados daqui.
@@ -56,7 +56,7 @@ export const CAPTURABLE = [
   {
     slug: 'eron',
     name: 'Eron',
-    types: ['arquitetura', 'ia-ml'],
+    types: ['arquitetura', 'ia'],
     sprite: asset('/professors/eron-pixel.png'),
     spriteBack: asset('/professors/eron-pixel-costas.png'),
     spriteFace: asset('/professors/eron-pixel-face.png'),
@@ -91,14 +91,14 @@ export const BY_SLUG = Object.fromEntries(CAPTURABLE.map((p) => [p.slug, p]))
  * primeiro tipo de cada um é o que colore a silhueta.
  */
 export const LOCKED = [
-  { types: ['ia-ml'] }, // Ricardo Petri
-  { types: ['npi'] }, // Simone
-  { types: ['calculo', 'logica'] }, // T. Camis
-  { types: ['logica', 'algoritmos'] }, // João
-  { types: ['logica'] }, // Marcelo — "Programação" virou Lógica
-  { types: ['logica'] }, // Guilherme
-  { types: ['npi'] }, // Renata
-  { types: ['ia-ml'] }, // Serginho
+  { types: ['ia'] }, // Ricardo Petri
+  { types: ['engenharia-software'] }, // Simone
+  { types: ['matematica', 'algoritmos'] }, // T. Camis
+  { types: ['algoritmos'] }, // João — Lógica e Algoritmos viraram o mesmo tipo
+  { types: ['algoritmos'] }, // Marcelo — "Programação" virou Algoritmos
+  { types: ['algoritmos'] }, // Guilherme
+  { types: ['engenharia-software'] }, // Renata
+  { types: ['ia'] }, // Serginho
   { types: ['banco'] }, // Marcos — "Segurança" foi descartada
   { types: ['robotica', 'redes'] }, // Igor
   { types: ['banco'] }, // Edson — idem Marcos

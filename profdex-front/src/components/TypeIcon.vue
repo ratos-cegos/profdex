@@ -5,7 +5,7 @@ import { computed } from 'vue'
 // (`profdex-landing-page/src/components/TypeIcon.vue`), que é outro repositório
 // — por isso o componente é copiado, e não importado.
 //
-// O `icon` de `data/types.js` guarda um emoji por tipo (🧩, 📐, 🧠…). Emoji tem
+// O `icon` de `data/types.js` guarda um emoji por tipo (📚, 📐, 🧠…). Emoji tem
 // três problemas: cada sistema desenha o seu, quase todos são coloridos (brigam
 // com a cor canônica do tipo) e nenhum se alinha à identidade do resto do app.
 //
@@ -26,20 +26,20 @@ const props = defineProps({
 })
 
 const ICONS = {
-  // Peça de quebra-cabeça: dedução encaixando.
-  logica: [
-    [
-      'path',
-      { d: 'M4 4h6a2 2 0 1 1 4 0h6v6a2 2 0 1 0 0 4v6h-6a2 2 0 1 0-4 0H4v-6a2 2 0 1 0 0-4V4z' },
-    ],
+  // Livro aberto: a leitura e o debate que sustentam a área.
+  humanas: [
+    ['path', { d: 'M12 7v12' }],
+    ['path', { d: 'M12 7C10 5 7 4 3 5v12c4-1 7 0 9 2' }],
+    ['path', { d: 'M12 7c2-2 5-3 9-2v12c-4-1-7 0-9 2' }],
   ],
   // O sinal de integral: o símbolo que o curso inteiro reconhece de longe.
   // Traço único, sem eixos por baixo — a leitura em 20px depende de a silhueta
   // ser uma coisa só, e a versão com eixos + tangente virava rabisco nesse
-  // tamanho.
-  calculo: [['path', { d: 'M16 4c0-1.1-.9-2-2-2s-3 1-3 4v12c0 3-1.5 4-3 4s-2-.9-2-2' }]],
+  // tamanho. Continua servindo para Matemática, que hoje cobre também
+  // estatística: o integral é o que o aluno reconhece como "a matéria pesada".
+  matematica: [['path', { d: 'M16 4c0-1.1-.9-2-2-2s-3 1-3 4v12c0 3-1.5 4-3 4s-2-.9-2-2' }]],
   // Rede neural: três camadas de nós ligadas.
-  'ia-ml': [
+  ia: [
     ['circle', { cx: 5, cy: 7, r: 2 }],
     ['circle', { cx: 5, cy: 17, r: 2 }],
     ['circle', { cx: 12, cy: 12, r: 2 }],
@@ -59,11 +59,12 @@ const ICONS = {
     ['rect', { x: 7, y: 7, width: 10, height: 10, rx: 1 }],
     ['path', { d: 'M10 2v5M14 2v5M10 17v5M14 17v5M2 10h5M2 14h5M17 10h5M17 14h5' }],
   ],
-  // Quadro e alguém apresentando: práticas integradoras.
-  npi: [
-    ['rect', { x: 3, y: 3, width: 18, height: 13, rx: 1 }],
-    ['path', { d: 'M7 20l5-4 5 4' }],
-    ['path', { d: 'M7 8h6M7 12h4' }],
+  // Dois blocos ligados por uma seta: a leitura de diagrama (UML/BPMN).
+  'engenharia-software': [
+    ['rect', { x: 3, y: 3, width: 8, height: 6, rx: 1 }],
+    ['rect', { x: 13, y: 15, width: 8, height: 6, rx: 1 }],
+    ['path', { d: 'M7 9v9h6' }],
+    ['path', { d: 'M11 16l2 2-2 2' }],
   ],
   // Grafo de nós: roteamento e sistemas distribuídos.
   redes: [

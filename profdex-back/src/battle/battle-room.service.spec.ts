@@ -70,7 +70,7 @@ describe('BattleRoomService', () => {
 
   // Três exemplares por jogadora — o suficiente para time cheio, reserva e
   // repetição de professor com capturas diferentes.
-  const TIPOS = [['algoritmos'], ['arquitetura', 'ia-ml'], ['redes']];
+  const TIPOS = [['algoritmos'], ['arquitetura', 'ia'], ['redes']];
   const capturaDe = (userId: string, i: number) => ({
     id: `cap-${userId}-${i}`,
     moves: buildMoveset(TIPOS[i]).map((m) => m.id),
@@ -391,7 +391,7 @@ describe('BattleRoomService', () => {
       ).toEqual(capturas[ana.userId][0].moves);
       expect(lastPayload(bia.userId, 'battle:begin').you.types).toEqual([
         'arquitetura',
-        'ia-ml',
+        'ia',
       ]);
     });
   });

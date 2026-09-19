@@ -73,6 +73,17 @@ async function main() {
     );
 
     for (const variant of escolhidas) {
+      // Uma variante gravada com tipo que saiu da roda devolve moveset vazio, e
+      // o exemplar entraria na arena sem nenhum golpe — travando a batalha de
+      // teste sem dizer por quê. Falha alto aqui, onde a causa ainda é óbvia.
+      const deck = buildMoveset(variant.types);
+      if (!deck.length) {
+        throw new Error(
+          `A variante ${variant.professor.name} (${variant.types.join('+')}) ` +
+            'não tem golpes: tipo fora da roda atual. Rode `npm run db:reset`.',
+        );
+      }
+
       const token = generateCaptureToken();
       const ficha = await db.captureToken.create({
         data: {
@@ -89,7 +100,7 @@ async function main() {
           professorId: variant.professor.id,
           variantId: variant.id,
           tokenId: ficha.id,
-          moves: buildMoveset(variant.types).map((m) => m.id),
+          moves: deck.map((m) => m.id),
           ivHp: iv(),
           ivRigor: iv(),
           ivDidatica: iv(),

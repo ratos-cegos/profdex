@@ -24,8 +24,8 @@ describe('CapturesService', () => {
   };
   const variant = {
     id: 'variant-1',
-    typeKey: 'arquitetura+ia-ml',
-    types: ['arquitetura', 'ia-ml'],
+    typeKey: 'arquitetura+ia',
+    types: ['arquitetura', 'ia'],
     professorId: professor.id,
   };
 

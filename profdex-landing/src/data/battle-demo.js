@@ -11,7 +11,7 @@
 // ("super-eficaz" / "pouco eficaz") acompanha sozinha em vez de virar mentira.
 //
 // Consequência prática disso, e é de propósito: Gustavo é Arquitetura, e
-// Arquitetura é 1× contra Algoritmos (Mário) e 0,5× contra IA/ML (Eron). Ele
+// Arquitetura é 1× contra Algoritmos (Mário) e 0,5× contra IA (Eron). Ele
 // ganha as duas, mas apanha para derrubar o Eron — que é exatamente a leitura
 // certa de um duelo contra dois tipos combinados.
 

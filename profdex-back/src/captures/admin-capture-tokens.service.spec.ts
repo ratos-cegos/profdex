@@ -14,8 +14,8 @@ describe('AdminCaptureTokensService', () => {
     },
     {
       id: 'var-2',
-      typeKey: 'ia-ml',
-      types: ['ia-ml'],
+      typeKey: 'ia',
+      types: ['ia'],
       professor: { name: 'Eron', slug: 'eron' },
     },
   ];
@@ -165,8 +165,8 @@ describe('AdminCaptureTokensService', () => {
         [
           {
             id: 'v1',
-            typeKey: 'logica',
-            types: ['logica'],
+            typeKey: 'humanas',
+            types: ['humanas'],
             professor: { name: 'Eron', slug: 'eron' },
           },
         ],

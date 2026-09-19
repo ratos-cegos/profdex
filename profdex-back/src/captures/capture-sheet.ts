@@ -28,14 +28,18 @@ import { hashCaptureToken } from './capture-token';
 /**
  * Rótulo só para a folha impressa. Os ids canônicos (e a roda de vantagens)
  * estão em src/battle/engine/types.ts; aqui é apresentação.
+ *
+ * Os nomes são abreviados de propósito — a legenda do card é uma linha só, e
+ * um exemplar de dois tipos junta dois rótulos com " + ". Por isso "Banco" e
+ * "Eng. de Software" em vez dos nomes por extenso que o app usa na tela.
  */
 export const TYPE_LABEL: Record<string, string> = {
-  logica: 'Lógica',
-  calculo: 'Cálculo',
-  'ia-ml': 'IA/ML',
+  humanas: 'Humanas',
+  matematica: 'Matemática',
+  ia: 'IA',
   robotica: 'Robótica',
   arquitetura: 'Arquitetura',
-  npi: 'NPI',
+  'engenharia-software': 'Eng. de Software',
   redes: 'Redes',
   banco: 'Banco',
   algoritmos: 'Algoritmos',
