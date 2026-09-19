@@ -202,6 +202,32 @@ Antes do primeiro deploy com o novo compose, confira com `docker volume ls`
 na instância se esse é de fato o nome existente — senão o `up` criaria um
 volume novo vazio em vez de reaproveitar o banco de produção.
 
+## Troca da roda de tipos — passo manual
+
+A roda passou de 9 tipos para outros 9 (Lógica e NPI saíram; Humanas e
+Engenharia de Software entraram, e `calculo`/`ia-ml` viraram
+`matematica`/`ia`). **Não existe migração de dados para isso** — a decisão foi
+limpar o banco, porque ele ainda estava vazio.
+
+As colunas que guardam id de tipo (`professor_variants.types`,
+`quiz_questions.theme`, `training_questions.theme`, `quiz_attempts.theme`,
+`capture_vouchers.theme`) não são convertidas por migration nenhuma. Quem subir
+uma versão antiga por cima de dados antigos fica com linhas apontando para tipo
+que não existe mais: silenciosamente, sem erro — a batalha perde a vantagem de
+tipo e o tema some do quiz.
+
+Por isso, no deploy que leva a roda nova, rode **dentro do container `app`**:
+
+```bash
+docker compose exec app npx prisma migrate deploy   # schema
+docker compose exec app npm run db:reset -- --yes   # APAGA TUDO e semeia do zero
+docker compose exec app npm run db:seed-quiz-treino # banco de treino
+```
+
+`db:reset` derruba as tabelas e reaplica as migrations — ele também leva embora
+usuários, capturas e ranking. Depois dele **os QR impressos param de valer**:
+tire uma tiragem nova com `npm run qr:generate -- --copies=N --yes`.
+
 ## Validação end-to-end
 
 ```bash

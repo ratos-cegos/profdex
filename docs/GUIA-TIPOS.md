@@ -28,7 +28,14 @@ São **9 tipos** numa roda cíclica. **A ordem do array `TYPE_CYCLE` É a roda**
 **derivados da posição em runtime**, não digitados à mão.
 
 Ordem atual (horário):
-`Lógica → Cálculo → IA/ML → Robótica → Arquitetura → NPI → Redes → Banco de Dados → Algoritmos →` (volta a Lógica)
+`Humanas → Matemática → IA → Robótica → Arquitetura → Engenharia de Software → Redes → Banco de Dados → Algoritmos →` (volta a Humanas)
+
+> **Atualização de 19/09/2026 (tarefa 11).** A roda continua com 9 tipos, mas
+> **Lógica** e **NPI** saíram e deram lugar a **Humanas** e **Engenharia de
+> Software**, nas mesmas posições (e herdando as mesmas cores). `calculo` e
+> `ia-ml` foram renomeados para `matematica` e `ia`. As questões de Lógica
+> passaram a contar como **Algoritmos**; as de NPI foram descartadas. Nenhuma
+> função mudou — forte/fraco continuam saindo da posição no array.
 
 Regra:
 - **Super-eficaz (2×)** contra os **2 tipos seguintes** (horário).
@@ -50,7 +57,7 @@ recoloridos. Quem renderiza escolhe a cor com um dos dois helpers de
 - `onColor(hex)` — preto ou branco **sobre** a cor do tipo (roda de vantagens,
   onde o ícone fica em cima do círculo preenchido).
 - `legibleColor(hex)` — a cor do tipo clareada até 4,5:1 **no** fundo escuro.
-  Sem ele o NPI (`#495057`) daria 1,7:1 e o ícone sumiria.
+  Sem ele a Eng. de Software (`#495057`) daria 1,7:1 e o ícone sumiria.
 
 São vetor, não pixel art: **não** aplicar `image-rendering: pixelated` (a
 convenção dos PNGs de `/icons`), que só serrilharia as curvas.

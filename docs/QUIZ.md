@@ -37,8 +37,9 @@ responde muda o tempo todo.
 ## Por que "tema"
 
 Os temas do quiz **são** os tipos da roda de batalha
-(`src/battle/engine/types.ts`): `logica`, `calculo`, `ia-ml`, `robotica`,
-`arquitetura`, `npi`, `redes`, `banco`, `algoritmos`. Não é coincidência — quem
+(`src/battle/engine/types.ts`): `humanas`, `matematica`, `ia`, `robotica`,
+`arquitetura`, `engenharia-software`, `redes`, `banco`, `algoritmos`. Não é
+coincidência — quem
 acerta uma questão de `banco` é mandado capturar um professor de `banco`, então
 as duas listas precisam ser a mesma. A identidade visual (ícone, cor) vem de
 `profdex-front/src/data/types.js`, que já era a dona desses metadados.
