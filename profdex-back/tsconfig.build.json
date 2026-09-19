@@ -11,7 +11,8 @@
   // Com `rootDir` explícito o mesmo erro vira uma falha ALTA no build (TS6059),
   // antes da imagem existir, em vez de um crash-loop em produção.
   "compilerOptions": {
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/tsconfig.build.tsbuildinfo"
   },
   // `scripts/` é ferramenta de operação, rodada por ts-node no runtime (o
   // Dockerfile copia a pasta inteira) -- nunca deve ser compilada para `dist`.

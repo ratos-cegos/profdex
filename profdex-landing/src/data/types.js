@@ -58,6 +58,7 @@ export const TYPE_CYCLE = [
   {
     id: 'engenharia-software',
     label: 'Engenharia de Software',
+    short: 'ENSW',
     icon: '📋',
     color: '#495057',
     description: 'Requisitos, modelagem e processo de entrega.',
