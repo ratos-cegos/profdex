@@ -8,18 +8,16 @@
  *
  * Uma ficha vale UMA captura: quem escanear primeiro leva o exemplar e o papel
  * morre. Por isso a tiragem tem quantidade — `--copies=3` imprime três fichas
- * de cada combinação de tipos.
+ * de cada tipo.
  *
- * O professor não tem um QR só: tem um por combinação dos tipos dele. Eron
- * (Arquitetura + IA) rende três — só Arquitetura, só IA, e as duas — de
- * modo que existe "o Eron de IA" como exemplar distinto na coleção.
- * As combinações vêm da tabela `professor_variants`, populada pelo seed a
- * partir de PROFESSOR_TYPES (ver src/battle/engine/professor-types.ts).
+ * A ficha vale por TIPO, não por professor: a bancada entrega a ficha do tema
+ * da questão que o aluno acertou, e QUAL professor daquele tipo ele leva sai no
+ * sorteio do servidor, no momento do scan (src/captures/capture-lottery.ts).
  *
  * Uso:
  *   npx ts-node scripts/generate-capture-qr.ts                     # simulação
  *   npx ts-node scripts/generate-capture-qr.ts --copies=3 --yes
- *   npx ts-node scripts/generate-capture-qr.ts --only=eron --yes
+ *   npx ts-node scripts/generate-capture-qr.ts --only=redes,ia --yes
  *   npx ts-node scripts/generate-capture-qr.ts --yes --by=12345    # autoria
  *   npx ts-node scripts/generate-capture-qr.ts --revoke-unredeemed --yes
  *
@@ -35,6 +33,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as QRCode from 'qrcode';
 import { PrismaClient } from '@prisma/client';
+import { TYPE_CYCLE } from '../src/battle/engine/types';
 import {
   buildSheetEntries,
   labelFor,
@@ -42,7 +41,6 @@ import {
   newBatchId,
   QR_OPTIONS,
   renderSheet,
-  SheetVariant,
 } from '../src/captures/capture-sheet';
 import { requireDatabaseUrl } from './db-url';
 
@@ -102,50 +100,65 @@ async function resolveAuthor(): Promise<{ id: string; label: string } | null> {
 }
 
 async function main(): Promise<void> {
-  const variants: SheetVariant[] = await db.professorVariant.findMany({
-    where: only ? { professor: { slug: { in: only } } } : {},
-    select: {
-      id: true,
-      typeKey: true,
-      types: true,
-      professor: { select: { name: true, slug: true } },
-    },
-    orderBy: [{ professor: { slug: 'asc' } }, { typeKey: 'asc' }],
-  });
-
-  if (variants.length === 0) {
-    throw new Error(
-      only
-        ? `Nenhuma variante para: ${only.join(', ')}`
-        : 'Nenhuma variante no banco — rode `npm run db:seed` primeiro',
-    );
-  }
-
+  // Id fora da roda viraria ficha que o sorteio nunca resolve — papel impresso
+  // que só devolve erro para o aluno.
   if (only) {
-    const achados = new Set(variants.map((v) => v.professor.slug));
-    const faltando = only.filter((slug) => !achados.has(slug));
-    if (faltando.length)
-      throw new Error(`Slug sem variante: ${faltando.join(', ')}`);
+    const desconhecidos = only.filter(
+      (t) => !(TYPE_CYCLE as readonly string[]).includes(t),
+    );
+    if (desconhecidos.length) {
+      throw new Error(
+        `Tipo fora da roda: ${desconhecidos.join(', ')}\n` +
+          `  Tipos válidos: ${TYPE_CYCLE.join(', ')}`,
+      );
+    }
+  }
+  const types = only
+    ? TYPE_CYCLE.filter((t) => only.includes(t))
+    : [...TYPE_CYCLE];
+
+  // Quantos professores ATIVOS cada tipo tem. Zero significa ficha que não
+  // captura nada, e a CLI avisa antes de gastar papel.
+  const variantes = await db.professorVariant.findMany({
+    where: { professor: { active: true } },
+    select: { professorId: true, types: true },
+  });
+  const professoresPorTipo = new Map<string, Set<string>>();
+  for (const v of variantes) {
+    for (const type of v.types) {
+      const set = professoresPorTipo.get(type) ?? new Set<string>();
+      set.add(v.professorId);
+      professoresPorTipo.set(type, set);
+    }
   }
 
   const author = await resolveAuthor();
 
   console.log(`Banco : ${describeDatabase()}`);
   console.log(`Autor : ${author ? author.label : '(CLI, sem --by)'}`);
-  console.log(`Plano : ${copies} ficha(s) por combinação\n`);
+  console.log(`Plano : ${copies} ficha(s) por tipo\n`);
 
-  let slugAtual: string | null = null;
-  for (const v of variants) {
-    if (v.professor.slug !== slugAtual) {
-      slugAtual = v.professor.slug;
-      console.log(`  ${v.professor.name} (${slugAtual})`);
-    }
-    console.log(`    ${labelFor(v.types).padEnd(28)} ×${copies}`);
+  const vazios: string[] = [];
+  for (const type of types) {
+    const professores = professoresPorTipo.get(type)?.size ?? 0;
+    if (professores === 0) vazios.push(type);
+    const aviso = professores === 0 ? '  ← SEM PROFESSOR ATIVO' : '';
+    console.log(
+      `  ${labelFor([type]).padEnd(20)} ×${copies}` +
+        `  (${professores} professor(es))${aviso}`,
+    );
   }
-  console.log(`\nTotal : ${variants.length * copies} QR Codes`);
+  console.log(`\nTotal : ${types.length * copies} QR Codes`);
+
+  if (vazios.length) {
+    console.log(
+      `\n⚠ ${vazios.length} tipo(s) sem professor ativo. A ficha é aceita, mas ` +
+        'o scan devolve erro e NÃO consome o papel — o aluno volta para a fila.',
+    );
+  }
 
   if (revoke) {
-    const alvo = { variantId: { in: variants.map((v) => v.id) }, redeemedAt: null };
+    const alvo = { type: { in: types }, redeemedAt: null };
     const pendentes = await db.captureToken.count({ where: alvo });
     console.log(`Revoga: ${pendentes} ficha(s) ainda não resgatada(s)`);
   }
@@ -158,7 +171,7 @@ async function main(): Promise<void> {
 
   const batch = newBatchId();
   const outDir = path.join(ROOT_DIR, batch);
-  const entries = buildSheetEntries(variants, copies);
+  const entries = buildSheetEntries(types, copies);
 
   // Arquivos primeiro: se o banco falhar, ninguém fica com QR impresso sem par.
   fs.mkdirSync(outDir, { recursive: true });
@@ -197,12 +210,12 @@ async function main(): Promise<void> {
   await db.$transaction(async (tx) => {
     if (revoke) {
       await tx.captureToken.deleteMany({
-        where: { variantId: { in: variants.map((v) => v.id) }, redeemedAt: null },
+        where: { type: { in: types }, redeemedAt: null },
       });
     }
     await tx.captureToken.createMany({
       data: entries.map((e) => ({
-        variantId: e.variantId,
+        type: e.type,
         tokenHash: e.tokenHash,
         batch,
       })),
@@ -214,7 +227,7 @@ async function main(): Promise<void> {
         source: 'cli',
         copies,
         total: entries.length,
-        variantIds: variants.map((v) => v.id),
+        types,
       },
     });
   });

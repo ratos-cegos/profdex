@@ -1,10 +1,12 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import TypeIcon from '../components/TypeIcon.vue'
+import { getType, legibleColor } from '../data/types'
 import api from '../services/api'
 
 // Fichas de captura — estoque e tiragem nova.
 //
-// Duas coisas moldam esta tela e valem ser lembradas antes de mexer:
+// Três coisas moldam esta tela e valem ser lembradas antes de mexer:
 //
 // 1. O banco guarda só `sha256(token)`. UMA FICHA GERADA NÃO PODE SER
 //    REIMPRESSA: a folha que abre depois de gerar é a única vez que aqueles
@@ -12,14 +14,18 @@ import api from '../services/api'
 // 2. Uma tiragem nova não invalida as anteriores (é decisão do sistema —
 //    imprimir mais não pode inutilizar papel que já está com aluno). Daí a
 //    coluna "vivas no total" ao lado das contagens da última tiragem: sem ela,
-//    ler "1 ficha do Eron" leva a reimprimir o que já está circulando.
+//    ler "1 ficha de IA" leva a reimprimir o que já está circulando.
+// 3. A ficha vale por TIPO: a bancada entrega a do tema da questão que o aluno
+//    acertou, e quem sai é sorteado no scan. Tipo SEM PROFESSOR ATIVO é papel
+//    que não captura nada — por isso a linha é marcada e a tiragem dele exige
+//    confirmação extra.
 
 const TETO_COPIAS = 20
 
 const carregando = ref(true)
 const erro = ref('')
 const ultimaTiragem = ref(null)
-const variantes = ref([])
+const tipos = ref([])
 
 const copias = ref(1)
 const selecionadas = ref(new Set())
@@ -27,32 +33,46 @@ const plano = ref(null)
 const simulando = ref(false)
 const gerando = ref(false)
 const erroGeracao = ref('')
+// Confirmação de que o admin sabe que vai imprimir ficha de tipo vazio.
+const confirmouVazios = ref(false)
 // Só preenchido quando o navegador bloqueia o pop-up: a folha existe e não pode
 // ser perdida por causa de uma configuração do navegador.
 const folhaUrl = ref(null)
 
-const totalVivas = computed(() => variantes.value.reduce((s, v) => s + v.alive, 0))
+const totalVivas = computed(() => tipos.value.reduce((s, t) => s + t.alive, 0))
 const totalResgatadas = computed(() =>
-  variantes.value.reduce((s, v) => s + v.redeemedTotal, 0),
+  tipos.value.reduce((s, t) => s + t.redeemedTotal, 0),
 )
 
-// Nada marcado = todas, que é o padrão do script. O texto do botão precisa
+// Nada marcado = todos, que é o padrão do script. O texto do botão precisa
 // dizer isso, senão "gerar sem marcar nada" parece um engano.
 const alvo = computed(() =>
   selecionadas.value.size ? [...selecionadas.value] : undefined,
 )
-const quantasVariantes = computed(() =>
-  selecionadas.value.size || variantes.value.length,
+const quantosTipos = computed(() => selecionadas.value.size || tipos.value.length)
+
+// Os tipos que entram na tiragem e não têm ninguém para entregar. É o que
+// transforma "Gerar" em "Gerar mesmo assim".
+const vaziosNaTiragem = computed(() =>
+  tipos.value.filter(
+    (t) =>
+      t.professors === 0 &&
+      (!selecionadas.value.size || selecionadas.value.has(t.type)),
+  ),
 )
+
+// A cor canônica preenche área; em traço sobre fundo escuro o cinza da Eng. de
+// Software (#495057) daria 1,7:1. `legibleColor` clareia mantendo o matiz.
+const corDoTipo = (id) => legibleColor(getType(id)?.color ?? '#888')
 
 function mensagemDeErro(e, padrao) {
   return e?.response?.data?.message ?? padrao
 }
 
-function alternar(variantId) {
+function alternar(type) {
   const proximo = new Set(selecionadas.value)
-  if (proximo.has(variantId)) proximo.delete(variantId)
-  else proximo.add(variantId)
+  if (proximo.has(type)) proximo.delete(type)
+  else proximo.add(type)
   selecionadas.value = proximo
   // O plano vira mentira assim que a seleção muda.
   plano.value = null
@@ -69,7 +89,7 @@ async function carregar() {
   try {
     const { data } = await api.get('/admin/capture-tokens')
     ultimaTiragem.value = data.lastBatch
-    variantes.value = data.variants
+    tipos.value = data.types
   } catch (e) {
     erro.value = mensagemDeErro(e, 'Não foi possível carregar o estoque.')
   } finally {
@@ -84,7 +104,7 @@ async function simular() {
   try {
     const { data } = await api.post('/admin/capture-tokens/preview', {
       copies: copias.value,
-      variantIds: alvo.value,
+      types: alvo.value,
     })
     plano.value = data
   } catch (e) {
@@ -102,13 +122,28 @@ async function simular() {
  * chamada é um POST autenticado — não dá para apontar `window.open` para ela.
  */
 async function gerar() {
+  // Tipo sem professor rende papel que só devolve erro para o aluno. O servidor
+  // recusa por padrão; aqui a confirmação é dada explicitamente, com a lista do
+  // que está vazio na frente de quem decide.
+  if (vaziosNaTiragem.value.length && !confirmouVazios.value) {
+    erroGeracao.value =
+      `Sem professor ativo: ${vaziosNaTiragem.value.map((t) => t.label).join(', ')}. ` +
+      'Essas fichas não capturam nada até alguém ser cadastrado. Marque a ' +
+      'confirmação abaixo para imprimir mesmo assim.'
+    return
+  }
+
   gerando.value = true
   erroGeracao.value = ''
   let url = null
   try {
     const { data } = await api.post(
       '/admin/capture-tokens/batch',
-      { copies: copias.value, variantIds: alvo.value },
+      {
+        copies: copias.value,
+        types: alvo.value,
+        allowEmpty: confirmouVazios.value,
+      },
       { responseType: 'blob' },
     )
     url = URL.createObjectURL(new Blob([data], { type: 'text/html' }))
@@ -176,7 +211,7 @@ onMounted(carregar)
             <strong>{{ ultimaTiragem.total }}</strong>
           </div>
           <div class="resumo__item">
-            <span class="resumo__rotulo">Cópias por variante</span>
+            <span class="resumo__rotulo">Cópias por tipo</span>
             <strong>{{ ultimaTiragem.copies }}</strong>
           </div>
         </div>
@@ -188,7 +223,7 @@ onMounted(carregar)
       <!-- Estoque -->
       <section class="bloco">
         <div class="bloco__head">
-          <h2 class="bloco__titulo">Estoque por combinação de tipos</h2>
+          <h2 class="bloco__titulo">Estoque por tipo</h2>
           <span class="bloco__meta">
             {{ totalVivas }} vivas · {{ totalResgatadas }} resgatadas
           </span>
@@ -201,8 +236,8 @@ onMounted(carregar)
                 <th scope="col" class="col-check">
                   <span class="sr-only">Incluir na tiragem</span>
                 </th>
-                <th scope="col">Professor</th>
-                <th scope="col">Tipos</th>
+                <th scope="col">Tipo</th>
+                <th scope="col" class="num">Professores</th>
                 <th scope="col" class="num">Nesta tiragem</th>
                 <th scope="col" class="num">Resgatadas</th>
                 <th scope="col" class="num">Vivas (total)</th>
@@ -210,29 +245,53 @@ onMounted(carregar)
             </thead>
             <tbody>
               <tr
-                v-for="v in variantes"
-                :key="v.variantId"
-                :class="{ 'linha--marcada': selecionadas.has(v.variantId) }"
+                v-for="t in tipos"
+                :key="t.type"
+                :class="{
+                  'linha--marcada': selecionadas.has(t.type),
+                  'linha--vazia': t.professors === 0,
+                }"
               >
                 <td class="col-check">
                   <input
                     type="checkbox"
-                    :checked="selecionadas.has(v.variantId)"
-                    :aria-label="`Incluir ${v.professor.name} de ${v.label} na tiragem`"
-                    @change="alternar(v.variantId)"
+                    :checked="selecionadas.has(t.type)"
+                    :aria-label="`Incluir fichas de ${t.label} na tiragem`"
+                    @change="alternar(t.type)"
                   />
                 </td>
-                <td>{{ v.professor.name }}</td>
-                <td>{{ v.label }}</td>
-                <td class="num">{{ v.lastBatch.total }}</td>
-                <td class="num">{{ v.lastBatch.redeemed }}</td>
-                <td class="num" :class="{ 'num--zero': v.alive === 0 }">
-                  {{ v.alive }}
+                <td>
+                  <span class="tipo">
+                    <TypeIcon
+                      class="tipo__icone"
+                      :type="t.type"
+                      :size="18"
+                      :style="{ color: corDoTipo(t.type) }"
+                    />
+                    {{ t.label }}
+                  </span>
+                </td>
+                <td class="num">
+                  <span v-if="t.professors === 0" class="etiqueta etiqueta--alerta">
+                    nenhum
+                  </span>
+                  <template v-else>{{ t.professors }}</template>
+                </td>
+                <td class="num">{{ t.lastBatch.total }}</td>
+                <td class="num">{{ t.lastBatch.redeemed }}</td>
+                <td class="num" :class="{ 'num--zero': t.alive === 0 }">
+                  {{ t.alive }}
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
+
+        <p v-if="tipos.some((t) => t.professors === 0)" class="aviso aviso--erro">
+          Tipos sem professor ativo não capturam nada: quem escanear recebe um
+          aviso e a ficha <strong>não</strong> é consumida — o aluno volta para a
+          fila da bancada. Cadastre um professor do tipo antes de imprimir.
+        </p>
       </section>
 
       <!-- Tiragem nova -->
@@ -247,7 +306,7 @@ onMounted(carregar)
 
         <div class="form">
           <label class="campo-rotulo">
-            Cópias por combinação
+            Cópias por tipo
             <input
               v-model.number="copias"
               class="campo"
@@ -259,7 +318,7 @@ onMounted(carregar)
           </label>
 
           <p class="form__nota">
-            {{ selecionadas.size ? `${selecionadas.size} combinação(ões) marcada(s)` : 'Nada marcado — sai a tiragem completa' }}
+            {{ selecionadas.size ? `${selecionadas.size} tipo(s) marcado(s)` : 'Nada marcado — sai a roda completa' }}
             <button
               v-if="selecionadas.size"
               class="link"
@@ -279,14 +338,33 @@ onMounted(carregar)
         <div v-if="plano" class="plano">
           <p class="plano__linha">
             <strong>{{ plano.total }}</strong> fichas —
-            {{ copias }} × {{ quantasVariantes }} combinação(ões).
+            {{ copias }} × {{ quantosTipos }} tipo(s).
           </p>
           <ul class="plano__lista">
-            <li v-for="l in plano.lines" :key="l.variantId">
-              {{ l.professor }} · {{ l.label }} ×{{ l.copies }}
+            <li
+              v-for="l in plano.lines"
+              :key="l.type"
+              :class="{ 'plano__item--vazio': l.professors === 0 }"
+            >
+              {{ l.label }} ×{{ l.copies }}
+              <span v-if="l.professors === 0" class="etiqueta etiqueta--alerta">
+                sem professor
+              </span>
+              <span v-else class="plano__meta">
+                {{ l.professors }} professor(es)
+              </span>
             </li>
           </ul>
         </div>
+
+        <label v-if="vaziosNaTiragem.length" class="confirmacao">
+          <input v-model="confirmouVazios" type="checkbox" />
+          <span>
+            Imprimir mesmo assim
+            <strong>{{ vaziosNaTiragem.map((t) => t.label).join(', ') }}</strong>,
+            sabendo que essas fichas ainda não capturam nada.
+          </span>
+        </label>
 
         <div class="acoes">
           <button
@@ -401,6 +479,52 @@ onMounted(carregar)
   background: var(--bg-card);
   color: var(--text-muted);
   font-size: 10px;
+}
+
+/* "nenhum professor" não pode passar como mais um número apagado da tabela:
+   é a diferença entre imprimir ficha e imprimir papel sem uso. */
+.etiqueta--alerta {
+  background: color-mix(in srgb, var(--error) 22%, transparent);
+  color: var(--error);
+  font-weight: 700;
+}
+
+.tipo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tipo__icone {
+  flex: none;
+}
+
+.linha--vazia {
+  background: color-mix(in srgb, var(--error) 7%, transparent);
+}
+
+.plano__item--vazio {
+  color: var(--error);
+}
+
+.plano__meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* Confirmação de imprimir tipo vazio: some quando não há tipo vazio na
+   tiragem, então nunca vira caixinha que o operador marca por hábito. */
+.confirmacao {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 /* A tabela é larga e o painel roda em tablet: a rolagem é dela, não da página. */
