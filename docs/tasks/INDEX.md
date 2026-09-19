@@ -32,7 +32,7 @@ inteiro como prompt para um agente de código.
 | 9 | [09-correcoes-criticas-pr4-pr5.md](09-correcoes-criticas-pr4-pr5.md) | Correções exigidas na revisão dos PRs #4 (Quiz Treino) e #5 (IVs, foto RA, marca) | Concluída (os dois PRs entraram) |
 | 10 | [10-batalha-em-time-e-painel-qr.md](10-batalha-em-time-e-painel-qr.md) | Batalha com time de até 3 professores, painel acessado pelo perfil, aba de fichas de captura | Concluída (entregue em 07/09/2026) |
 | 11 | [11-roda-de-tipos-nova.md](11-roda-de-tipos-nova.md) | Roda de tipos nova: saem Lógica e NPI, entram Humanas e Engenharia de Software; golpes e banco de questões acompanham | Concluída (19/09/2026, branch `feat/roda-de-tipos-nova`) — desbloqueia 12 e 13 |
-| 12 | [12-captura-por-tipo.md](12-captura-por-tipo.md) | O QR passa a valer por tipo, não por professor; sorteio em três faixas; painel de fichas por tipo | Alta 🔗 depende da 11 |
+| 12 | [12-captura-por-tipo.md](12-captura-por-tipo.md) | O QR passa a valer por tipo, não por professor; sorteio em três faixas; painel de fichas por tipo | Concluída (19/09/2026, branch `feat/roda-de-tipos-nova`) — `Professor.active` saiu daqui, a 13 herda |
 | 13 | [13-admin-de-professores.md](13-admin-de-professores.md) | Cadastro de professores pelo painel: nome, tipos, sprites e modelo 3D, com upload | Alta 🔗 depende da 11 |
 | 14 | [14-antitravamento-batalha.md](14-antitravamento-batalha.md) | Seis softlocks do fluxo de convite e batalha, incluindo P1/P2/P4 do BUG-BATALHA-TRAVANDO | Alta — independente |
 

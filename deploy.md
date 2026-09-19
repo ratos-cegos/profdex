@@ -228,6 +228,26 @@ docker compose exec app npm run db:seed-quiz-treino # banco de treino
 usuários, capturas e ranking. Depois dele **os QR impressos param de valer**:
 tire uma tiragem nova com `npm run qr:generate -- --copies=N --yes`.
 
+### A ficha passou a valer por tipo
+
+Na mesma virada, a ficha de QR deixou de apontar para um professor e passou a
+valer por **tipo**: a bancada entrega a ficha do tema da questão que o aluno
+acertou, e qual professor sai é sorteado no servidor, no momento do scan.
+
+Duas consequências operacionais:
+
+- **A tiragem é por tipo, não por professor.** São 9 linhas no
+  `/admin/fichas`, e `qr:generate --only=` agora recebe ids de tipo
+  (`--only=redes,ia`), não slugs de professor.
+- **Tipo sem professor ativo imprime papel que não captura nada.** O painel
+  marca essas linhas e pede confirmação extra; a CLI avisa antes de gerar. Quem
+  escanear recebe "procure a bancada" e **a ficha não é consumida** — dá para
+  cadastrar o professor e mandar o aluno escanear o mesmo papel de novo.
+
+As fichas impressas ANTES desta virada continuam válidas: elas guardam
+`variant_id` e seguem entregando exatamente aquele professor, sem sorteio. A
+coluna não foi removida por isso.
+
 ## Validação end-to-end
 
 ```bash
