@@ -48,8 +48,8 @@ export const useCapturesStore = defineStore('captures', () => {
 
   /**
    * Os exemplares de um professor agrupados por combinação de tipos — é assim
-   * que a ficha os exibe: "Eron de IA/ML" com os seus, "Eron de
-   * Arquitetura+IA/ML" com os dele.
+   * que a ficha os exibe: "Eron de IA" com os seus, "Eron de
+   * Arquitetura+IA" com os dele.
    */
   function groupedByVariant(professorId) {
     const grupos = new Map()

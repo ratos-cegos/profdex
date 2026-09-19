@@ -27,243 +27,303 @@ export interface QuizSeedQuestion {
 }
 
 export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
-  // ── Lógica ────────────────────────────────────────────────────────────────
+  // ── Humanas ───────────────────────────────────────────────────────────────────
+  // Humanas aqui é humanas APLICADA à computação: ética, LGPD, impacto social e
+  // método científico. Pergunta de gramática ou literatura não entra — o aluno
+  // que acertar vai capturar um professor da roda, não fazer prova de redação.
   {
-    theme: 'logica',
+    theme: 'humanas',
     difficulty: 'facil',
-    prompt: 'Qual é a negação de "todo aluno foi aprovado"?',
+    prompt: 'A LGPD é a lei brasileira que trata de quê?',
     options: [
-      'Nenhum aluno foi aprovado',
-      'Pelo menos um aluno não foi aprovado',
-      'Todo aluno foi reprovado',
-      'Alguns alunos foram aprovados',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'logica',
-    difficulty: 'facil',
-    prompt: 'Qual é o valor de "verdadeiro E falso"?',
-    options: ['Verdadeiro', 'Falso', 'Indefinido', 'Depende da ordem'],
-    answer: 1,
-  },
-  {
-    theme: 'logica',
-    difficulty: 'facil',
-    prompt:
-      '"Se chove, a rua fica molhada." Sabendo que está chovendo, o que se conclui?',
-    options: [
-      'A rua fica molhada',
-      'A rua está seca',
-      'Nada se conclui',
-      'Não está chovendo',
+      'Proteção de dados pessoais',
+      'Direitos autorais de software',
+      'Crimes de invasão de sistemas',
+      'Acessibilidade em sites públicos',
     ],
     answer: 0,
   },
   {
-    theme: 'logica',
+    theme: 'humanas',
     difficulty: 'facil',
-    prompt: 'Com p falso e q verdadeiro, qual é o valor de "p OU q"?',
-    options: ['Falso', 'Verdadeiro', 'Indefinido', 'Igual ao de p E q'],
+    prompt: 'O que a LGPD considera um "dado pessoal"?',
+    options: [
+      'Qualquer informação de uma empresa',
+      'Informação que identifica ou pode identificar uma pessoa',
+      'Apenas CPF e RG',
+      'Apenas dados guardados em nuvem',
+    ],
     answer: 1,
   },
   {
-    theme: 'logica',
-    difficulty: 'media',
-    prompt: 'Qual é a contrapositiva de "se p, então q"?',
+    theme: 'humanas',
+    difficulty: 'facil',
+    prompt:
+      'Ao coletar dados num cadastro, a LGPD exige que o usuário saiba principalmente o quê?',
     options: [
-      'Se q, então p',
-      'Se não p, então não q',
-      'Se não q, então não p',
-      'p e não q',
+      'A linguagem de programação usada',
+      'O nome do servidor onde os dados ficam',
+      'A finalidade para a qual os dados serão usados',
+      'O custo do sistema',
     ],
     answer: 2,
   },
   {
-    theme: 'logica',
-    difficulty: 'media',
-    prompt: 'Quantas linhas tem a tabela-verdade de 4 proposições simples?',
-    options: ['8', '12', '16', '32'],
-    answer: 2,
-  },
-  {
-    theme: 'logica',
-    difficulty: 'media',
-    prompt: 'A proposição "p → q" é equivalente a qual expressão?',
-    options: ['p E q', 'não p OU q', 'p OU não q', 'não p E q'],
-    answer: 1,
-  },
-  {
-    theme: 'logica',
-    difficulty: 'dificil',
-    prompt: 'Pela lei de De Morgan, "não (p E q)" equivale a:',
-    options: ['não p E não q', 'não p OU não q', 'p OU q', 'não (p OU q)'],
-    answer: 1,
-  },
-  {
-    theme: 'logica',
-    difficulty: 'dificil',
-    prompt:
-      'Concluir p a partir de "se p, então q" e de q é qual erro de raciocínio?',
+    theme: 'humanas',
+    difficulty: 'facil',
+    prompt: 'O que caracteriza plágio num trabalho acadêmico?',
     options: [
-      'Afirmação do consequente',
-      'Negação do antecedente',
-      'Modus tollens',
-      'Silogismo hipotético',
+      'Citar um autor indicando a fonte',
+      'Apresentar ideia ou texto de outra pessoa como se fosse seu',
+      'Usar mais de uma referência bibliográfica',
+      'Escrever em primeira pessoa',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'facil',
+    prompt:
+      'Um aplicativo de lanterna pede acesso à agenda de contatos. Que princípio da LGPD isso contraria?',
+    options: [
+      'Minimização: coletar apenas o necessário',
+      'Portabilidade dos dados',
+      'Irretroatividade da lei',
+      'Livre iniciativa',
     ],
     answer: 0,
   },
   {
-    theme: 'logica',
-    difficulty: 'dificil',
-    prompt: 'Qual das proposições abaixo é uma tautologia?',
-    options: ['p E não p', 'p OU não p', 'p → não p', 'não (p OU p)'],
-    answer: 1,
-  },
-  {
-    theme: 'logica',
+    theme: 'humanas',
     difficulty: 'facil',
-    prompt: 'Qual é o valor de "falso OU falso"?',
-    options: ['Verdadeiro', 'Falso', 'Indefinido', 'Depende da ordem'],
-    answer: 1,
-  },
-  {
-    theme: 'logica',
-    difficulty: 'facil',
-    prompt: 'Qual é a negação de "nenhum aluno faltou"?',
+    prompt: 'O que é viés algorítmico?',
     options: [
-      'Todo aluno faltou',
-      'Nenhum aluno compareceu',
-      'Pelo menos um aluno faltou',
-      'Todos compareceram',
+      'Erro de sintaxe que trava o programa',
+      'Lentidão do sistema sob carga alta',
+      'Quando o sistema reproduz desigualdades presentes nos dados',
+      'Falha de conexão com o banco de dados',
     ],
     answer: 2,
   },
   {
-    theme: 'logica',
+    theme: 'humanas',
     difficulty: 'facil',
-    prompt: 'Quantas linhas tem a tabela-verdade de 2 proposições simples?',
-    options: ['2', '4', '6', '8'],
+    prompt: 'O que define um software livre?',
+    options: [
+      'Ser distribuído sem custo',
+      'Permitir usar, estudar, modificar e redistribuir o código',
+      'Rodar apenas em Linux',
+      'Não ter nenhuma licença',
+    ],
     answer: 1,
   },
   {
-    theme: 'logica',
+    theme: 'humanas',
     difficulty: 'facil',
-    prompt: 'O conectivo "E" (conjunção) só é verdadeiro quando:',
+    prompt: 'Numa pesquisa com pessoas, o que é consentimento informado?',
     options: [
-      'Pelo menos uma das partes é verdadeira',
-      'As duas partes são verdadeiras',
-      'As duas partes são falsas',
-      'Uma das partes é falsa',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'logica',
-    difficulty: 'media',
-    prompt: 'Qual é a recíproca de "se p, então q"?',
-    options: [
-      'Se não q, então não p',
-      'Se não p, então não q',
-      'Se q, então p',
-      'p e não q',
-    ],
-    answer: 2,
-  },
-  {
-    theme: 'logica',
-    difficulty: 'media',
-    prompt:
-      'Em quantas linhas da tabela-verdade a proposição "p OU q" é falsa?',
-    options: ['Nenhuma', 'Uma', 'Duas', 'Três'],
-    answer: 1,
-  },
-  {
-    theme: 'logica',
-    difficulty: 'media',
-    prompt: 'Pela lei de De Morgan, "não (p OU q)" equivale a:',
-    options: [
-      '(não p) OU (não q)',
-      '(não p) E (não q)',
-      'p E q',
-      'p OU (não q)',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'logica',
-    difficulty: 'dificil',
-    prompt:
-      'Como se chama a proposição que é falsa em todas as linhas da tabela-verdade?',
-    options: ['Tautologia', 'Contingência', 'Contradição', 'Bicondicional'],
-    answer: 2,
-  },
-  {
-    theme: 'logica',
-    difficulty: 'dificil',
-    prompt: 'A bicondicional "p ↔ q" é verdadeira exatamente quando:',
-    options: [
-      'p e q têm o mesmo valor lógico',
-      'p é verdadeira e q é falsa',
-      'Pelo menos uma das duas é verdadeira',
-      'As duas são falsas',
+      'A pessoa concorda depois de entender objetivos e riscos',
+      'O pesquisador avisa a universidade',
+      'Um contrato assinado pelo orientador',
+      'A autorização do comitê de informática',
     ],
     answer: 0,
   },
   {
-    theme: 'logica',
+    theme: 'humanas',
+    difficulty: 'media',
+    prompt: 'Na LGPD, quem é o "titular" dos dados?',
+    options: [
+      'A empresa que armazena os dados',
+      'O desenvolvedor do sistema',
+      'A pessoa a quem os dados se referem',
+      'A autoridade nacional de proteção de dados',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'media',
+    prompt: 'Qual é a diferença entre controlador e operador na LGPD?',
+    options: [
+      'O controlador decide sobre o tratamento; o operador o executa em nome dele',
+      'O controlador é sempre uma pessoa física',
+      'O operador responde sozinho por qualquer vazamento',
+      'Não há diferença: são sinônimos na lei',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'media',
+    prompt: 'O que busca a acessibilidade digital?',
+    options: [
+      'Reduzir o custo de hospedagem do site',
+      'Garantir que pessoas com deficiência consigam usar o sistema',
+      'Aumentar a velocidade de carregamento',
+      'Bloquear acesso de fora do país',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'media',
+    prompt:
+      'Um sistema de reconhecimento facial erra bem mais em pessoas negras. Qual é a causa mais provável?',
+    options: [
+      'Resolução baixa da câmera',
+      'Base de treino pouco representativa',
+      'Excesso de memória RAM no servidor',
+      'Uso de uma linguagem de programação antiga',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'media',
+    prompt: 'O que o termo "exclusão digital" descreve?',
+    options: [
+      'A remoção definitiva de uma conta de usuário',
+      'O apagamento de dados após o prazo legal',
+      'A desigualdade de acesso a tecnologia e conectividade',
+      'O bloqueio de sites por ordem judicial',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'media',
+    prompt: 'Para que serve a revisão por pares na ciência?',
+    options: [
+      'Especialistas avaliam método e resultados antes da publicação',
+      'O autor revisa o próprio texto antes de enviar',
+      'A revista corrige a ortografia do artigo',
+      'O orientador assina o trabalho do aluno',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'humanas',
     difficulty: 'dificil',
     prompt:
-      'Pelo modus tollens, de "se p, então q" e "não q" o que se conclui?',
-    options: ['q', 'p', 'não p', 'Nada se conclui'],
+      'A LGPD garante ao titular um direito específico diante de decisões tomadas apenas por algoritmo. Qual?',
+    options: [
+      'Receber uma cópia do código-fonte',
+      'Solicitar a revisão da decisão automatizada',
+      'Proibir o uso de IA pela empresa',
+      'Exigir indenização automática',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'dificil',
+    prompt: 'O que significa anonimizar um dado, segundo a LGPD?',
+    options: [
+      'Guardá-lo criptografado no banco',
+      'Trocar o nome do titular por um apelido',
+      'Fazer com que ele perca a possibilidade de associação a um indivíduo',
+      'Mantê-lo acessível só para administradores',
+    ],
     answer: 2,
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'dificil',
+    prompt:
+      'Uma loja virtual precisa do CPF do cliente para emitir nota fiscal. Qual base legal da LGPD sustenta esse tratamento?',
+    options: [
+      'Cumprimento de obrigação legal',
+      'Consentimento revogável a qualquer momento',
+      'Proteção do crédito',
+      'Interesse público na área da saúde',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'dificil',
+    prompt:
+      'Por que o "dilema do bonde" reaparece na discussão sobre carros autônomos?',
+    options: [
+      'Porque o carro precisa calcular a rota mais curta',
+      'Porque obriga a decidir de antemão quem será preservado numa colisão inevitável',
+      'Porque trens e carros compartilham trilhos',
+      'Porque define o limite de velocidade do veículo',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'dificil',
+    prompt:
+      'Segundo o critério de falseabilidade de Popper, o que uma hipótese científica precisa permitir?',
+    options: [
+      'Ser confirmada por pelo menos três experimentos',
+      'Ser aceita pela maioria dos pesquisadores da área',
+      'Ser refutada por alguma observação possível',
+      'Ser expressa em fórmula matemática',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'dificil',
+    prompt: 'O que propõe a abordagem "privacy by design"?',
+    options: [
+      'Tratar privacidade desde a concepção do sistema, e não como ajuste posterior',
+      'Deixar o usuário configurar a privacidade no primeiro acesso',
+      'Publicar a política de privacidade na página inicial',
+      'Armazenar dados somente em servidores nacionais',
+    ],
+    answer: 0,
   },
 
-  // ── Cálculo ───────────────────────────────────────────────────────────────
+  // ── Matemática ────────────────────────────────────────────────────────────────
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Qual é a derivada de f(x) = x²?',
     options: ['x', '2x', 'x²/2', '2'],
     answer: 1,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Quanto vale o limite de (3x + 1) quando x tende a 2?',
     options: ['5', '6', '7', '9'],
     answer: 2,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Qual é a derivada de uma função constante?',
     options: ['A própria constante', '0', '1', 'x'],
     answer: 1,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Qual é a integral indefinida de 2x dx?',
     options: ['x² + C', '2x² + C', 'x + C', '2 + C'],
     answer: 0,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'media',
     prompt: 'Qual é a derivada de sen(x)?',
     options: ['-sen(x)', 'cos(x)', '-cos(x)', 'tg(x)'],
     answer: 1,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'media',
     prompt: 'Quanto vale o limite de sen(x)/x quando x tende a 0?',
     options: ['0', '1', 'Infinito', 'Não existe'],
     answer: 1,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'media',
     prompt: 'Pela regra do produto, a derivada de f(x)·g(x) é:',
     options: [
@@ -275,84 +335,84 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'dificil',
     prompt: 'Qual é a derivada de e^(2x)?',
     options: ['e^(2x)', '2e^(2x)', '2x·e^(2x)', 'e^(2x)/2'],
     answer: 1,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'dificil',
     prompt: 'A função f(x) = x³ - 3x tem mínimo local em qual ponto?',
     options: ['x = -1', 'x = 0', 'x = 1', 'x = 3'],
     answer: 2,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'dificil',
     prompt: 'Quanto vale a integral de x² dx no intervalo de 0 a 1?',
     options: ['1/4', '1/3', '1/2', '1'],
     answer: 1,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Qual é a derivada de f(x) = 5x?',
     options: ['0', '5', '5x', 'x'],
     answer: 1,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Pela regra da potência, qual é a derivada de f(x) = x³?',
     options: ['3x', 'x²', '3x²', '3x³'],
     answer: 2,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Quanto vale o limite de x² quando x tende a 3?',
     options: ['3', '6', '9', 'Não existe'],
     answer: 2,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Qual é a integral indefinida de dx?',
     options: ['0 + C', 'x + C', 'x²/2 + C', '1/x + C'],
     answer: 1,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'media',
     prompt: 'Qual é a derivada de cos(x)?',
     options: ['sen(x)', '-sen(x)', 'cos(x)', '-cos(x)'],
     answer: 1,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'media',
     prompt: 'Qual é a derivada de ln(x), para x > 0?',
     options: ['1/x', 'ln(x)/x', 'x·ln(x)', 'e^x'],
     answer: 0,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'media',
     prompt: 'Pela regra da cadeia, como se calcula a derivada de f(g(x))?',
     options: ["f'(x) · g'(x)", "f'(g(x)) · g'(x)", "f'(g'(x))", "f(g'(x))"],
     answer: 1,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'dificil',
     prompt: 'Qual é a integral indefinida de 1/x dx, para x > 0?',
     options: ['ln(x) + C', '1/x² + C', '-1/x² + C', 'x·ln(x) + C'],
     answer: 0,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'dificil',
     prompt: 'Pela regra do quociente, a derivada de f(x)/g(x) é:',
     options: [
@@ -364,7 +424,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 2,
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'dificil',
     prompt: 'Uma função f é contínua em x = a quando:',
     options: [
@@ -376,9 +436,113 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
 
-  // ── IA / ML ───────────────────────────────────────────────────────────────
+  // Estatística — entrou em Matemática quando o tema passou a cobri-la.
   {
-    theme: 'ia-ml',
+    theme: 'matematica',
+    difficulty: 'facil',
+    prompt: 'Qual é a média aritmética de 2, 4, 6 e 8?',
+    options: ['4', '5', '6', '20'],
+    answer: 1,
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'facil',
+    prompt: 'O que é a mediana de um conjunto de valores?',
+    options: [
+      'O valor que mais se repete',
+      'A soma dividida pela quantidade',
+      'O valor central com os dados ordenados',
+      'A diferença entre o maior e o menor',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'facil',
+    prompt: 'Qual é a moda do conjunto 3, 3, 5, 7?',
+    options: ['3', '4,5', '5', '7'],
+    answer: 0,
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'facil',
+    prompt: 'Qual é a probabilidade de sair cara ao lançar uma moeda honesta?',
+    options: ['1/4', '1/3', '1/2', '2/3'],
+    answer: 2,
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'media',
+    prompt: 'O que o desvio padrão mede?',
+    options: [
+      'Quanto os valores se afastam da média',
+      'O valor central da amostra',
+      'A soma de todos os valores',
+      'O total de elementos observados',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'media',
+    prompt: 'Qual é a diferença entre amostra e população?',
+    options: [
+      'População é sempre formada por pessoas',
+      'A amostra é um subconjunto da população',
+      'Amostra e população são sinônimos em estatística',
+      'A amostra é sempre maior que a população',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'media',
+    prompt: 'Qual é a mediana do conjunto 1, 3, 4 e 10?',
+    options: ['3', '3,5', '4', '4,5'],
+    answer: 1,
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'dificil',
+    prompt:
+      'Numa distribuição normal, cerca de 68% dos dados estão a que distância da média?',
+    options: [
+      'Meio desvio padrão',
+      'Um desvio padrão',
+      'Dois desvios padrão',
+      'Três desvios padrão',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'dificil',
+    prompt:
+      'Duas variáveis têm correlação alta. O que NÃO se pode concluir daí?',
+    options: [
+      'Que elas variam juntas nos dados observados',
+      'Que uma causa a outra',
+      'Que existe associação estatística entre elas',
+      'Que o coeficiente de correlação está longe de zero',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'dificil',
+    prompt: 'O que caracteriza uma amostragem aleatória simples?',
+    options: [
+      'Escolher os primeiros elementos da lista',
+      'Dividir a população em grupos e sortear grupos inteiros',
+      'Todo elemento da população tem a mesma chance de ser sorteado',
+      'Selecionar quem se voluntaria a participar',
+    ],
+    answer: 2,
+  },
+
+  // ── IA ────────────────────────────────────────────────────────────────────────
+  {
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'Aprendizado supervisionado precisa de dados:',
     options: [
@@ -390,7 +554,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 0,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'O que caracteriza o overfitting?',
     options: [
@@ -402,7 +566,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'O algoritmo K-means pertence a qual categoria?',
     options: [
@@ -414,7 +578,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'Qual destes é um problema de classificação?',
     options: [
@@ -426,7 +590,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'media',
     prompt: 'Para que serve separar os dados em treino e teste?',
     options: [
@@ -438,7 +602,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'media',
     prompt:
       'Qual função de ativação é usada na saída para gerar uma probabilidade em classificação binária?',
@@ -446,7 +610,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'media',
     prompt: 'Na matriz de confusão, um falso positivo é quando o modelo:',
     options: [
@@ -458,7 +622,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 0,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'dificil',
     prompt:
       'Em uma base muito desbalanceada, qual métrica é mais informativa que a acurácia?',
@@ -471,7 +635,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 0,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'dificil',
     prompt: 'O que o backpropagation faz em uma rede neural?',
     options: [
@@ -483,7 +647,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'dificil',
     prompt: 'Para que serve a regularização L2 (ridge)?',
     options: [
@@ -495,7 +659,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'O que caracteriza o underfitting?',
     options: [
@@ -507,7 +671,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'O que é uma feature em aprendizado de máquina?',
     options: [
@@ -519,7 +683,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 0,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'Qual destes é um problema de regressão?',
     options: [
@@ -531,7 +695,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 2,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'Um conjunto de dados rotulado é exigido por qual abordagem?',
     options: [
@@ -543,7 +707,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 0,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'media',
     prompt: 'O que a acurácia de um classificador mede?',
     options: [
@@ -555,7 +719,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 0,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'media',
     prompt: 'O que a validação cruzada (cross-validation) estima?',
     options: [
@@ -567,7 +731,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'media',
     prompt: 'O que é a taxa de aprendizado (learning rate)?',
     options: [
@@ -579,7 +743,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 2,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'dificil',
     prompt: 'Na matriz de confusão, o que o recall (revocação) mede?',
     options: [
@@ -591,7 +755,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 0,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'dificil',
     prompt: 'Para que serve a função de ativação em uma rede neural?',
     options: [
@@ -603,7 +767,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'dificil',
     prompt: 'O que o gradiente descendente faz durante o treino?',
     options: [
@@ -615,7 +779,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
 
-  // ── Robótica ──────────────────────────────────────────────────────────────
+  // ── Robótica ──────────────────────────────────────────────────────────────────
   {
     theme: 'robotica',
     difficulty: 'facil',
@@ -843,7 +1007,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 2,
   },
 
-  // ── Arquitetura ───────────────────────────────────────────────────────────
+  // ── Arquitetura ───────────────────────────────────────────────────────────────
   {
     theme: 'arquitetura',
     difficulty: 'facil',
@@ -1065,249 +1229,251 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 3,
   },
 
-  // ── NPI ───────────────────────────────────────────────────────────────────
+  // ── Engenharia de Software ────────────────────────────────────────────────────
   {
-    theme: 'npi',
-    difficulty: 'facil',
-    prompt: 'Qual é o objetivo principal de um code review?',
-    options: [
-      'Encontrar problemas e compartilhar conhecimento antes do merge',
-      'Definir quem é responsável pelos erros',
-      'Substituir os testes automatizados',
-      'Acelerar a entrega pulando etapas',
-    ],
-    answer: 0,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'facil',
-    prompt: 'O que é um MVP em desenvolvimento de produto?',
-    options: [
-      'A versão final com todas as funcionalidades',
-      'A menor versão que entrega valor e permite aprender com o uso',
-      'Um protótipo descartável de interface',
-      'O documento de requisitos aprovado',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'facil',
-    prompt: 'Para que serve a reunião diária de acompanhamento?',
-    options: [
-      'Prestar contas para a gestão',
-      'Alinhar o time e destravar impedimentos',
-      'Distribuir tarefas novas todo dia',
-      'Revisar o código entregue',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'facil',
-    prompt: 'Qual é a função de um sistema de controle de versão?',
-    options: [
-      'Compilar o projeto automaticamente',
-      'Registrar o histórico e permitir trabalho em paralelo',
-      'Hospedar o site em produção',
-      'Gerar a documentação do código',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'media',
-    prompt: 'O que é a "definição de pronto" (Definition of Done)?',
-    options: [
-      'O prazo combinado com o cliente',
-      'O critério acordado do que precisa estar feito para a entrega contar',
-      'A lista de tarefas da sprint',
-      'O aceite formal do usuário final',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'media',
-    prompt: 'Por que pull requests pequenos são preferíveis?',
-    options: [
-      'Ocupam menos espaço no repositório',
-      'São revisados com mais atenção e carregam menos risco',
-      'Dispensam testes automatizados',
-      'Permitem pular o code review',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'media',
-    prompt: 'O que é o backlog de um projeto?',
-    options: [
-      'O registro de bugs já corrigidos',
-      'A lista priorizada do que ainda falta fazer',
-      'O histórico de commits',
-      'A documentação de arquitetura',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'dificil',
-    prompt: 'O que é débito técnico?',
-    options: [
-      'O custo de licenças de software do projeto',
-      'Um atalho que acelera agora e cobra manutenção depois',
-      'O tempo gasto em reuniões',
-      'A diferença entre o prazo estimado e o real',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'dificil',
-    prompt: 'Qual é o foco de uma retrospectiva de time?',
-    options: [
-      'Avaliar o desempenho individual de cada pessoa',
-      'Melhorar o processo de trabalho do time',
-      'Replanejar o escopo do produto',
-      'Apresentar resultados para o cliente',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'dificil',
-    prompt: 'Qual é a diferença entre entrega contínua e implantação contínua?',
-    options: [
-      'Não há diferença, são sinônimos',
-      'Na implantação contínua todo commit aprovado vai a produção automaticamente',
-      'A entrega contínua dispensa testes',
-      'A implantação contínua exige aprovação manual de cada versão',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'facil',
-    prompt: 'O que é um commit em um sistema de controle de versão?',
-    options: [
-      'Um conjunto de alterações registrado no histórico',
-      'Uma cópia completa do repositório remoto',
-      'Um conflito entre duas branches',
-      'Um arquivo de configuração do projeto',
-    ],
-    answer: 0,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'facil',
-    prompt: 'Para que serve criar uma branch?',
-    options: [
-      'Apagar o histórico do projeto',
-      'Isolar um trabalho em andamento da linha principal',
-      'Publicar o sistema em produção',
-      'Executar os testes automatizados',
-    ],
-    answer: 1,
-  },
-  {
-    theme: 'npi',
+    theme: 'engenharia-software',
     difficulty: 'facil',
     prompt: 'O que é um requisito funcional?',
     options: [
-      'Quão rápido o sistema deve responder',
-      'O orçamento previsto para o projeto',
       'O que o sistema deve fazer',
-      'A linguagem de programação escolhida',
-    ],
-    answer: 2,
-  },
-  {
-    theme: 'npi',
-    difficulty: 'facil',
-    prompt: 'Qual é o papel de um protótipo?',
-    options: [
-      'Validar uma ideia antes de construí-la por inteiro',
-      'Substituir a documentação do sistema',
-      'Encerrar formalmente o projeto',
-      'Medir a cobertura dos testes',
+      'O prazo de entrega do projeto',
+      'A linguagem escolhida para programar',
+      'O orçamento aprovado pelo cliente',
     ],
     answer: 0,
   },
   {
-    theme: 'npi',
-    difficulty: 'media',
-    prompt: 'O que caracteriza um requisito NÃO funcional?',
+    theme: 'engenharia-software',
+    difficulty: 'facil',
+    prompt: 'Num diagrama de casos de uso, o que é um ator?',
     options: [
-      'Descreve uma tela específica do sistema',
-      'Descreve qualidades como desempenho, segurança e usabilidade',
-      'É sempre opcional para a entrega',
-      'Só se aplica a bancos de dados',
+      'Uma tabela do banco de dados',
+      'Quem interage com o sistema, seja pessoa ou outro sistema',
+      'Uma tela da interface',
+      'Um método de uma classe',
     ],
     answer: 1,
   },
   {
-    theme: 'npi',
-    difficulty: 'media',
-    prompt: 'Para que serve a integração contínua?',
+    theme: 'engenharia-software',
+    difficulty: 'facil',
+    prompt:
+      'Qual diagrama da UML mostra classes, seus atributos e os relacionamentos entre elas?',
     options: [
-      'Publicar o aplicativo nas lojas',
-      'Escrever a documentação do usuário',
-      'Integrar e testar as mudanças automaticamente a cada envio',
-      'Priorizar os itens do backlog',
+      'Diagrama de sequência',
+      'Diagrama de atividades',
+      'Diagrama de classes',
+      'Diagrama de implantação',
     ],
     answer: 2,
   },
   {
-    theme: 'npi',
-    difficulty: 'media',
-    prompt: 'O que é um conflito de merge?',
+    theme: 'engenharia-software',
+    difficulty: 'facil',
+    prompt: 'O que um teste unitário verifica?',
     options: [
-      'Duas alterações no mesmo trecho que o versionador não sabe unir',
-      'Um teste automatizado que falhou',
-      'Uma branch criada sem nenhum commit',
-      'Um repositório local sem remoto configurado',
+      'O sistema inteiro rodando em produção',
+      'A experiência do usuário na interface',
+      'A comunicação com serviços externos',
+      'Uma unidade isolada de código',
+    ],
+    answer: 3,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'facil',
+    prompt: 'No Scrum, o que é a reunião diária (daily)?',
+    options: [
+      'Um encontro curto de alinhamento do time',
+      'A apresentação do incremento ao cliente',
+      'A reunião de planejamento da sprint',
+      'A retrospectiva do ciclo anterior',
     ],
     answer: 0,
   },
   {
-    theme: 'npi',
-    difficulty: 'dificil',
-    prompt: 'Por que testes automatizados reduzem o custo de mudança?',
+    theme: 'engenharia-software',
+    difficulty: 'facil',
+    prompt: 'Para que serve um sistema de controle de versão como o Git?',
     options: [
-      'Porque substituem o code review',
-      'Porque dispensam o levantamento de requisitos',
-      'Porque detectam regressões cedo, quando corrigir ainda é barato',
-      'Porque diminuem o tamanho dos commits',
+      'Hospedar o site em produção',
+      'Registrar o histórico de alterações do código',
+      'Compilar o projeto mais rápido',
+      'Medir o desempenho da aplicação',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'facil',
+    prompt: 'O que é um bug em engenharia de software?',
+    options: [
+      'Qualquer mensagem exibida ao usuário',
+      'Um recurso ainda não implementado',
+      'Um comportamento diferente do que foi especificado',
+      'Uma linha de código muito longa',
     ],
     answer: 2,
   },
   {
-    theme: 'npi',
-    difficulty: 'dificil',
-    prompt: 'O que caracteriza o scope creep em um projeto?',
+    theme: 'engenharia-software',
+    difficulty: 'facil',
+    prompt: 'O que o backlog do produto guarda?',
     options: [
-      'Novas exigências entram sem replanejar prazo e esforço',
-      'O escopo é fechado em contrato antes de começar',
-      'O time entrega antes do prazo combinado',
-      'O backlog está priorizado e revisado',
+      'Os defeitos já corrigidos',
+      'O histórico de reuniões do time',
+      'Os contratos assinados com o cliente',
+      'A lista priorizada do que ainda falta fazer',
+    ],
+    answer: 3,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'media',
+    prompt: 'Qual destes é um requisito NÃO funcional?',
+    options: [
+      'O sistema deve emitir nota fiscal',
+      'O sistema deve responder em até 2 segundos',
+      'O sistema deve cadastrar clientes',
+      'O sistema deve permitir login',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'media',
+    prompt: 'Em BPMN, o que um losango (gateway) representa no fluxo?',
+    options: [
+      'O início do processo',
+      'Uma tarefa executada por pessoa',
+      'Um ponto de decisão ou desvio',
+      'O envio de uma mensagem',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'media',
+    prompt: 'Qual é a diferença entre verificação e validação?',
+    options: [
+      'Verificação é automática; validação é sempre manual',
+      'Verificação ocorre depois da entrega; validação, antes',
+      'Verificação checa se construímos certo; validação, se é o produto certo',
+      'São nomes diferentes para a mesma atividade',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'media',
+    prompt: 'O que caracteriza o modelo cascata em relação aos iterativos?',
+    options: [
+      'As fases são sequenciais e voltar atrás sai caro',
+      'Cada ciclo entrega uma parte utilizável do produto',
+      'Os requisitos podem mudar a cada semana sem custo',
+      'Não existe fase de testes',
     ],
     answer: 0,
   },
   {
-    theme: 'npi',
-    difficulty: 'dificil',
-    prompt: 'Qual é o propósito de uma prova de conceito (PoC)?',
+    theme: 'engenharia-software',
+    difficulty: 'media',
+    prompt:
+      'Num diagrama de classes, o que a multiplicidade 1..* indica numa associação?',
     options: [
-      'Entregar o produto final ao cliente',
-      'Verificar se uma abordagem técnica é viável',
-      'Documentar um sistema já pronto',
-      'Treinar os usuários finais',
+      'Nenhuma ou uma instância associada',
+      'Exatamente uma instância associada',
+      'No máximo uma instância associada',
+      'Pelo menos uma instância associada',
+    ],
+    answer: 3,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'media',
+    prompt: 'O que é dívida técnica?',
+    options: [
+      'O valor que o cliente ainda deve pagar pelo projeto',
+      'O custo futuro de uma solução rápida adotada hoje',
+      'A quantidade de bugs abertos no sistema',
+      'O tempo gasto em reuniões durante a sprint',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'dificil',
+    prompt: 'Qual é a diferença entre agregação e composição na UML?',
+    options: [
+      'Agregação só vale entre classes abstratas',
+      'Composição é representada por uma seta tracejada',
+      'Na composição, a parte não existe sem o todo',
+      'Agregação implica herança entre as classes',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'dificil',
+    prompt: 'Para que serve um teste de regressão?',
+    options: [
+      'Medir o tempo de resposta sob carga',
+      'Garantir que uma mudança não quebrou o que já funcionava',
+      'Validar a usabilidade com usuários reais',
+      'Verificar a cobertura de código do projeto',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'dificil',
+    prompt: 'O que a rastreabilidade de requisitos permite?',
+    options: [
+      'Ligar cada requisito aos artefatos que o implementam e testam',
+      'Descobrir quem escreveu cada linha de código',
+      'Medir a produtividade individual do time',
+      'Estimar o custo de hospedagem do sistema',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'dificil',
+    prompt: 'O que um diagrama de sequência da UML representa?',
+    options: [
+      'A estrutura estática das classes do sistema',
+      'A distribuição dos componentes nos servidores',
+      'A troca de mensagens entre objetos ao longo do tempo',
+      'A ordem de prioridade dos requisitos',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'dificil',
+    prompt: 'Em BPMN, para que serve uma raia (lane) dentro de uma piscina?',
+    options: [
+      'Marcar o fim do processo',
+      'Indicar um subprocesso reutilizável',
+      'Registrar o tempo de cada atividade',
+      'Separar responsabilidades dentro do mesmo processo',
+    ],
+    answer: 3,
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'dificil',
+    prompt: 'O que é a "definição de pronto" (Definition of Done) de um time?',
+    options: [
+      'O prazo combinado para a entrega final',
+      'O critério comum que diz quando um item está realmente concluído',
+      'A lista de requisitos aprovada pelo cliente',
+      'O número de pontos entregues na sprint',
     ],
     answer: 1,
   },
 
-  // ── Redes ─────────────────────────────────────────────────────────────────
+  // ── Redes ─────────────────────────────────────────────────────────────────────
   {
     theme: 'redes',
     difficulty: 'facil',
@@ -1514,7 +1680,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 0,
   },
 
-  // ── Banco de Dados ────────────────────────────────────────────────────────
+  // ── Banco de Dados ────────────────────────────────────────────────────────────
   {
     theme: 'banco',
     difficulty: 'facil',
@@ -1731,7 +1897,7 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
     answer: 1,
   },
 
-  // ── Algoritmos ────────────────────────────────────────────────────────────
+  // ── Algoritmos ────────────────────────────────────────────────────────────────
   {
     theme: 'algoritmos',
     difficulty: 'facil',
@@ -1916,6 +2082,201 @@ export const QUIZ_QUESTIONS: QuizSeedQuestion[] = [
       'BFS explora por níveis; DFS desce por um ramo até o fim',
       'DFS sempre encontra o caminho mais curto',
     ],
+    answer: 2,
+  },
+
+  // Vindas do tema Lógica, que saiu da roda: dedução, tabela-verdade e
+  // raciocínio formal passaram a contar como Algoritmos. O tema fica com o
+  // dobro das outras — pool maior não muda nada para o aluno, que sorteia uma
+  // questão por vez.
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'Qual é a negação de "todo aluno foi aprovado"?',
+    options: [
+      'Nenhum aluno foi aprovado',
+      'Pelo menos um aluno não foi aprovado',
+      'Todo aluno foi reprovado',
+      'Alguns alunos foram aprovados',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'Qual é o valor de "verdadeiro E falso"?',
+    options: ['Verdadeiro', 'Falso', 'Indefinido', 'Depende da ordem'],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt:
+      '"Se chove, a rua fica molhada." Sabendo que está chovendo, o que se conclui?',
+    options: [
+      'A rua fica molhada',
+      'A rua está seca',
+      'Nada se conclui',
+      'Não está chovendo',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'Com p falso e q verdadeiro, qual é o valor de "p OU q"?',
+    options: ['Falso', 'Verdadeiro', 'Indefinido', 'Igual ao de p E q'],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'Qual é a contrapositiva de "se p, então q"?',
+    options: [
+      'Se q, então p',
+      'Se não p, então não q',
+      'Se não q, então não p',
+      'p e não q',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'Quantas linhas tem a tabela-verdade de 4 proposições simples?',
+    options: ['8', '12', '16', '32'],
+    answer: 2,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'A proposição "p → q" é equivalente a qual expressão?',
+    options: ['p E q', 'não p OU q', 'p OU não q', 'não p E q'],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt: 'Pela lei de De Morgan, "não (p E q)" equivale a:',
+    options: ['não p E não q', 'não p OU não q', 'p OU q', 'não (p OU q)'],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt:
+      'Concluir p a partir de "se p, então q" e de q é qual erro de raciocínio?',
+    options: [
+      'Afirmação do consequente',
+      'Negação do antecedente',
+      'Modus tollens',
+      'Silogismo hipotético',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt: 'Qual das proposições abaixo é uma tautologia?',
+    options: ['p E não p', 'p OU não p', 'p → não p', 'não (p OU p)'],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'Qual é o valor de "falso OU falso"?',
+    options: ['Verdadeiro', 'Falso', 'Indefinido', 'Depende da ordem'],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'Qual é a negação de "nenhum aluno faltou"?',
+    options: [
+      'Todo aluno faltou',
+      'Nenhum aluno compareceu',
+      'Pelo menos um aluno faltou',
+      'Todos compareceram',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'Quantas linhas tem a tabela-verdade de 2 proposições simples?',
+    options: ['2', '4', '6', '8'],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'O conectivo "E" (conjunção) só é verdadeiro quando:',
+    options: [
+      'Pelo menos uma das partes é verdadeira',
+      'As duas partes são verdadeiras',
+      'As duas partes são falsas',
+      'Uma das partes é falsa',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'Qual é a recíproca de "se p, então q"?',
+    options: [
+      'Se não q, então não p',
+      'Se não p, então não q',
+      'Se q, então p',
+      'p e não q',
+    ],
+    answer: 2,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt:
+      'Em quantas linhas da tabela-verdade a proposição "p OU q" é falsa?',
+    options: ['Nenhuma', 'Uma', 'Duas', 'Três'],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'Pela lei de De Morgan, "não (p OU q)" equivale a:',
+    options: [
+      '(não p) OU (não q)',
+      '(não p) E (não q)',
+      'p E q',
+      'p OU (não q)',
+    ],
+    answer: 1,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt:
+      'Como se chama a proposição que é falsa em todas as linhas da tabela-verdade?',
+    options: ['Tautologia', 'Contingência', 'Contradição', 'Bicondicional'],
+    answer: 2,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt: 'A bicondicional "p ↔ q" é verdadeira exatamente quando:',
+    options: [
+      'p e q têm o mesmo valor lógico',
+      'p é verdadeira e q é falsa',
+      'Pelo menos uma das duas é verdadeira',
+      'As duas são falsas',
+    ],
+    answer: 0,
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt:
+      'Pelo modus tollens, de "se p, então q" e "não q" o que se conclui?',
+    options: ['q', 'p', 'não p', 'Nada se conclui'],
     answer: 2,
   },
 ];

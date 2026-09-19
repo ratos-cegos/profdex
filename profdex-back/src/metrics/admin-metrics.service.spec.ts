@@ -55,7 +55,7 @@ describe('AdminMetricsService.practiceQuiz', () => {
     expect(r.porTema).toHaveLength(9);
     // Sem resposta nenhuma a taxa é null, não 0% — que significaria "erraram
     // todas" e é uma leitura completamente diferente.
-    expect(r.porTema.find((t) => t.tema === 'logica')).toMatchObject({
+    expect(r.porTema.find((t) => t.tema === 'humanas')).toMatchObject({
       respostas: 0,
       taxa: null,
     });

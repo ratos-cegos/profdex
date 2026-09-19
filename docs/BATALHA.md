@@ -94,8 +94,9 @@ Arquitetura em duas camadas: **motor puro** (`battleEngine.js`, testável, sem V
   efetividade). `flee()` encerra a batalha.
 
 ### Tipos (`types.js`)
-- `TYPE_CYCLE`: 9 tipos temáticos (Lógica, Cálculo, IA/ML, Robótica, Arquitetura,
-  NPI, Redes, Banco de Dados, Algoritmos), dispostos numa **roda**.
+- `TYPE_CYCLE`: 9 tipos temáticos (Humanas, Matemática, IA, Robótica,
+  Arquitetura, Engenharia de Software, Redes, Banco de Dados, Algoritmos),
+  dispostos numa **roda**.
 - Regra: cada tipo é super-eficaz (2×) contra os **2 seguintes** e fraco (½×)
   contra os **2 anteriores** — forte/fraco são derivados da ordem, não digitados.
 - `typeIdFromSeed(slug/id/nome)`: deriva um tipo **determinístico** por professor

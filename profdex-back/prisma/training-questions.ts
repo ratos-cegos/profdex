@@ -22,166 +22,218 @@ export interface TrainingSeedQuestion extends QuizSeedQuestion {
 }
 
 export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
-  // ── Lógica ────────────────────────────────────────────────────────────────
+  // ── Humanas ───────────────────────────────────────────────────────────────────
+  // Humanas aqui é humanas APLICADA à computação: ética, LGPD, impacto social e
+  // método científico — o mesmo recorte do banco oficial.
   {
-    theme: 'logica',
+    theme: 'humanas',
     difficulty: 'facil',
-    prompt: 'Se p é verdadeiro e q é falso, qual o valor de "p E q"?',
-    options: ['Verdadeiro', 'Falso', 'Indefinido', 'Depende de p'],
-    answer: 1,
-    explanation: 'A conjunção só é verdadeira quando as duas partes são verdadeiras.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'facil',
-    prompt: 'Quantas linhas tem a tabela-verdade de uma fórmula com 3 variáveis?',
-    options: ['3', '6', '8', '9'],
-    answer: 2,
-    explanation: 'São 2³ = 8 combinações possíveis de verdadeiro e falso.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'facil',
-    prompt: 'Qual operador lógico resulta em verdadeiro quando pelo menos uma das partes é verdadeira?',
-    options: ['E (conjunção)', 'OU (disjunção)', 'NÃO (negação)', 'SE-ENTÃO'],
-    answer: 1,
-    explanation: 'A disjunção só é falsa quando ambas as partes são falsas.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'facil',
-    prompt: 'A negação de "x > 10" é:',
-    options: ['x < 10', 'x <= 10', 'x >= 10', 'x != 10'],
-    answer: 1,
-    explanation: 'Negar "maior que" inclui o caso de igualdade, virando "menor ou igual".',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'facil',
-    prompt: 'Numa estrutura "se... senão", quantos dos dois blocos executam numa passagem?',
-    options: ['Sempre os dois', 'Exatamente um', 'Nenhum', 'Depende do laço'],
-    answer: 1,
-    explanation: 'A condição escolhe um dos caminhos; o outro é ignorado naquela passagem.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'facil',
-    prompt: 'O que a negação dupla "NÃO (NÃO p)" equivale?',
-    options: ['p', 'NÃO p', 'Sempre verdadeiro', 'Sempre falso'],
-    answer: 0,
-    explanation: 'Negar duas vezes devolve o valor original da proposição.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'media',
-    prompt: 'Pela lei de De Morgan, "NÃO (p E q)" é equivalente a:',
+    prompt: 'O que significa a sigla LGPD?',
     options: [
-      'NÃO p E NÃO q',
-      'NÃO p OU NÃO q',
-      'p OU q',
-      'NÃO p SE-ENTÃO q',
+      'Lei Geral de Publicidade Digital',
+      'Lei Geral de Proteção de Dados',
+      'Lei de Governança de Processos Digitais',
+      'Lei Geral de Privacidade Documental',
     ],
     answer: 1,
-    explanation: 'De Morgan troca a conjunção por disjunção e nega cada parte.',
+    explanation:
+      'É a Lei Geral de Proteção de Dados (13.709/2018), que regula o tratamento de dados pessoais no Brasil.',
   },
   {
-    theme: 'logica',
-    difficulty: 'media',
-    prompt: 'A implicação "p → q" é falsa em qual único caso?',
+    theme: 'humanas',
+    difficulty: 'facil',
+    prompt: 'O e-mail pessoal de alguém é considerado dado pessoal?',
     options: [
-      'p falso e q falso',
-      'p falso e q verdadeiro',
-      'p verdadeiro e q falso',
-      'p verdadeiro e q verdadeiro',
-    ],
-    answer: 2,
-    explanation: 'Uma promessa só é quebrada quando a hipótese vale e a conclusão falha.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'media',
-    prompt: 'Qual é a contrapositiva de "se chove, então a rua molha"?',
-    options: [
-      'Se a rua molha, então chove',
-      'Se não chove, então a rua não molha',
-      'Se a rua não molha, então não chove',
-      'Se chove, então a rua não molha',
-    ],
-    answer: 2,
-    explanation: 'A contrapositiva inverte e nega os dois lados, e é sempre equivalente.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'media',
-    prompt: 'Uma fórmula que é verdadeira para toda atribuição de valores chama-se:',
-    options: ['Contradição', 'Tautologia', 'Contingência', 'Falácia'],
-    answer: 1,
-    explanation: 'Tautologia é a fórmula verdadeira em todas as linhas da tabela-verdade.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'media',
-    prompt: 'Em "curto-circuito", por que `a != null && a.b` não quebra quando a é nulo?',
-    options: [
-      'A linguagem ignora erros de nulo',
-      'A segunda parte só é avaliada se a primeira for verdadeira',
-      'O operador && converte nulo em falso',
-      'A ordem das partes não importa',
-    ],
-    answer: 1,
-    explanation: 'A avaliação em curto-circuito para assim que o resultado já está decidido.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'dificil',
-    prompt: 'Qual conjunto de operadores é suficiente para expressar qualquer função booleana?',
-    options: ['Apenas E', 'Apenas OU', 'E junto com NÃO', 'Apenas SE-ENTÃO'],
-    answer: 2,
-    explanation: 'Conjunção com negação é funcionalmente completo; por De Morgan gera a disjunção.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'dificil',
-    prompt: 'A negação de "existe x tal que P(x)" é:',
-    options: [
-      'Existe x tal que não P(x)',
-      'Para todo x, não P(x)',
-      'Não existe x tal que não P(x)',
-      'Para todo x, P(x)',
-    ],
-    answer: 1,
-    explanation: 'Negar um existencial troca o quantificador para universal e nega o predicado.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'dificil',
-    prompt: 'O operador XOR entre p e q é verdadeiro quando:',
-    options: [
-      'Os dois são verdadeiros',
-      'Os dois são falsos',
-      'Os valores são diferentes entre si',
-      'Pelo menos um é verdadeiro',
-    ],
-    answer: 2,
-    explanation: 'O ou-exclusivo indica divergência: verdadeiro apenas quando os valores diferem.',
-  },
-  {
-    theme: 'logica',
-    difficulty: 'dificil',
-    prompt: 'Um argumento válido com premissas verdadeiras garante o quê sobre a conclusão?',
-    options: [
-      'Que ela é verdadeira',
-      'Que ela é falsa',
-      'Nada, validade é só sobre a forma',
-      'Que ela é provável',
+      'Sim, porque permite identificar a pessoa',
+      'Não, porque é público',
+      'Só se estiver junto do CPF',
+      'Só se for e-mail corporativo',
     ],
     answer: 0,
-    explanation: 'Validade preserva verdade: premissas verdadeiras em forma válida forçam conclusão verdadeira.',
+    explanation:
+      'Dado pessoal é toda informação que identifica ou torna identificável uma pessoa — o e-mail se encaixa.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'facil',
+    prompt: 'Copiar um trecho da internet no trabalho sem citar a fonte é o quê?',
+    options: ['Paráfrase', 'Resenha', 'Plágio', 'Citação direta'],
+    answer: 2,
+    explanation:
+      'Usar a produção de outra pessoa sem atribuir a autoria é plágio, mesmo que o trecho seja curto.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'facil',
+    prompt:
+      'Fazer um site funcionar bem com leitor de tela atende a qual objetivo?',
+    options: [
+      'Acessibilidade',
+      'Escalabilidade',
+      'Portabilidade',
+      'Confidencialidade',
+    ],
+    answer: 0,
+    explanation:
+      'Acessibilidade é garantir que pessoas com deficiência consigam perceber, navegar e usar o sistema.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'facil',
+    prompt: 'Quem pode pedir a exclusão dos seus dados guardados por uma empresa?',
+    options: [
+      'Somente um juiz',
+      'Qualquer funcionário da empresa',
+      'O próprio titular dos dados',
+      'Apenas o órgão regulador',
+    ],
+    answer: 2,
+    explanation:
+      'A LGPD dá ao titular o direito de solicitar eliminação dos dados tratados com base no seu consentimento.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'facil',
+    prompt: 'Para que serve a licença de um projeto de código aberto?',
+    options: [
+      'Garantir que o código nunca será alterado',
+      'Definir o que outras pessoas podem fazer com aquele código',
+      'Registrar o projeto no cartório',
+      'Impedir a cópia do repositório',
+    ],
+    answer: 1,
+    explanation:
+      'A licença estabelece os direitos de uso, modificação e redistribuição; sem ela, o padrão é "todos os direitos reservados".',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'media',
+    prompt:
+      'Um chatbot treinado só com textos de um único grupo social tende a fazer o quê?',
+    options: [
+      'Responder mais rápido',
+      'Reproduzir o ponto de vista daquele grupo',
+      'Consumir menos memória',
+      'Recusar perguntas longas',
+    ],
+    answer: 1,
+    explanation:
+      'O modelo aprende o que está nos dados: base pouco diversa gera respostas enviesadas em favor do grupo representado.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'media',
+    prompt: 'Quais destes a LGPD classifica como dados pessoais SENSÍVEIS?',
+    options: [
+      'Nome completo e endereço',
+      'Número de telefone e e-mail',
+      'Origem racial, religião, saúde e biometria',
+      'Histórico de compras numa loja',
+    ],
+    answer: 2,
+    explanation:
+      'Dados sensíveis recebem proteção reforçada porque seu uso indevido facilita discriminação.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'media',
+    prompt:
+      'Um termo de uso longo e cheio de jargão compromete principalmente qual princípio da LGPD?',
+    options: ['Transparência', 'Segurança', 'Portabilidade', 'Prevenção'],
+    answer: 0,
+    explanation:
+      'A lei exige informação clara e acessível sobre o tratamento; texto incompreensível esvazia esse direito.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'media',
+    prompt: 'O que um comitê de ética em pesquisa avalia num projeto?',
+    options: [
+      'A qualidade da escrita do artigo',
+      'O orçamento solicitado à agência de fomento',
+      'A originalidade do tema escolhido',
+      'Os riscos e a proteção dos participantes',
+    ],
+    answer: 3,
+    explanation:
+      'O comitê existe para proteger quem participa da pesquisa, analisando riscos, consentimento e privacidade.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'media',
+    prompt:
+      'A automação que elimina postos de trabalho inteiros levanta qual discussão?',
+    options: [
+      'Impacto social da tecnologia',
+      'Complexidade algorítmica',
+      'Portabilidade de sistemas',
+      'Normalização de banco de dados',
+    ],
+    answer: 0,
+    explanation:
+      'É um debate clássico de humanas aplicadas: quem ganha e quem perde com a adoção de uma tecnologia.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'dificil',
+    prompt: 'Qual é a diferença entre pseudonimização e anonimização?',
+    options: [
+      'São termos equivalentes na LGPD',
+      'A pseudonimização ainda permite reverter com informação adicional',
+      'A anonimização só vale para dados sensíveis',
+      'A pseudonimização exige autorização judicial',
+    ],
+    answer: 1,
+    explanation:
+      'Dado pseudonimizado continua sendo dado pessoal, porque existe uma chave capaz de reidentificar o titular.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'dificil',
+    prompt: 'O que a base legal do "legítimo interesse" exige do controlador?',
+    options: [
+      'Consentimento por escrito do titular',
+      'Autorização prévia da autoridade nacional',
+      'Balancear o interesse com os direitos e liberdades do titular',
+      'Anonimizar todos os dados antes do uso',
+    ],
+    answer: 2,
+    explanation:
+      'O legítimo interesse dispensa consentimento, mas obriga a um teste de balanceamento documentado.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'dificil',
+    prompt: 'No método científico, o que é uma hipótese?',
+    options: [
+      'A conclusão final da pesquisa',
+      'Uma explicação provisória que pode ser testada',
+      'O resumo dos trabalhos já publicados',
+      'O conjunto de dados coletados',
+    ],
+    answer: 1,
+    explanation:
+      'A hipótese é uma resposta candidata formulada de modo a poder ser confirmada ou refutada por evidência.',
+  },
+  {
+    theme: 'humanas',
+    difficulty: 'dificil',
+    prompt:
+      'Modelos de IA que funcionam como "caixa-preta" agravam qual problema ético?',
+    options: [
+      'O consumo de energia do treinamento',
+      'A velocidade de resposta ao usuário',
+      'O custo de armazenamento dos dados',
+      'A dificuldade de explicar e responsabilizar a decisão',
+    ],
+    answer: 3,
+    explanation:
+      'Sem explicabilidade, quem foi prejudicado não consegue contestar a decisão nem identificar o responsável.',
   },
 
-  // ── Cálculo ───────────────────────────────────────────────────────────────
+  // ── Matemática ────────────────────────────────────────────────────────────────
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Qual é a derivada de f(x) = x³?',
     options: ['3x', '3x²', 'x²', 'x⁴/4'],
@@ -189,7 +241,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Pela regra do expoente, a derivada de xⁿ é n·xⁿ⁻¹.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'A derivada de uma função constante é:',
     options: ['A própria constante', 'Zero', 'Um', 'Indefinida'],
@@ -197,7 +249,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Uma constante não varia, então sua taxa de variação é zero.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Geometricamente, a derivada num ponto representa:',
     options: [
@@ -210,7 +262,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'A derivada é o coeficiente angular da tangente naquele ponto.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'A integral definida de uma função positiva num intervalo representa:',
     options: [
@@ -223,7 +275,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'A integral definida acumula a área sob a curva no intervalo.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Quanto vale o limite de f(x) = 3x quando x tende a 2?',
     options: ['3', '5', '6', 'Não existe'],
@@ -231,7 +283,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'A função é contínua, então basta substituir: 3 × 2 = 6.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'facil',
     prompt: 'Qual é a derivada de f(x) = 5x + 7?',
     options: ['5', '7', '5x', '12'],
@@ -239,7 +291,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'A derivada do termo linear é o coeficiente e a da constante é zero.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'media',
     prompt: 'Se f é derivável e tem máximo local interno em x=c, o que vale?',
     options: [
@@ -252,7 +304,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Em extremo interno de função derivável a tangente é horizontal.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'media',
     prompt: 'Pela regra da cadeia, a derivada de f(g(x)) é:',
     options: [
@@ -265,7 +317,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Deriva-se a função de fora aplicada na de dentro e multiplica pela derivada de dentro.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'media',
     prompt: 'Uma função com derivada segunda positiva num intervalo é:',
     options: [
@@ -278,7 +330,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'A derivada segunda positiva indica concavidade voltada para cima.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'media',
     prompt: 'Na notação assintótica, por que log(n) cresce mais devagar que n?',
     options: [
@@ -291,7 +343,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'O limite da razão tender a zero é a definição de crescimento estritamente menor.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'media',
     prompt: 'A derivada de f(x) = eˣ é:',
     options: ['x·eˣ⁻¹', 'eˣ', '1/x', 'ln(x)'],
@@ -299,7 +351,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'A exponencial natural é a função que coincide com a própria derivada.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'dificil',
     prompt: 'O Teorema Fundamental do Cálculo relaciona quais duas operações?',
     options: [
@@ -312,7 +364,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Ele mostra que integração e derivação são operações inversas uma da outra.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'dificil',
     prompt: 'No gradiente descendente, por que se anda no sentido oposto ao gradiente?',
     options: [
@@ -325,7 +377,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'O gradiente aponta na direção de maior aumento, então descer exige inverter o sinal.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'dificil',
     prompt: 'Uma função contínua num intervalo fechado e limitado garante o quê?',
     options: [
@@ -338,7 +390,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'É o Teorema de Weierstrass: continuidade em compacto garante extremos atingidos.',
   },
   {
-    theme: 'calculo',
+    theme: 'matematica',
     difficulty: 'dificil',
     prompt: 'Derivada parcial de f(x,y) em relação a x significa derivar tratando y como:',
     options: ['Zero', 'Constante', 'Igual a x', 'Variável livre'],
@@ -346,9 +398,107 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Na derivada parcial só uma variável varia; as demais ficam congeladas.',
   },
 
-  // ── IA / ML ───────────────────────────────────────────────────────────────
+  // Estatística — entrou em Matemática quando o tema passou a cobri-la.
   {
-    theme: 'ia-ml',
+    theme: 'matematica',
+    difficulty: 'facil',
+    prompt: 'Qual é a média aritmética entre 10 e 20?',
+    options: ['10', '15', '20', '30'],
+    answer: 1,
+    explanation: 'A média é a soma dividida pela quantidade: (10 + 20) / 2 = 15.',
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'facil',
+    prompt: 'O que a moda indica num conjunto de dados?',
+    options: [
+      'O valor mais frequente',
+      'O valor do meio',
+      'A média dos extremos',
+      'A soma de todos os valores',
+    ],
+    answer: 0,
+    explanation:
+      'Moda é o valor que aparece mais vezes; um conjunto pode ter mais de uma, ou nenhuma.',
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'facil',
+    prompt: 'Num gráfico de barras de frequência, a barra mais alta corresponde a quê?',
+    options: ['À média', 'À mediana', 'À moda', 'Ao desvio padrão'],
+    answer: 2,
+    explanation:
+      'A altura da barra é a frequência, então a mais alta é o valor que mais se repete — a moda.',
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'media',
+    prompt: 'O que a variância calcula?',
+    options: [
+      'A diferença entre o maior e o menor valor',
+      'A média dos quadrados dos desvios em relação à média',
+      'O valor central dos dados ordenados',
+      'A raiz quadrada da média',
+    ],
+    answer: 1,
+    explanation:
+      'Elevar os desvios ao quadrado evita que os positivos e negativos se cancelem; o desvio padrão é a raiz dela.',
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'media',
+    prompt: 'Se todos os valores de um conjunto são iguais, quanto vale o desvio padrão?',
+    options: ['Zero', 'Um', 'A média do conjunto', 'Não é possível calcular'],
+    answer: 0,
+    explanation:
+      'Sem variação não há desvio: todos os valores coincidem com a média e a dispersão é nula.',
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'media',
+    prompt: 'O que é uma amostra enviesada?',
+    options: [
+      'Uma amostra com poucos elementos',
+      'Uma amostra com valores repetidos',
+      'Uma amostra que não representa bem a população',
+      'Uma amostra escolhida por sorteio',
+    ],
+    answer: 2,
+    explanation:
+      'O viés vem de como a amostra foi escolhida: mesmo grande, ela pode super-representar um grupo.',
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'dificil',
+    prompt: 'Por que a mediana costuma ser preferida à média em salários?',
+    options: [
+      'Porque é mais rápida de calcular',
+      'Porque é menos afetada por valores extremos',
+      'Porque sempre coincide com a moda',
+      'Porque usa todos os valores do conjunto',
+    ],
+    answer: 1,
+    explanation:
+      'Alguns salários muito altos puxam a média para cima; a mediana só depende da posição central.',
+  },
+  {
+    theme: 'matematica',
+    difficulty: 'dificil',
+    prompt: 'O que significa um intervalo de confiança de 95%?',
+    options: [
+      'Que 95% dos dados estão dentro do intervalo',
+      'Que há 95% de chance de o próximo valor cair ali',
+      'Que o erro da medição é de 5%',
+      'Que o método captura o parâmetro em 95% das amostras possíveis',
+    ],
+    answer: 3,
+    explanation:
+      'A confiança é uma propriedade do procedimento repetido, não da probabilidade de um intervalo específico.',
+  },
+
+  // ── IA ────────────────────────────────────────────────────────────────────────
+  {
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'No aprendizado supervisionado, os dados de treino têm o quê?',
     options: [
@@ -361,7 +511,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Supervisão significa que cada exemplo vem acompanhado da resposta correta.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'Agrupar clientes sem rótulos prévios é um problema típico de:',
     options: [
@@ -374,7 +524,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Sem rótulos, o algoritmo busca estrutura nos dados — é clusterização.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'Prever o preço de um imóvel (um número contínuo) é um problema de:',
     options: ['Classificação', 'Regressão', 'Clusterização', 'Redução de dimensionalidade'],
@@ -382,7 +532,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Saída numérica contínua caracteriza regressão; classes discretas seriam classificação.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'Para que serve separar um conjunto de teste?',
     options: [
@@ -395,7 +545,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Avaliar em dados não usados no treino é o que estima a generalização real.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'O que é uma época (epoch) no treinamento de uma rede neural?',
     options: [
@@ -408,7 +558,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Uma época é uma varredura completa do conjunto de treinamento.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'facil',
     prompt: 'Numa rede neural, a função de ativação serve principalmente para:',
     options: [
@@ -421,7 +571,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Sem não linearidade, empilhar camadas equivaleria a uma única transformação linear.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'media',
     prompt: 'Um modelo com erro baixo no treino e alto no teste está sofrendo de:',
     options: ['Underfitting', 'Overfitting', 'Falta de dados de teste', 'Vazamento de rótulo'],
@@ -429,7 +579,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Overfitting é decorar o treino sem generalizar para dados novos.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'media',
     prompt: 'Numa base com 99% de exemplos negativos, por que acurácia engana?',
     options: [
@@ -442,7 +592,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Em base desbalanceada, um modelo trivial atinge acurácia alta sem acertar a classe rara.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'media',
     prompt: 'A precisão (precision) de um classificador responde a qual pergunta?',
     options: [
@@ -455,7 +605,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Precisão mede a taxa de acerto entre os itens que o modelo apontou como positivos.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'media',
     prompt: 'Para que serve a validação cruzada (cross-validation)?',
     options: [
@@ -468,7 +618,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Rodar em várias partições reduz a dependência de uma divisão de sorte.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'media',
     prompt: 'Taxa de aprendizado muito alta no gradiente descendente tende a causar:',
     options: [
@@ -481,7 +631,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Passos grandes demais ultrapassam o mínimo e a perda deixa de cair de forma estável.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'dificil',
     prompt: 'O trade-off viés-variância descreve a tensão entre:',
     options: [
@@ -494,7 +644,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Viés alto simplifica demais; variância alta ajusta ruído. Reduzir um tende a aumentar o outro.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'dificil',
     prompt: 'Regularização L2 age sobre o modelo de que forma?',
     options: [
@@ -507,7 +657,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'L2 adiciona à perda o quadrado dos pesos, empurrando-os para valores menores.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'dificil',
     prompt: 'O que caracteriza o vazamento de dados (data leakage)?',
     options: [
@@ -520,7 +670,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Quando o modelo enxerga informação que não teria em produção, a avaliação fica otimista demais.',
   },
   {
-    theme: 'ia-ml',
+    theme: 'ia',
     difficulty: 'dificil',
     prompt: 'No aprendizado por reforço, o agente aprende a partir de:',
     options: [
@@ -533,7 +683,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'O sinal de aprendizado é a recompensa acumulada, não a resposta correta por ação.',
   },
 
-  // ── Robótica ──────────────────────────────────────────────────────────────
+  // ── Robótica ──────────────────────────────────────────────────────────────────
   {
     theme: 'robotica',
     difficulty: 'facil',
@@ -700,7 +850,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'A interrupção evita a espera ativa, deixando a CPU livre até o evento acontecer.',
   },
 
-  // ── Arquitetura ───────────────────────────────────────────────────────────
+  // ── Arquitetura ───────────────────────────────────────────────────────────────
   {
     theme: 'arquitetura',
     difficulty: 'facil',
@@ -877,199 +1027,220 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'Programas reencostam nos mesmos dados e em vizinhos próximos, o que a cache explora.',
   },
 
-  // ── NPI ───────────────────────────────────────────────────────────────────
+  // ── Engenharia de Software ────────────────────────────────────────────────────
   {
-    theme: 'npi',
+    theme: 'engenharia-software',
     difficulty: 'facil',
-    prompt: 'O que é um MVP (produto mínimo viável)?',
+    prompt: 'Como se chama o documento que descreve o que o sistema deve fazer?',
     options: [
-      'A versão final e completa do produto',
-      'A menor versão capaz de validar uma hipótese com usuários reais',
-      'Um protótipo descartável sem usuários',
-      'Um documento de requisitos',
+      'Manual do usuário',
+      'Especificação de requisitos',
+      'Plano de testes',
+      'Relatório de entrega',
     ],
     answer: 1,
-    explanation: 'O MVP existe para aprender com usuários reais gastando o mínimo possível.',
+    explanation:
+      'A especificação de requisitos registra o que foi acordado e vira a referência para desenvolver e testar.',
   },
   {
-    theme: 'npi',
+    theme: 'engenharia-software',
     difficulty: 'facil',
-    prompt: 'Numa sprint do Scrum, quem define a ordem de prioridade do backlog?',
-    options: ['O Scrum Master', 'O Product Owner', 'O time de desenvolvimento', 'O cliente final'],
-    answer: 1,
-    explanation: 'Priorizar o backlog do produto é responsabilidade do Product Owner.',
-  },
-  {
-    theme: 'npi',
-    difficulty: 'facil',
-    prompt: 'Qual é o objetivo da retrospectiva ágil?',
+    prompt: 'No Scrum, quem prioriza os itens do backlog do produto?',
     options: [
-      'Apresentar o incremento ao cliente',
-      'Refletir sobre o processo e definir melhorias',
-      'Estimar as tarefas da próxima sprint',
-      'Distribuir tarefas entre o time',
+      'O Scrum Master',
+      'Qualquer pessoa do time',
+      'O Product Owner',
+      'O cliente final, diretamente',
     ],
-    answer: 1,
-    explanation: 'A retrospectiva olha para como o time trabalhou e escolhe o que melhorar.',
+    answer: 2,
+    explanation:
+      'O Product Owner responde pelo valor entregue e por isso decide a ordem dos itens.',
   },
   {
-    theme: 'npi',
+    theme: 'engenharia-software',
     difficulty: 'facil',
-    prompt: 'O que caracteriza uma metodologia ágil frente ao modelo cascata?',
+    prompt: 'O que um caso de teste precisa descrever?',
     options: [
-      'Entregas incrementais com feedback frequente',
-      'Documentação exaustiva antes de codificar',
-      'Fases rígidas e sequenciais',
-      'Ausência total de planejamento',
+      'Só o resultado obtido na execução',
+      'Apenas o nome do desenvolvedor responsável',
+      'Somente o módulo afetado',
+      'Entrada, passos e resultado esperado',
+    ],
+    answer: 3,
+    explanation:
+      'Sem resultado esperado não há como dizer se o teste passou: ele vira apenas uma execução.',
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'facil',
+    prompt: 'O que significa refatorar um código?',
+    options: [
+      'Melhorar a estrutura interna sem mudar o comportamento',
+      'Reescrever o sistema em outra linguagem',
+      'Adicionar uma funcionalidade nova',
+      'Corrigir um defeito reportado pelo cliente',
     ],
     answer: 0,
-    explanation: 'Agilidade troca a sequência rígida por ciclos curtos com feedback constante.',
+    explanation:
+      'Refatoração muda como o código está escrito, não o que ele faz — por isso depende de testes.',
   },
   {
-    theme: 'npi',
+    theme: 'engenharia-software',
     difficulty: 'facil',
-    prompt: 'Num quadro Kanban, o que significa limitar o WIP?',
+    prompt: 'Num diagrama de classes da UML, a seta de herança aponta para quê?',
     options: [
-      'Limitar o número de pessoas no time',
-      'Limitar quantas tarefas ficam em andamento ao mesmo tempo',
-      'Limitar o prazo de entrega',
-      'Limitar o número de colunas',
+      'Para a subclasse',
+      'Para a superclasse',
+      'Para a classe que instancia',
+      'Para o pacote que contém a classe',
     ],
     answer: 1,
-    explanation: 'Limitar trabalho em progresso reduz troca de contexto e revela gargalos.',
+    explanation:
+      'A generalização aponta do específico para o geral: a subclasse aponta para a superclasse.',
   },
   {
-    theme: 'npi',
+    theme: 'engenharia-software',
     difficulty: 'facil',
-    prompt: 'Qual o propósito da daily (reunião diária) no Scrum?',
+    prompt: 'O que é code review?',
     options: [
-      'Prestar contas ao gerente',
-      'Sincronizar o time e expor impedimentos',
-      'Estimar novas histórias',
-      'Aprovar o incremento',
+      'A execução automática dos testes na integração',
+      'A revisão do código por outra pessoa antes de integrar',
+      'A medição de desempenho do sistema',
+      'A documentação gerada a partir dos comentários',
     ],
     answer: 1,
-    explanation: 'A daily é do time, para alinhar o plano do dia e destravar impedimentos.',
+    explanation:
+      'É uma inspeção humana: pega problemas de projeto e legibilidade que o teste automatizado não vê.',
   },
   {
-    theme: 'npi',
+    theme: 'engenharia-software',
     difficulty: 'media',
-    prompt: 'Numa história de usuário, para que servem os critérios de aceite?',
+    prompt: 'Em BPMN, o que um círculo de borda fina representa?',
     options: [
-      'Estimar o esforço em pontos',
-      'Descrever condições verificáveis para considerar a história atendida',
-      'Definir quem vai implementar',
-      'Registrar o custo da funcionalidade',
-    ],
-    answer: 1,
-    explanation: 'Os critérios de aceite tornam objetivo o que seria uma discussão de "ficou bom".',
-  },
-  {
-    theme: 'npi',
-    difficulty: 'media',
-    prompt: 'Na inovação, o que distingue invenção de inovação?',
-    options: [
-      'Nada, são sinônimos',
-      'Inovação exige adoção e geração de valor, não apenas a ideia nova',
-      'Invenção exige patente e inovação não',
-      'Inovação é sempre tecnológica',
-    ],
-    answer: 1,
-    explanation: 'Invenção é a novidade; inovação é a novidade que chega ao uso e gera valor.',
-  },
-  {
-    theme: 'npi',
-    difficulty: 'media',
-    prompt: 'Para que serve um mapa de empatia no design centrado no usuário?',
-    options: [
-      'Estimar o custo do projeto',
-      'Organizar o que o usuário pensa, sente, vê e faz',
-      'Definir a arquitetura técnica',
-      'Priorizar o backlog técnico',
-    ],
-    answer: 1,
-    explanation: 'O mapa de empatia estrutura a compreensão do usuário antes de propor soluções.',
-  },
-  {
-    theme: 'npi',
-    difficulty: 'media',
-    prompt: 'No ciclo construir-medir-aprender, qual é o objetivo principal?',
-    options: [
-      'Entregar o máximo de funcionalidades',
-      'Validar ou refutar hipóteses rapidamente',
-      'Reduzir o tamanho da equipe',
-      'Documentar todos os requisitos',
-    ],
-    answer: 1,
-    explanation: 'O ciclo existe para aprender rápido, transformando suposições em evidência.',
-  },
-  {
-    theme: 'npi',
-    difficulty: 'media',
-    prompt: 'O que é um pivô (pivot) numa startup?',
-    options: [
-      'Trocar toda a equipe',
-      'Mudar de estratégia mantendo o aprendizado acumulado',
-      'Encerrar a operação',
-      'Aumentar o investimento em marketing',
-    ],
-    answer: 1,
-    explanation: 'Pivotar é corrigir o rumo com base no que foi aprendido, sem começar do zero.',
-  },
-  {
-    theme: 'npi',
-    difficulty: 'dificil',
-    prompt: 'Em Kanban, a Lei de Little relaciona tempo de ciclo com:',
-    options: [
-      'Trabalho em progresso e taxa de entrega',
-      'Número de desenvolvedores e horas extras',
-      'Quantidade de bugs e testes',
-      'Orçamento e prazo',
+      'Um evento de início',
+      'Um evento de fim',
+      'Uma tarefa manual',
+      'Um subprocesso',
     ],
     answer: 0,
-    explanation: 'Tempo de ciclo é aproximadamente WIP dividido pela vazão — reduzir WIP encurta o ciclo.',
+    explanation:
+      'O início tem borda fina e o fim tem borda grossa — é assim que se lê a direção do fluxo.',
   },
   {
-    theme: 'npi',
-    difficulty: 'dificil',
-    prompt: 'O que a curva de adoção de inovação (Rogers) descreve?',
+    theme: 'engenharia-software',
+    difficulty: 'media',
+    prompt: 'Para que serve um protótipo de baixa fidelidade?',
     options: [
-      'O custo de produção ao longo do tempo',
-      'Como diferentes grupos adotam uma novidade em ritmos distintos',
-      'A taxa de falhas de um produto',
-      'O retorno financeiro por trimestre',
+      'Substituir a documentação do sistema',
+      'Testar o desempenho sob carga',
+      'Validar a ideia cedo e com pouco custo',
+      'Entregar o produto final ao cliente',
+    ],
+    answer: 2,
+    explanation:
+      'Um rascunho barato permite descobrir que a ideia está errada antes de investir em código.',
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'media',
+    prompt: 'O que um teste de integração verifica?',
+    options: [
+      'Uma função isolada do sistema',
+      'A interação entre módulos que já funcionam separados',
+      'A aparência da interface em vários navegadores',
+      'A ortografia das mensagens exibidas',
     ],
     answer: 1,
-    explanation: 'A curva separa inovadores, adotantes iniciais, maiorias e retardatários.',
+    explanation:
+      'Muitos defeitos aparecem só na fronteira entre componentes, que o teste unitário não exercita.',
   },
   {
-    theme: 'npi',
-    difficulty: 'dificil',
-    prompt: 'Qual a diferença entre inovação incremental e disruptiva?',
+    theme: 'engenharia-software',
+    difficulty: 'media',
+    prompt: 'Por que "o sistema deve ser rápido" é um requisito ruim?',
     options: [
-      'Incremental melhora o existente; disruptiva redefine o mercado',
-      'Incremental é sempre mais cara',
-      'Disruptiva só ocorre em software',
-      'Não há diferença prática',
+      'Porque é um requisito não funcional',
+      'Porque não pode ser verificado objetivamente',
+      'Porque não menciona a tecnologia usada',
+      'Porque deveria estar no manual do usuário',
+    ],
+    answer: 1,
+    explanation:
+      'Sem um número não há como testar: "rápido" muda de significado conforme quem lê.',
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'media',
+    prompt: 'O que é manutenção corretiva?',
+    options: [
+      'Adaptar o sistema a um novo sistema operacional',
+      'Acrescentar funcionalidades pedidas depois da entrega',
+      'Melhorar o desempenho de uma consulta lenta',
+      'Corrigir um defeito encontrado depois da entrega',
+    ],
+    answer: 3,
+    explanation:
+      'Corretiva conserta defeito; adaptativa acompanha mudanças de ambiente; evolutiva acrescenta recurso.',
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'dificil',
+    prompt: 'Qual combinação de acoplamento e coesão é desejável num projeto?',
+    options: [
+      'Alto acoplamento e alta coesão',
+      'Baixo acoplamento e alta coesão',
+      'Baixo acoplamento e baixa coesão',
+      'Alto acoplamento e baixa coesão',
+    ],
+    answer: 1,
+    explanation:
+      'Módulos com responsabilidade clara (coesos) e pouca dependência entre si são fáceis de mudar isoladamente.',
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'dificil',
+    prompt:
+      'Num diagrama de casos de uso, o que o relacionamento «include» indica?',
+    options: [
+      'Um comportamento opcional, ativado por condição',
+      'Uma herança entre dois atores',
+      'Um comportamento obrigatório reaproveitado por outro caso de uso',
+      'A ordem em que os casos de uso são executados',
+    ],
+    answer: 2,
+    explanation:
+      'O «include» sempre ocorre; o opcional é o «extend», que depende de um ponto de extensão.',
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'dificil',
+    prompt: 'O que caracteriza a prática de integração contínua?',
+    options: [
+      'Publicar uma versão em produção toda semana',
+      'Manter uma branch por desenvolvedor até o fim do projeto',
+      'Revisar o código só antes da entrega final',
+      'Integrar e testar o código com frequência, em build automatizado',
+    ],
+    answer: 3,
+    explanation:
+      'Integrar em pequenos passos torna cada conflito pequeno e revela a quebra no mesmo dia em que ela aparece.',
+  },
+  {
+    theme: 'engenharia-software',
+    difficulty: 'dificil',
+    prompt: 'O que diferencia um modelo incremental do modelo cascata?',
+    options: [
+      'O incremental entrega partes utilizáveis a cada ciclo',
+      'O incremental dispensa levantamento de requisitos',
+      'O cascata não prevê fase de testes',
+      'O cascata exige equipes maiores',
     ],
     answer: 0,
-    explanation: 'A incremental otimiza a trajetória atual; a disruptiva muda as regras de valor do mercado.',
-  },
-  {
-    theme: 'npi',
-    difficulty: 'dificil',
-    prompt: 'Por que velocidade (velocity) não deve ser usada para comparar times?',
-    options: [
-      'Porque é medida em horas absolutas',
-      'Porque a estimativa é relativa e calibrada dentro de cada time',
-      'Porque muda a cada sprint por definição',
-      'Porque não pode ser medida',
-    ],
-    answer: 1,
-    explanation: 'Pontos são uma escala interna do time; comparar entre times mede réguas diferentes.',
+    explanation:
+      'Entregar em fatias permite corrigir o rumo com feedback real, em vez de descobrir o erro só no fim.',
   },
 
-  // ── Redes ─────────────────────────────────────────────────────────────────
+  // ── Redes ─────────────────────────────────────────────────────────────────────
   {
     theme: 'redes',
     difficulty: 'facil',
@@ -1236,7 +1407,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'A conexão persistente elimina o custo de abrir requisições repetidas para perguntar por novidades.',
   },
 
-  // ── Banco de dados ────────────────────────────────────────────────────────
+  // ── Banco de Dados ────────────────────────────────────────────────────────────
   {
     theme: 'banco',
     difficulty: 'facil',
@@ -1408,7 +1579,7 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     explanation: 'O plano da consulta é fixado antes dos valores chegarem, então o dado não vira comando.',
   },
 
-  // ── Algoritmos ────────────────────────────────────────────────────────────
+  // ── Algoritmos ────────────────────────────────────────────────────────────────
   {
     theme: 'algoritmos',
     difficulty: 'facil',
@@ -1563,5 +1734,165 @@ export const TRAINING_QUESTIONS: TrainingSeedQuestion[] = [
     ],
     answer: 1,
     explanation: 'NP é definido pela verificação eficiente de um certificado, não pela dificuldade de achá-lo.',
+  },
+
+  // Vindas do tema Lógica, que saiu da roda: dedução, tabela-verdade e
+  // raciocínio formal passaram a contar como Algoritmos. O tema fica com o
+  // dobro das outras — pool maior não muda nada para o aluno, que sorteia uma
+  // questão por vez.
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'Se p é verdadeiro e q é falso, qual o valor de "p E q"?',
+    options: ['Verdadeiro', 'Falso', 'Indefinido', 'Depende de p'],
+    answer: 1,
+    explanation: 'A conjunção só é verdadeira quando as duas partes são verdadeiras.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'Quantas linhas tem a tabela-verdade de uma fórmula com 3 variáveis?',
+    options: ['3', '6', '8', '9'],
+    answer: 2,
+    explanation: 'São 2³ = 8 combinações possíveis de verdadeiro e falso.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'Qual operador lógico resulta em verdadeiro quando pelo menos uma das partes é verdadeira?',
+    options: ['E (conjunção)', 'OU (disjunção)', 'NÃO (negação)', 'SE-ENTÃO'],
+    answer: 1,
+    explanation: 'A disjunção só é falsa quando ambas as partes são falsas.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'A negação de "x > 10" é:',
+    options: ['x < 10', 'x <= 10', 'x >= 10', 'x != 10'],
+    answer: 1,
+    explanation: 'Negar "maior que" inclui o caso de igualdade, virando "menor ou igual".',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'Numa estrutura "se... senão", quantos dos dois blocos executam numa passagem?',
+    options: ['Sempre os dois', 'Exatamente um', 'Nenhum', 'Depende do laço'],
+    answer: 1,
+    explanation: 'A condição escolhe um dos caminhos; o outro é ignorado naquela passagem.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'facil',
+    prompt: 'O que a negação dupla "NÃO (NÃO p)" equivale?',
+    options: ['p', 'NÃO p', 'Sempre verdadeiro', 'Sempre falso'],
+    answer: 0,
+    explanation: 'Negar duas vezes devolve o valor original da proposição.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'Pela lei de De Morgan, "NÃO (p E q)" é equivalente a:',
+    options: [
+      'NÃO p E NÃO q',
+      'NÃO p OU NÃO q',
+      'p OU q',
+      'NÃO p SE-ENTÃO q',
+    ],
+    answer: 1,
+    explanation: 'De Morgan troca a conjunção por disjunção e nega cada parte.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'A implicação "p → q" é falsa em qual único caso?',
+    options: [
+      'p falso e q falso',
+      'p falso e q verdadeiro',
+      'p verdadeiro e q falso',
+      'p verdadeiro e q verdadeiro',
+    ],
+    answer: 2,
+    explanation: 'Uma promessa só é quebrada quando a hipótese vale e a conclusão falha.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'Qual é a contrapositiva de "se chove, então a rua molha"?',
+    options: [
+      'Se a rua molha, então chove',
+      'Se não chove, então a rua não molha',
+      'Se a rua não molha, então não chove',
+      'Se chove, então a rua não molha',
+    ],
+    answer: 2,
+    explanation: 'A contrapositiva inverte e nega os dois lados, e é sempre equivalente.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'Uma fórmula que é verdadeira para toda atribuição de valores chama-se:',
+    options: ['Contradição', 'Tautologia', 'Contingência', 'Falácia'],
+    answer: 1,
+    explanation: 'Tautologia é a fórmula verdadeira em todas as linhas da tabela-verdade.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'media',
+    prompt: 'Em "curto-circuito", por que `a != null && a.b` não quebra quando a é nulo?',
+    options: [
+      'A linguagem ignora erros de nulo',
+      'A segunda parte só é avaliada se a primeira for verdadeira',
+      'O operador && converte nulo em falso',
+      'A ordem das partes não importa',
+    ],
+    answer: 1,
+    explanation: 'A avaliação em curto-circuito para assim que o resultado já está decidido.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt: 'Qual conjunto de operadores é suficiente para expressar qualquer função booleana?',
+    options: ['Apenas E', 'Apenas OU', 'E junto com NÃO', 'Apenas SE-ENTÃO'],
+    answer: 2,
+    explanation: 'Conjunção com negação é funcionalmente completo; por De Morgan gera a disjunção.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt: 'A negação de "existe x tal que P(x)" é:',
+    options: [
+      'Existe x tal que não P(x)',
+      'Para todo x, não P(x)',
+      'Não existe x tal que não P(x)',
+      'Para todo x, P(x)',
+    ],
+    answer: 1,
+    explanation: 'Negar um existencial troca o quantificador para universal e nega o predicado.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt: 'O operador XOR entre p e q é verdadeiro quando:',
+    options: [
+      'Os dois são verdadeiros',
+      'Os dois são falsos',
+      'Os valores são diferentes entre si',
+      'Pelo menos um é verdadeiro',
+    ],
+    answer: 2,
+    explanation: 'O ou-exclusivo indica divergência: verdadeiro apenas quando os valores diferem.',
+  },
+  {
+    theme: 'algoritmos',
+    difficulty: 'dificil',
+    prompt: 'Um argumento válido com premissas verdadeiras garante o quê sobre a conclusão?',
+    options: [
+      'Que ela é verdadeira',
+      'Que ela é falsa',
+      'Nada, validade é só sobre a forma',
+      'Que ela é provável',
+    ],
+    answer: 0,
+    explanation: 'Validade preserva verdade: premissas verdadeiras em forma válida forçam conclusão verdadeira.',
   },
 ];

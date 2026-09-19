@@ -202,6 +202,52 @@ Antes do primeiro deploy com o novo compose, confira com `docker volume ls`
 na instância se esse é de fato o nome existente — senão o `up` criaria um
 volume novo vazio em vez de reaproveitar o banco de produção.
 
+## Troca da roda de tipos — passo manual
+
+A roda passou de 9 tipos para outros 9 (Lógica e NPI saíram; Humanas e
+Engenharia de Software entraram, e `calculo`/`ia-ml` viraram
+`matematica`/`ia`). **Não existe migração de dados para isso** — a decisão foi
+limpar o banco, porque ele ainda estava vazio.
+
+As colunas que guardam id de tipo (`professor_variants.types`,
+`quiz_questions.theme`, `training_questions.theme`, `quiz_attempts.theme`,
+`capture_vouchers.theme`) não são convertidas por migration nenhuma. Quem subir
+uma versão antiga por cima de dados antigos fica com linhas apontando para tipo
+que não existe mais: silenciosamente, sem erro — a batalha perde a vantagem de
+tipo e o tema some do quiz.
+
+Por isso, no deploy que leva a roda nova, rode **dentro do container `app`**:
+
+```bash
+docker compose exec app npx prisma migrate deploy   # schema
+docker compose exec app npm run db:reset -- --yes   # APAGA TUDO e semeia do zero
+docker compose exec app npm run db:seed-quiz-treino # banco de treino
+```
+
+`db:reset` derruba as tabelas e reaplica as migrations — ele também leva embora
+usuários, capturas e ranking. Depois dele **os QR impressos param de valer**:
+tire uma tiragem nova com `npm run qr:generate -- --copies=N --yes`.
+
+### A ficha passou a valer por tipo
+
+Na mesma virada, a ficha de QR deixou de apontar para um professor e passou a
+valer por **tipo**: a bancada entrega a ficha do tema da questão que o aluno
+acertou, e qual professor sai é sorteado no servidor, no momento do scan.
+
+Duas consequências operacionais:
+
+- **A tiragem é por tipo, não por professor.** São 9 linhas no
+  `/admin/fichas`, e `qr:generate --only=` agora recebe ids de tipo
+  (`--only=redes,ia`), não slugs de professor.
+- **Tipo sem professor ativo imprime papel que não captura nada.** O painel
+  marca essas linhas e pede confirmação extra; a CLI avisa antes de gerar. Quem
+  escanear recebe "procure a bancada" e **a ficha não é consumida** — dá para
+  cadastrar o professor e mandar o aluno escanear o mesmo papel de novo.
+
+As fichas impressas ANTES desta virada continuam válidas: elas guardam
+`variant_id` e seguem entregando exatamente aquele professor, sem sorteio. A
+coluna não foi removida por isso.
+
 ## Validação end-to-end
 
 ```bash

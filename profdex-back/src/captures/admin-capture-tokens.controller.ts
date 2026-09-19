@@ -36,7 +36,7 @@ interface AuthedRequest extends Request {
 export class AdminCaptureTokensController {
   constructor(private fichas: AdminCaptureTokensService) {}
 
-  /** Estoque: última tiragem em destaque + fichas vivas por variante. */
+  /** Estoque: última tiragem em destaque + fichas vivas por tipo. */
   @Get()
   inventory() {
     return this.fichas.inventory();
@@ -46,7 +46,7 @@ export class AdminCaptureTokensController {
   @Post('preview')
   @HttpCode(HttpStatus.OK)
   preview(@Body() body: GenerateSheetDto) {
-    return this.fichas.preview(body.copies, body.variantIds);
+    return this.fichas.preview(body.copies, body.types);
   }
 
   /**
@@ -66,7 +66,8 @@ export class AdminCaptureTokensController {
     const { html } = await this.fichas.generate(
       request.user.id,
       body.copies,
-      body.variantIds,
+      body.types,
+      { allowEmpty: body.allowEmpty ?? false },
     );
     return html;
   }

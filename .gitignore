@@ -3,6 +3,8 @@ node_modules/
 **/.env
 **/dist/
 **/prisma/*.db
+.claude/
+.agents/
 
 temp/
 

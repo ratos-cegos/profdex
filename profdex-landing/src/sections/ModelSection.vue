@@ -44,8 +44,8 @@ const tamanhoFormatado = computed(() => atual.value?.sizeMb.toLocaleString('pt-B
  * Cor legível do tipo primário — a mesma regra da roda e das badges.
  *
  * Vai em PRIMEIRO PLANO (borda e ícone do botão), então passa pelo `legibleColor`:
- * a paleta canônica dos tipos foi desenhada para preencher área, e o NPI
- * (`#495057`) sobre o fundo escuro daria 1,7:1.
+ * a paleta canônica dos tipos foi desenhada para preencher área, e a Eng. de
+ * Software (`#495057`) sobre o fundo escuro daria 1,7:1.
  */
 function corDoTipo(types) {
   const tipo = getType(types[0])

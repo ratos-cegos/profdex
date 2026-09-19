@@ -2,7 +2,7 @@
  * Gera o banco de questões do Quiz Treino com a API da Anthropic.
  *
  *   ANTHROPIC_API_KEY=... npx ts-node scripts/gerar-questoes-treino.ts
- *   ... --tema=logica --quantidade=15     # regenera só um tema
+ *   ... --tema=humanas --quantidade=15    # regenera só um tema
  *
  * Escreve `prisma/training-questions.ts` no mesmo formato do banco oficial.
  * NÃO toca em `quiz-questions.ts` nem no banco de dados — semear é o passo
@@ -23,17 +23,20 @@ import type { QuizSeedQuestion } from '../prisma/quiz-questions';
 /** Quantas questões por tema, quando não vier `--quantidade`. */
 const POR_TEMA_PADRAO = 15;
 
-/** Nome legível de cada tema, para o prompt. O id sozinho ("npi") não basta. */
+/** Nome legível de cada tema, para o prompt. O id sozinho ("ia") não basta. */
 const DESCRICAO_DO_TEMA: Record<string, string> = {
-  logica: 'Lógica de programação e lógica proposicional',
-  calculo: 'Cálculo e matemática aplicada à computação',
-  'ia-ml': 'Inteligência artificial e aprendizado de máquina',
+  humanas:
+    'Humanas aplicadas à computação: ética, LGPD, impacto social e metodologia científica — nunca gramática ou literatura',
+  matematica: 'Cálculo, estatística e matemática aplicada à computação',
+  ia: 'Inteligência artificial e aprendizado de máquina',
   robotica: 'Robótica e sistemas embarcados',
   arquitetura: 'Arquitetura de computadores e sistemas operacionais',
-  npi: 'Novas práticas de inovação, metodologias ágeis e gestão de projetos',
+  'engenharia-software':
+    'Engenharia de software: requisitos, UML, BPMN, ciclo de vida e testes',
   redes: 'Redes de computadores e protocolos',
   banco: 'Banco de dados, modelagem e SQL',
-  algoritmos: 'Algoritmos, estruturas de dados e complexidade',
+  algoritmos:
+    'Algoritmos, estruturas de dados, complexidade e lógica de programação',
 };
 
 /**

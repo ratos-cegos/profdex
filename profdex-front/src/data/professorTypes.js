@@ -2,7 +2,9 @@
 //
 // A batalha usa até DOIS tipos por professor (Tipo 1 / Tipo 2). Decisões de
 // mapeamento tomadas com o time:
-//  · "Programação" → lógica (não há movepool de Programação).
+//  · "Programação" → algoritmos (não há movepool de Programação).
+//  · "Lógica"      → algoritmos, que absorveu o tema quando a roda mudou; quem
+//                    tinha os dois vira mono Algoritmos.
 //  · "Segurança"   → descartada (não há movepool); quem a tinha fica só com o
 //                    outro tipo — Marcos e Edson viram mono Banco de Dados.
 //  · Gustavo é o boneco que o jogador controla.
@@ -15,17 +17,17 @@ import { getType, typeIdFromSeed } from './types.js'
 export const PROFESSOR_TYPES = {
   gustavo: ['arquitetura'], // jogador
   mario: ['algoritmos'],
-  'ricardo-petri': ['ia-ml'],
-  ricardo: ['ia-ml'],
-  simone: ['npi'],
-  eron: ['arquitetura', 'ia-ml'],
-  't-camis': ['calculo', 'logica'],
-  camis: ['calculo', 'logica'],
-  joao: ['logica', 'algoritmos'],
-  marcelo: ['logica'], // Programação → Lógica
-  guilherme: ['logica'],
-  renata: ['npi'],
-  serginho: ['ia-ml'],
+  'ricardo-petri': ['ia'],
+  ricardo: ['ia'],
+  simone: ['engenharia-software'],
+  eron: ['arquitetura', 'ia'],
+  't-camis': ['matematica', 'algoritmos'],
+  camis: ['matematica', 'algoritmos'],
+  joao: ['algoritmos'], // Lógica + Algoritmos colapsaram no mesmo tipo
+  marcelo: ['algoritmos'], // Programação → Algoritmos
+  guilherme: ['algoritmos'],
+  renata: ['engenharia-software'],
+  serginho: ['ia'],
   marcos: ['banco'], // Banco (+Segurança descartada)
   igor: ['robotica', 'redes'],
   edson: ['banco'], // Segurança descartada → Banco
