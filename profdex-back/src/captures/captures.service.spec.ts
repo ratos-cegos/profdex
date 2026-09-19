@@ -34,14 +34,24 @@ describe('CapturesService', () => {
    * `redeemedAt` for null — é exatamente essa condição que dá o uso único no
    * Postgres, então o teste precisa dela para valer alguma coisa.
    */
-  function fakeDb({ redeemed = false }: { redeemed?: boolean } = {}) {
+  function fakeDb({
+    redeemed = false,
+    /** Ficha NOVA, que vale por tipo. Sem isto a ficha é a legada, com variante. */
+    type = null as string | null,
+    /** As variantes que o sorteio enxerga — já filtradas por tipo e por ativo. */
+    candidatas = [variant] as typeof variant[],
+    /** O que o aluno já tem, para escolher a faixa do sorteio. */
+    possuidas = [] as { professorId: string; variantId: string | null }[],
+  } = {}) {
     const ficha = {
       id: 'token-1',
       tokenHash,
       redeemedAt: redeemed ? new Date() : (null as Date | null),
-      variant,
+      type,
+      variant: type ? null : variant,
     };
     const criadas: any[] = [];
+    const filtros: any[] = [];
 
     const transaction = {
       captureToken: {
@@ -59,12 +69,27 @@ describe('CapturesService', () => {
         ),
         findUniqueOrThrow: jest.fn(() => Promise.resolve(ficha)),
       },
+      professorVariant: {
+        findMany: jest.fn(({ where }: any) => {
+          filtros.push(where);
+          return Promise.resolve(
+            candidatas.map((v) => ({
+              id: v.id,
+              professorId: v.professorId,
+              types: v.types,
+            })),
+          );
+        }),
+      },
       discovery: {
         findUnique: jest.fn().mockResolvedValue(null),
         upsert: jest.fn().mockResolvedValue({ id: 'discovery-1' }),
       },
       capture: {
+        findMany: jest.fn(() => Promise.resolve(possuidas)),
         create: jest.fn(({ data }: any) => {
+          const sorteada =
+            candidatas.find((v) => v.id === data.variantId) ?? variant;
           const criada = {
             id: `capture-${criadas.length + 1}`,
             capturedAt: new Date(),
@@ -73,11 +98,11 @@ describe('CapturesService', () => {
             ivRigor: data.ivRigor,
             ivDidatica: data.ivDidatica,
             ivRaciocinio: data.ivRaciocinio,
-            professor,
+            professor: { ...professor, id: data.professorId },
             variant: {
-              id: variant.id,
-              typeKey: variant.typeKey,
-              types: variant.types,
+              id: sorteada.id,
+              typeKey: sorteada.typeKey,
+              types: sorteada.types,
             },
           };
           criadas.push({ ...criada, data });
@@ -91,12 +116,21 @@ describe('CapturesService', () => {
       capture: {
         findMany: jest.fn().mockResolvedValue([{ professorId: professor.id }]),
       },
-      $transaction: jest.fn((callback: (client: typeof transaction) => any) =>
-        Promise.resolve(callback(transaction)),
-      ),
+      // Transação de mentira que também DESFAZ: sem o rollback, o teste de
+      // "tipo vazio não consome a ficha" passaria mesmo com o throw fora da
+      // transação — que é exatamente o bug que ele existe para impedir.
+      $transaction: jest.fn(async (callback: (c: typeof transaction) => any) => {
+        const antes = ficha.redeemedAt;
+        try {
+          return await callback(transaction);
+        } catch (erro) {
+          ficha.redeemedAt = antes;
+          throw erro;
+        }
+      }),
     };
 
-    return { prisma, transaction, ficha, criadas };
+    return { prisma, transaction, ficha, criadas, filtros };
   }
 
   const build = (prisma: unknown) =>
@@ -182,6 +216,102 @@ describe('CapturesService', () => {
     expect(falhou).toHaveLength(1);
     expect(falhou[0].reason).toBeInstanceOf(ConflictException);
     expect(criadas).toHaveLength(1); // uma ficha, um exemplar
+  });
+
+  describe('ficha de tipo', () => {
+    const profB = { ...professor, id: 'prof-2' };
+    const variantesDeIa = [
+      { id: 'a-ia', typeKey: 'ia', types: ['ia'], professorId: professor.id },
+      { id: 'b-ia', typeKey: 'ia', types: ['ia'], professorId: profB.id },
+    ];
+
+    it('sorteia um professor do tipo e grava o exemplar', async () => {
+      const { prisma, criadas, ficha } = fakeDb({
+        type: 'ia',
+        candidatas: variantesDeIa,
+      });
+
+      const result = await build(prisma).captureByToken('user-1', token);
+
+      expect(ficha.redeemedAt).toBeInstanceOf(Date);
+      expect(variantesDeIa.map((v) => v.id)).toContain(criadas[0].data.variantId);
+      expect(variantesDeIa.map((v) => v.professorId)).toContain(
+        criadas[0].data.professorId,
+      );
+      // O deck sai dos tipos da variante SORTEADA, não dos da ficha.
+      expect(result.moves).toHaveLength(4);
+      for (const move of result.moves) expect(move.type).toBe('ia');
+    });
+
+    it('só considera professor ativo no sorteio', async () => {
+      const { prisma, filtros } = fakeDb({
+        type: 'ia',
+        candidatas: variantesDeIa,
+      });
+
+      await build(prisma).captureByToken('user-1', token);
+
+      // Professor desativado não pode sair numa ficha que já está impressa.
+      expect(filtros[0]).toEqual({
+        types: { has: 'ia' },
+        professor: { active: true },
+      });
+    });
+
+    it('não repete professor enquanto houver inédito no tema', async () => {
+      // Já tem o primeiro: o sorteio é obrigado a entregar o segundo.
+      const { prisma, criadas } = fakeDb({
+        type: 'ia',
+        candidatas: variantesDeIa,
+        possuidas: [{ professorId: professor.id, variantId: 'a-ia' }],
+      });
+
+      await build(prisma).captureByToken('user-1', token);
+
+      expect(criadas[0].data.professorId).toBe(profB.id);
+      expect(criadas[0].data.variantId).toBe('b-ia');
+    });
+
+    it('NÃO consome a ficha quando o tipo não tem professor', async () => {
+      const { prisma, ficha, criadas } = fakeDb({ type: 'humanas', candidatas: [] });
+
+      await expect(
+        build(prisma).captureByToken('user-1', token),
+      ).rejects.toThrow(NotFoundException);
+
+      // O coração da regra: o `throw` acontece DENTRO da transação, então a
+      // baixa da ficha é desfeita. O aluno perderia papel e direito de uma vez.
+      expect(ficha.redeemedAt).toBeNull();
+      expect(criadas).toHaveLength(0);
+    });
+
+    it('volta a funcionar depois que um professor do tipo é cadastrado', async () => {
+      const vazio = fakeDb({ type: 'humanas', candidatas: [] });
+      await expect(
+        build(vazio.prisma).captureByToken('user-1', token),
+      ).rejects.toThrow(NotFoundException);
+      expect(vazio.ficha.redeemedAt).toBeNull();
+
+      // Mesma ficha, agora com professor no tema.
+      const comProfessor = fakeDb({
+        type: 'humanas',
+        candidatas: [
+          {
+            id: 'h-1',
+            typeKey: 'humanas',
+            types: ['humanas'],
+            professorId: professor.id,
+          },
+        ],
+      });
+      const result = await build(comProfessor.prisma).captureByToken(
+        'user-1',
+        token,
+      );
+
+      expect(result.types).toEqual(['humanas']);
+      expect(comProfessor.ficha.redeemedAt).toBeInstanceOf(Date);
+    });
   });
 
   it('hydrates moves and exposes only public professor fields when listing', async () => {

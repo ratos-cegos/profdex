@@ -10,6 +10,7 @@ import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PUBLIC_PROFESSOR_SELECT } from '../professors/public-professor.select';
 import { hashCaptureToken } from './capture-token';
+import { sortearVariante } from './capture-lottery';
 import { CAPTURE_RNG, rollCaptureIvs, starsFromIvs } from './capture-ivs';
 import type { RandomSource } from './capture-ivs';
 
@@ -29,6 +30,16 @@ const CAPTURE_SELECT = {
 
 type CaptureRow = Prisma.CaptureGetPayload<{ select: typeof CAPTURE_SELECT }>;
 
+/**
+ * Erro de domínio estável: a ficha é válida, mas não há professor para entregar.
+ *
+ * O front precisa separar este 404 do "token inválido", que tem o mesmo status
+ * e é ignorado em silêncio — só que aqui a ficha CONTINUA VALENDO e o aluno
+ * precisa saber disso. Um código, e não o texto da mensagem, porque texto muda
+ * (ver .codex/CODE_STYLE.md).
+ */
+export const TIPO_SEM_PROFESSOR = 'TIPO_SEM_PROFESSOR';
+
 @Injectable()
 export class CapturesService {
   constructor(
@@ -43,8 +54,13 @@ export class CapturesService {
    * quando dois celulares escaneiam o mesmo papel ao mesmo tempo — o perdedor
    * não encontra linha para atualizar e sai com 409.
    *
+   * A ficha vale por TIPO: a bancada só sabe o tema da questão que o aluno
+   * acertou, e QUAL professor daquele tipo ele leva sai no sorteio do servidor
+   * (capture-lottery.ts). Fichas impressas antes disso apontam para uma variante
+   * e seguem entregando exatamente aquele professor, sem sorteio.
+   *
    * O moveset é sorteado AQUI, a partir dos tipos da variante, e fica gravado
-   * no exemplar: dois Erons de IA/ML capturados em fichas diferentes são
+   * no exemplar: dois Erons de IA capturados em fichas diferentes são
    * professores diferentes na coleção.
    */
   async captureByToken(userId: string, token: string) {
@@ -71,12 +87,16 @@ export class CapturesService {
           where: { tokenHash },
           select: {
             id: true,
+            type: true,
             variant: {
               select: { id: true, types: true, professorId: true },
             },
           },
         });
-        const { variant } = ficha;
+
+        const variant = ficha.variant
+          ? ficha.variant
+          : await this.sortearPorTipo(transaction, userId, ficha.type);
 
         // O upsert não diz se criou ou apenas encontrou, e a diferença importa:
         // descobrir o professor pela segunda ficha não pode pontuar de novo.
@@ -118,6 +138,70 @@ export class CapturesService {
     });
 
     return this.toView(capture);
+  }
+
+  /**
+   * Qual professor daquele tipo o aluno leva.
+   *
+   * Roda DENTRO da transação da captura, e isso não é detalhe de organização:
+   * quando o tipo não tem nenhum professor ativo, o `throw` daqui desfaz o
+   * `updateMany` que acabou de dar baixa na ficha — o papel continua valendo e
+   * o aluno pode escanear de novo depois que a bancada resolver. Tirar esta
+   * chamada de dentro da transação (ou capturar o erro aqui) devolve em
+   * silêncio o pior desfecho possível: o aluno perde a ficha E não recebe
+   * professor, no meio do evento, sem jeito de reverter.
+   */
+  private async sortearPorTipo(
+    transaction: Prisma.TransactionClient,
+    userId: string,
+    type: string | null,
+  ): Promise<{ id: string; types: string[]; professorId: string }> {
+    if (!type) {
+      // Ficha sem tipo e sem variante não deveria existir: exatamente um dos
+      // dois é preenchido na criação. Se chegou aqui, o dado está corrompido —
+      // melhor devolver a ficha ao aluno do que inventar um professor.
+      throw new NotFoundException({
+        code: TIPO_SEM_PROFESSOR,
+        message: 'Esta ficha está incompleta — procure a bancada',
+      });
+    }
+
+    // As duas leituras usam índice: `professor_variants` pelo professor e
+    // `captures` por [userId, professorId]. São 2 consultas por captura, e é o
+    // que o pico da bancada vai pagar.
+    const [candidatas, jaTem] = await Promise.all([
+      transaction.professorVariant.findMany({
+        where: { types: { has: type }, professor: { active: true } },
+        select: { id: true, professorId: true, types: true },
+      }),
+      transaction.capture.findMany({
+        where: { userId },
+        select: { professorId: true, variantId: true },
+      }),
+    ]);
+
+    const escolhida = sortearVariante(
+      candidatas,
+      jaTem.filter(
+        (c): c is { professorId: string; variantId: string } =>
+          c.variantId !== null,
+      ),
+      this.random,
+    );
+
+    if (!escolhida) {
+      throw new NotFoundException({
+        code: TIPO_SEM_PROFESSOR,
+        message: 'Nenhum professor deste tipo disponível — procure a bancada',
+      });
+    }
+
+    const variant = candidatas.find((c) => c.id === escolhida.id)!;
+    return {
+      id: variant.id,
+      types: variant.types,
+      professorId: variant.professorId,
+    };
   }
 
   /** Nunca deixa a métrica quebrar a captura — o aluno já escaneou o QR. */

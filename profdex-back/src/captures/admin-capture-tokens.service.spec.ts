@@ -1,23 +1,21 @@
 import { BadRequestException } from '@nestjs/common';
+import { TYPE_CYCLE } from '../battle/engine/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminCaptureTokensService } from './admin-capture-tokens.service';
 import { buildSheetEntries } from './capture-sheet';
 import { hashCaptureToken } from './capture-token';
 
 describe('AdminCaptureTokensService', () => {
-  const variants = [
-    {
-      id: 'var-1',
-      typeKey: 'arquitetura',
-      types: ['arquitetura'],
-      professor: { name: 'Eron', slug: 'eron' },
-    },
-    {
-      id: 'var-2',
-      typeKey: 'ia',
-      types: ['ia'],
-      professor: { name: 'Eron', slug: 'eron' },
-    },
+  /**
+   * Eron é de dois tipos e rende três variantes; Mário é de um. Serve para
+   * separar "quantos professores deste tipo" de "quantas variantes": contar
+   * variantes diria 2 professores de arquitetura onde há 1.
+   */
+  const variantes = [
+    { professorId: 'eron', types: ['arquitetura'] },
+    { professorId: 'eron', types: ['ia'] },
+    { professorId: 'eron', types: ['arquitetura', 'ia'] },
+    { professorId: 'mario', types: ['algoritmos'] },
   ];
 
   /**
@@ -26,7 +24,11 @@ describe('AdminCaptureTokensService', () => {
    * precisa escrever tudo de uma vez.
    */
   function fakeDb(
-    { tokens = [] as any[], batches = [] as any[] } = {},
+    {
+      tokens = [] as any[],
+      batches = [] as any[],
+      professorVariants = variantes,
+    } = {},
     onWrite?: (kind: string, payload: any) => void,
   ) {
     const tx = {
@@ -46,18 +48,18 @@ describe('AdminCaptureTokensService', () => {
       },
     };
 
+    const filtrosDeVariante: any[] = [];
+
     return {
       tokens,
       batches,
+      filtrosDeVariante,
       db: {
         professorVariant: {
-          findMany: jest.fn(({ where }: any) =>
-            Promise.resolve(
-              where?.id?.in
-                ? variants.filter((v) => where.id.in.includes(v.id))
-                : variants,
-            ),
-          ),
+          findMany: jest.fn(({ where }: any) => {
+            filtrosDeVariante.push(where);
+            return Promise.resolve(professorVariants);
+          }),
         },
         captureToken: {
           // Espelha o `groupBy` do Prisma sobre os tokens de mentira: a
@@ -76,13 +78,10 @@ describe('AdminCaptureTokensService', () => {
                     return true;
                   })
                   .reduce<Record<string, number>>((acc, t) => {
-                    acc[t.variantId] = (acc[t.variantId] ?? 0) + 1;
+                    acc[t.type] = (acc[t.type] ?? 0) + 1;
                     return acc;
                   }, {}),
-              ).map(([variantId, n]) => ({
-                variantId,
-                _count: { _all: n },
-              })),
+              ).map(([type, n]) => ({ type, _count: { _all: n } })),
             ),
           ),
         },
@@ -102,50 +101,71 @@ describe('AdminCaptureTokensService', () => {
 
       const plano = await service.preview(3);
 
-      expect(plano.total).toBe(6); // 2 variantes × 3
-      expect(plano.lines).toHaveLength(2);
+      // Sem seleção, a roda inteira: 9 tipos × 3.
+      expect(plano.lines).toHaveLength(TYPE_CYCLE.length);
+      expect(plano.total).toBe(TYPE_CYCLE.length * 3);
       expect(escritas).toEqual([]);
       expect(tokens).toHaveLength(0);
       expect(batches).toHaveLength(0);
     });
 
-    it('conta só as variantes selecionadas', async () => {
+    it('conta só os tipos selecionados', async () => {
       const { db } = fakeDb();
       const service = new AdminCaptureTokensService(db);
 
-      await expect(service.preview(2, ['var-1'])).resolves.toMatchObject({
+      await expect(service.preview(2, ['ia'])).resolves.toMatchObject({
         total: 2,
       });
+    });
+
+    it('mostra quantos professores cada tipo tem, zero incluído', async () => {
+      const { db } = fakeDb();
+      const service = new AdminCaptureTokensService(db);
+
+      const { lines } = await service.preview(1, ['ia', 'arquitetura', 'redes']);
+
+      // Eron é de arquitetura E de ia: um professor, não um por variante.
+      expect(lines.find((l) => l.type === 'ia')!.professors).toBe(1);
+      expect(lines.find((l) => l.type === 'arquitetura')!.professors).toBe(1);
+      // É a última tela antes de imprimir — o zero precisa aparecer aqui.
+      expect(lines.find((l) => l.type === 'redes')!.professors).toBe(0);
     });
   });
 
   describe('generate', () => {
+    const comTodosOsTipos = () =>
+      TYPE_CYCLE.map((type) => ({ professorId: `prof-${type}`, types: [type] }));
+
     it('grava uma ficha por cópia e uma linha de tiragem', async () => {
-      const { db, tokens, batches } = fakeDb();
+      const { db, tokens, batches } = fakeDb({
+        professorVariants: comTodosOsTipos(),
+      });
       const service = new AdminCaptureTokensService(db);
 
       const { total, batch } = await service.generate('admin-1', 3);
 
-      expect(total).toBe(6);
-      expect(tokens).toHaveLength(6);
+      expect(total).toBe(TYPE_CYCLE.length * 3);
+      expect(tokens).toHaveLength(TYPE_CYCLE.length * 3);
       expect(batches).toHaveLength(1);
       expect(batches[0]).toMatchObject({
         batch,
         createdById: 'admin-1',
         source: 'panel',
         copies: 3,
-        total: 6,
+        total: TYPE_CYCLE.length * 3,
       });
+      // A auditoria guarda os TIPOS da tiragem, não mais variantes.
+      expect(batches[0].types).toEqual([...TYPE_CYCLE]);
     });
 
     it('grava apenas o hash — nunca o token em texto puro', async () => {
-      const { db, tokens } = fakeDb();
+      const { db, tokens } = fakeDb({ professorVariants: comTodosOsTipos() });
       const service = new AdminCaptureTokensService(db);
 
       const { html } = await service.generate('admin-1', 1);
 
       for (const t of tokens) {
-        expect(Object.keys(t)).toEqual(['variantId', 'tokenHash', 'batch']);
+        expect(Object.keys(t)).toEqual(['type', 'tokenHash', 'batch']);
         expect(t.tokenHash).toMatch(/^[0-9a-f]{64}$/);
         // O hash gravado precisa ser o de um token que existe de verdade: se
         // fosse de outra coisa, a ficha impressa não capturaria nada.
@@ -156,22 +176,24 @@ describe('AdminCaptureTokensService', () => {
       expect(html).not.toContain('.png"');
     });
 
+    it('a ficha impressa anuncia o TIPO, não um professor', async () => {
+      const { db } = fakeDb({ professorVariants: comTodosOsTipos() });
+      const service = new AdminCaptureTokensService(db);
+
+      const { html } = await service.generate('admin-1', 1, ['ia']);
+
+      expect(html).toContain('IA');
+      expect(html).toContain('Vale uma captura de um professor deste tipo');
+      // Quem sai é sorteado no scan: nome de professor na folha seria mentira.
+      expect(html).not.toContain('Prof. ');
+    });
+
     // O elo que fecha a feature: o que vai impresso no papel tem de ser aceito
     // pela rota que o aluno usa ao escanear. Se o formato do token divergir das
     // regras do CaptureByTokenDto, a ficha vira papel morto — e só se descobre
     // com o aluno na frente do QR.
     it('o payload do QR passa nas regras do CaptureByTokenDto', () => {
-      const entries = buildSheetEntries(
-        [
-          {
-            id: 'v1',
-            typeKey: 'humanas',
-            types: ['humanas'],
-            professor: { name: 'Eron', slug: 'eron' },
-          },
-        ],
-        3,
-      );
+      const entries = buildSheetEntries(['humanas'], 3);
 
       for (const e of entries) {
         expect(e.payload).toBe(`capture:${e.token}`);
@@ -184,16 +206,54 @@ describe('AdminCaptureTokensService', () => {
       }
       // Cada ficha é única: duas cópias não podem valer a mesma captura.
       expect(new Set(entries.map((e) => e.token)).size).toBe(3);
+      // O arquivo da tiragem em disco é nomeado pelo tipo.
+      expect(entries[0].file).toBe('humanas--1');
     });
 
-    it('recusa variante que não existe mais em vez de gerar só o resto', async () => {
+    it('recusa tipo fora da roda em vez de gerar só o resto', async () => {
       const { db, tokens } = fakeDb();
       const service = new AdminCaptureTokensService(db);
 
       await expect(
-        service.generate('admin-1', 1, ['var-1', 'sumiu']),
+        service.generate('admin-1', 1, ['ia', 'sumiu']),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(tokens).toHaveLength(0);
+    });
+
+    it('barra tiragem de tipo sem professor ativo', async () => {
+      const { db, tokens, batches } = fakeDb();
+      const service = new AdminCaptureTokensService(db);
+
+      // `redes` não tem ninguém: a ficha sairia e o scan só devolveria erro.
+      await expect(
+        service.generate('admin-1', 2, ['ia', 'redes']),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      // Nada parcial: a tiragem inteira é recusada, não só a linha vazia.
+      expect(tokens).toHaveLength(0);
+      expect(batches).toHaveLength(0);
+    });
+
+    it('deixa passar tipo vazio com confirmação explícita', async () => {
+      const { db, tokens } = fakeDb();
+      const service = new AdminCaptureTokensService(db);
+
+      const { total } = await service.generate('admin-1', 2, ['redes'], {
+        allowEmpty: true,
+      });
+
+      expect(total).toBe(2);
+      expect(tokens).toHaveLength(2);
+    });
+
+    it('só conta professor ATIVO ao decidir se o tipo está vazio', async () => {
+      const { db, filtrosDeVariante } = fakeDb({
+        professorVariants: comTodosOsTipos(),
+      });
+      const service = new AdminCaptureTokensService(db);
+
+      await service.generate('admin-1', 1, ['ia']);
+
+      expect(filtrosDeVariante[0]).toEqual({ professor: { active: true } });
     });
   });
 
@@ -207,10 +267,12 @@ describe('AdminCaptureTokensService', () => {
       const { db } = fakeDb({ tokens: [], batches: [] });
       const service = new AdminCaptureTokensService(db);
 
-      const { lastBatch, variants: rows } = await service.inventory();
+      const { lastBatch, types: rows } = await service.inventory();
 
       expect(lastBatch).toBeNull();
-      expect(rows).toHaveLength(2);
+      // A roda inteira, sempre — inclusive os tipos que nunca tiveram ficha.
+      expect(rows).toHaveLength(TYPE_CYCLE.length);
+      expect(rows.map((r) => r.type)).toEqual([...TYPE_CYCLE]);
       expect(rows[0]).toMatchObject({
         alive: 0,
         redeemedTotal: 0,
@@ -225,13 +287,13 @@ describe('AdminCaptureTokensService', () => {
       expect(filtros.every((w) => w.batch === undefined)).toBe(true);
     });
 
-    it('separa as fichas da última tiragem do total vivo', async () => {
+    it('agrupa o estoque por tipo e separa a última tiragem do total vivo', async () => {
       const { db } = fakeDb({
         tokens: [
-          { variantId: 'var-1', batch: 'antiga', redeemedAt: null },
-          { variantId: 'var-1', batch: 'antiga', redeemedAt: new Date() },
-          { variantId: 'var-1', batch: 'nova', redeemedAt: null },
-          { variantId: 'var-2', batch: 'nova', redeemedAt: null },
+          { type: 'ia', batch: 'antiga', redeemedAt: null },
+          { type: 'ia', batch: 'antiga', redeemedAt: new Date() },
+          { type: 'ia', batch: 'nova', redeemedAt: null },
+          { type: 'algoritmos', batch: 'nova', redeemedAt: null },
         ],
         batches: [
           {
@@ -246,15 +308,31 @@ describe('AdminCaptureTokensService', () => {
       });
       const service = new AdminCaptureTokensService(db);
 
-      const { lastBatch, variants: rows } = await service.inventory();
+      const { lastBatch, types: rows } = await service.inventory();
 
       expect(lastBatch).toMatchObject({ batch: 'nova', createdBy: 'Admin' });
-      const eron = rows.find((r) => r.variantId === 'var-1')!;
+      const ia = rows.find((r) => r.type === 'ia')!;
       // Uma ficha na tiragem nova, mas duas vivas somando as anteriores — é
       // essa diferença que impede o operador de reimprimir sem precisar.
-      expect(eron.lastBatch).toEqual({ total: 1, redeemed: 0 });
-      expect(eron.alive).toBe(2);
-      expect(eron.redeemedTotal).toBe(1);
+      expect(ia.lastBatch).toEqual({ total: 1, redeemed: 0 });
+      expect(ia.alive).toBe(2);
+      expect(ia.redeemedTotal).toBe(1);
+    });
+
+    it('conta professores ativos por tipo e marca os tipos vazios', async () => {
+      const { db } = fakeDb();
+      const service = new AdminCaptureTokensService(db);
+
+      const { types: rows } = await service.inventory();
+
+      // Eron responde por arquitetura e ia; Mário por algoritmos.
+      expect(rows.find((r) => r.type === 'ia')!.professors).toBe(1);
+      expect(rows.find((r) => r.type === 'arquitetura')!.professors).toBe(1);
+      expect(rows.find((r) => r.type === 'algoritmos')!.professors).toBe(1);
+      // Gerar tiragem destes é imprimir papel que não captura nada.
+      const vazios = rows.filter((r) => r.professors === 0).map((r) => r.type);
+      expect(vazios).toContain('redes');
+      expect(vazios).toContain('humanas');
     });
   });
 });

@@ -90,6 +90,14 @@ async function onQRDetected(data) {
       // insistindo num papel que o app nunca vai aceitar de novo.
       if (e?.response?.status === 409) {
         mostrarAviso('Este QR já foi utilizado. Cada ficha vale uma captura.')
+      } else if (e?.response?.data?.code === 'TIPO_SEM_PROFESSOR') {
+        // A ficha NÃO foi gasta — o servidor desfaz a baixa neste caso. Dizer
+        // isso é o ponto do aviso: sem a segunda frase o aluno joga fora um
+        // papel que ainda vale, e não há como devolvê-lo depois.
+        mostrarAviso(
+          'Ainda não há professor deste tipo. Sua ficha continua valendo — ' +
+            'procure a bancada.',
+        )
       }
       // token inválido — ignora silenciosamente, não trava o scanner
       lastScannedData = null

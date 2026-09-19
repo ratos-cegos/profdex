@@ -49,6 +49,25 @@ export function labelFor(types: string[]): string {
   return types.map((t) => TYPE_LABEL[t] ?? t).join(' + ');
 }
 
+/**
+ * A cor canônica de cada tipo, a mesma da roda no front (`data/types.js`).
+ *
+ * Cópia deliberada: o back não tem a paleta (o motor guarda só ids), e a folha
+ * é impressa — puxar cor de outro pacote em build separado só para pintar papel
+ * criaria dependência sem ganho. Se a paleta mudar, muda aqui também.
+ */
+export const TYPE_COLOR: Record<string, string> = {
+  humanas: '#6C4DE0',
+  matematica: '#F03E3E',
+  ia: '#12B886',
+  robotica: '#0CA5B8',
+  arquitetura: '#F5A623',
+  'engenharia-software': '#495057',
+  redes: '#3B5BDB',
+  banco: '#E64980',
+  algoritmos: '#66BB2E',
+};
+
 /** Opções do QR, compartilhadas por PNG, SVG e data-URI: as três saídas de uma
  * mesma ficha têm de ser o mesmo código, com a mesma tolerância a erro. */
 export const QR_OPTIONS = {
@@ -62,18 +81,9 @@ export const MAX_COPIES_CLI = 200;
 /** Teto da tiragem pelo painel: a geração é síncrona dentro do request. */
 export const MAX_COPIES_PANEL = 20;
 
-export interface SheetVariant {
-  id: string;
-  typeKey: string;
-  types: string[];
-  professor: { name: string; slug: string };
-}
-
 export interface SheetEntry {
-  variantId: string;
-  professorName: string;
-  professorSlug: string;
-  types: string[];
+  /** O tipo da roda que a ficha vale. Quem sai é sorteado no scan. */
+  type: string;
   copy: number;
   /** Nome base do arquivo — usado só pela tiragem em disco (CLI). */
   file: string;
@@ -92,22 +102,19 @@ export function generateCaptureToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
-/** Uma entrada por ficha: `variantes × copies`, com token próprio em cada uma. */
+/** Uma entrada por ficha: `tipos × copies`, com token próprio em cada uma. */
 export function buildSheetEntries(
-  variants: SheetVariant[],
+  types: string[],
   copies: number,
 ): SheetEntry[] {
   const entries: SheetEntry[] = [];
-  for (const v of variants) {
+  for (const type of types) {
     for (let copy = 1; copy <= copies; copy++) {
       const token = generateCaptureToken();
       entries.push({
-        variantId: v.id,
-        professorName: v.professor.name,
-        professorSlug: v.professor.slug,
-        types: v.types,
+        type,
         copy,
-        file: `${v.professor.slug}--${v.typeKey}--${copy}`,
+        file: `${type}--${copy}`,
         token,
         tokenHash: hashCaptureToken(token),
         payload: `capture:${token}`,
@@ -137,8 +144,10 @@ export async function qrSvgDataUrl(payload: string): Promise<string> {
 }
 
 /**
- * O nome do professor vem do banco: escapar impede que um `<` no cadastro
- * quebre a folha (ou pior, injete markup na aba aberta pelo painel).
+ * Tudo que entra na folha passa por aqui. O rótulo do tipo hoje sai de um mapa
+ * fixo, mas o id vem do pedido do painel e o `batch` é montado no servidor —
+ * escapar impede que um `<` que escape da allowlist injete markup na aba que o
+ * admin abre para imprimir.
  */
 function escapeHtml(value: string): string {
   return value
@@ -164,14 +173,16 @@ export function renderSheet(
 ): string {
   const cards = entries
     .map((e) => {
-      const nome = escapeHtml(e.professorName);
-      const tipos = escapeHtml(labelFor(e.types));
-      return `    <figure class="card">
-      <img src="${srcFor(e)}" alt="QR Code de captura: ${nome} de ${tipos}" />
+      const tipo = escapeHtml(labelFor([e.type]));
+      // Cor desconhecida (tipo fora da roda) cai no preto do texto: a ficha sai
+      // legível de qualquer jeito em vez de sair com borda invisível.
+      const cor = escapeHtml(TYPE_COLOR[e.type] ?? '#111');
+      return `    <figure class="card" style="border-color: ${cor}">
+      <img src="${srcFor(e)}" alt="QR Code de captura do tipo ${tipo}" />
       <figcaption>
-        <strong>Prof. ${nome}</strong>
-        <span class="types">${tipos}</span>
-        <span class="hint">Ficha ${e.copy}/${copies} — vale uma captura</span>
+        <strong class="type" style="color: ${cor}">${tipo}</strong>
+        <span class="hint">Vale uma captura de um professor deste tipo</span>
+        <span class="hint">Ficha ${e.copy}/${copies}</span>
       </figcaption>
     </figure>`;
     })
@@ -192,14 +203,15 @@ export function renderSheet(
     .card img { width: 100%; height: auto; display: block; }
     figcaption { margin-top: 12px; display: flex; flex-direction: column; gap: 4px; }
     figcaption strong { font-size: 18px; }
-    .types { font-size: 14px; font-weight: 600; color: #111; }
+    /* O tipo é a única informação que a bancada precisa ler de longe. */
+    .type { font-size: 22px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
     .hint { font-size: 12px; color: #555; }
     @media print { body { padding: 0; } p.sub, h1 { display: none; } }
   </style>
 </head>
 <body>
   <h1>ProfDex — fichas de captura</h1>
-  <p class="sub">Tiragem ${escapeHtml(batch)} — ${entries.length} fichas, ${copies} por combinação de tipos. Cada ficha vale uma única captura.</p>
+  <p class="sub">Tiragem ${escapeHtml(batch)} — ${entries.length} fichas, ${copies} por tipo. Cada ficha vale uma única captura, e o professor é sorteado no scan.</p>
   <div class="grid">
 ${cards}
   </div>

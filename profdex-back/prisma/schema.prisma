@@ -354,6 +354,10 @@ model Professor {
   modelUrl     String?            @map("model_url")
   marker1Index Int                @map("marker1_index")
   marker2Index Int                @map("marker2_index")
+  // Professor desativado sai do SORTEIO da captura sem sumir da coleção de quem
+  // já o capturou (ver capture-lottery.ts). O painel que liga e desliga isso é
+  // da tarefa 13; a coluna nasce aqui porque é o sorteio que precisa dela.
+  active       Boolean            @default(true)
   discoveries  Discovery[]
   captures     Capture[]
   variants     ProfessorVariant[]
@@ -391,17 +395,33 @@ model ProfessorVariant {
 //
 // Guardamos apenas o hash: o token em claro só existe no papel impresso.
 model CaptureToken {
-  id         String           @id @default(uuid())
-  variantId  String           @map("variant_id")
-  tokenHash  String           @unique @map("token_hash")
+  id String @id @default(uuid())
+
+  // A ficha vale por TIPO: a bancada escolhe o tema da questão que o aluno
+  // acertou, e QUAL professor daquele tipo ele leva é sorteado no servidor, na
+  // hora do scan (ver captures/capture-lottery.ts).
+  type String?
+
+  // Legado: as fichas impressas ANTES da mudança apontam para uma variante e
+  // continuam entregando exatamente aquele professor, sem sorteio. Papel que
+  // já está no bolso do aluno não pode virar lixo silencioso no meio do evento.
+  variantId String? @map("variant_id")
+
+  tokenHash  String            @unique @map("token_hash")
   batch      String?
-  redeemedAt DateTime?        @map("redeemed_at")
-  redeemedBy String?          @map("redeemed_by")
-  createdAt  DateTime         @default(now()) @map("created_at")
-  variant    ProfessorVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  redeemedAt DateTime?         @map("redeemed_at")
+  redeemedBy String?           @map("redeemed_by")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  variant    ProfessorVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
   capture    Capture?
 
-  // Consulta da tiragem: quantas fichas ainda valem de cada variante.
+  // Os dois são opcionais no schema, mas EXATAMENTE UM é preenchido: ficha nova
+  // tem `type`, ficha legada tem `variantId`. É regra de aplicação — o banco não
+  // tem como expressar "um ou outro" sem um CHECK que o Prisma não gera.
+
+  // Estoque do painel, que hoje conta por tipo.
+  @@index([type, redeemedAt])
+  // Estoque das fichas legadas, por variante.
   @@index([variantId, redeemedAt])
   @@map("capture_tokens")
 }
@@ -422,7 +442,9 @@ model QrBatch {
   createdAt   DateTime @default(now()) @map("created_at")
   copies      Int
   total       Int // fichas geradas nesta tiragem
-  variantIds  String[] @map("variant_ids")
+  // Os tipos que entraram na tiragem. Substituiu `variant_ids`: a ficha passou
+  // a valer por tipo, e o banco foi limpo junto (ver deploy.md).
+  types       String[]
   // SetNull: apagar um admin não pode apagar o registro de que a tiragem
   // existiu — é esse rastro que a tabela serve para guardar.
   createdBy User? @relation("QrBatchAutor", fields: [createdById], references: [id], onDelete: SetNull)
