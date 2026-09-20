@@ -347,17 +347,54 @@ model BattleSlot {
   @@map("battle_slots")
 }
 
+// O professor se descreve sozinho: tipos e arte moram AQUI, não em mapas por
+// slug no código. Antes, cadastrar alguém era editar quatro arquivos e fazer
+// deploy — e qualquer um deles esquecido virava "o professor novo não aparece".
+//
+// `slug` é derivado do nome pelo servidor e IMUTÁVEL: ele nomeia os arquivos de
+// arte no volume de uploads, e renomear em cascata é risco sem retorno.
 model Professor {
-  id           String             @id @default(uuid())
-  name         String
-  slug         String             @unique
-  modelUrl     String?            @map("model_url")
-  marker1Index Int                @map("marker1_index")
-  marker2Index Int                @map("marker2_index")
-  discoveries  Discovery[]
-  captures     Capture[]
-  variants     ProfessorVariant[]
-  battleSlots  BattleSlot[]
+  id   String @id @default(uuid())
+  name String
+  slug String @unique
+
+  // 1 a 2 ids da roda (ver src/battle/engine/types.ts). O teto de 2 é de
+  // produto, não de banco: três tipos levam a escala de dano a 8× e explodem a
+  // tiragem de variantes. Quem impõe é o DTO.
+  types String[]
+
+  // Arte. Caminhos servidos publicamente — `/uploads/<slug>-frente.png` para
+  // quem foi cadastrado pelo painel, `/professors/...` para os três do seed,
+  // cuja arte já vive no build do front. Opcionais no banco porque as linhas
+  // anteriores a esta migration nasceram sem elas; o cadastro exige as três.
+  //
+  // A URL guardada inclui `?v=<timestamp>`: substituir a arte sobrescreve o
+  // arquivo com o MESMO nome, e sem a versão o navegador (e o cache do PWA)
+  // continuaria servindo a imagem antiga por até 30 dias.
+  spriteFrontUrl String? @map("sprite_front_url")
+  spriteBackUrl  String? @map("sprite_back_url")
+  modelUrl       String? @map("model_url")
+
+  // A arte é mista: o Gustavo é pixel art de verdade e precisa de
+  // `image-rendering: pixelated`; os cartoons entram reduzidos e o mesmo filtro
+  // serrilharia as bordas deles. Substituiu o SPRITES_PIXEL_ART do front.
+  pixelArt Boolean @default(false) @map("pixel_art")
+
+  // Professor desativado sai do SORTEIO da captura sem sumir da coleção de quem
+  // já o capturou (ver capture-lottery.ts). É o "remover" do painel: apagar de
+  // verdade cascatearia em captures, discoveries e battle_slots.
+  active Boolean @default(true)
+
+  // Legado da AR por marcador: colunas obrigatórias que o front nunca leu
+  // (nenhuma referência em profdex-front/src). Ganharam default para não
+  // travarem migration nem cadastro, e ficam FORA do formulário.
+  marker1Index Int @default(0) @map("marker1_index")
+  marker2Index Int @default(0) @map("marker2_index")
+
+  discoveries Discovery[]
+  captures    Capture[]
+  variants    ProfessorVariant[]
+  battleSlots BattleSlot[]
 
   @@map("professors")
 }
@@ -391,17 +428,33 @@ model ProfessorVariant {
 //
 // Guardamos apenas o hash: o token em claro só existe no papel impresso.
 model CaptureToken {
-  id         String           @id @default(uuid())
-  variantId  String           @map("variant_id")
-  tokenHash  String           @unique @map("token_hash")
+  id String @id @default(uuid())
+
+  // A ficha vale por TIPO: a bancada escolhe o tema da questão que o aluno
+  // acertou, e QUAL professor daquele tipo ele leva é sorteado no servidor, na
+  // hora do scan (ver captures/capture-lottery.ts).
+  type String?
+
+  // Legado: as fichas impressas ANTES da mudança apontam para uma variante e
+  // continuam entregando exatamente aquele professor, sem sorteio. Papel que
+  // já está no bolso do aluno não pode virar lixo silencioso no meio do evento.
+  variantId String? @map("variant_id")
+
+  tokenHash  String            @unique @map("token_hash")
   batch      String?
-  redeemedAt DateTime?        @map("redeemed_at")
-  redeemedBy String?          @map("redeemed_by")
-  createdAt  DateTime         @default(now()) @map("created_at")
-  variant    ProfessorVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  redeemedAt DateTime?         @map("redeemed_at")
+  redeemedBy String?           @map("redeemed_by")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  variant    ProfessorVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
   capture    Capture?
 
-  // Consulta da tiragem: quantas fichas ainda valem de cada variante.
+  // Os dois são opcionais no schema, mas EXATAMENTE UM é preenchido: ficha nova
+  // tem `type`, ficha legada tem `variantId`. É regra de aplicação — o banco não
+  // tem como expressar "um ou outro" sem um CHECK que o Prisma não gera.
+
+  // Estoque do painel, que hoje conta por tipo.
+  @@index([type, redeemedAt])
+  // Estoque das fichas legadas, por variante.
   @@index([variantId, redeemedAt])
   @@map("capture_tokens")
 }
@@ -422,7 +475,9 @@ model QrBatch {
   createdAt   DateTime @default(now()) @map("created_at")
   copies      Int
   total       Int // fichas geradas nesta tiragem
-  variantIds  String[] @map("variant_ids")
+  // Os tipos que entraram na tiragem. Substituiu `variant_ids`: a ficha passou
+  // a valer por tipo, e o banco foi limpo junto (ver deploy.md).
+  types       String[]
   // SetNull: apagar um admin não pode apagar o registro de que a tiragem
   // existiu — é esse rastro que a tabela serve para guardar.
   createdBy User? @relation("QrBatchAutor", fields: [createdById], references: [id], onDelete: SetNull)

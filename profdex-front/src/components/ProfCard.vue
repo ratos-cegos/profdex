@@ -1,5 +1,6 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { spriteFrenteDe } from '../data/professorArte.js'
 
 const props = defineProps({
   professor: {
@@ -15,7 +16,9 @@ const props = defineProps({
 const emit = defineEmits(['details'])
 
 const imgError = ref(false)
-const cartoonSrc = `/professors/${props.professor.slug}-cartoon.png`
+// A arte vem do professor (banco), não de uma convenção de nome de arquivo:
+// o cartoon e o rosto caíram para a sprite de frente na tarefa 13.
+const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
 </script>
 
 <template>
@@ -152,6 +155,13 @@ const cartoonSrc = `/professors/${props.professor.slug}-cartoon.png`
   height: 64px;
   border-radius: 50%;
   object-fit: cover;
+  /* Ancorado no TOPO, não no centro. Desde que a arte passou a vir do cadastro
+     (tarefa 13), a sprite de frente é o professor de CORPO INTEIRO — a da
+     Tânia tem 289×600. Num círculo de 64px, `cover` centralizado recorta
+     justamente a faixa do meio e entrega um avatar de tronco, sem rosto.
+     Nos cartoons quase quadrados (Mário, Eron) não há corte vertical, então
+     isto não muda nada para eles. */
+  object-position: top;
   border: 2px solid var(--yellow);
 }
 

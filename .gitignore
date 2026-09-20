@@ -3,6 +3,8 @@ node_modules/
 **/.env
 **/dist/
 **/prisma/*.db
+.claude/
+.agents/
 
 temp/
 
@@ -11,3 +13,8 @@ temp/
 # .htpasswd do Adminer é gerado em runtime a partir de ADMINER_AUTH_USER/
 # ADMINER_AUTH_PASSWORD — nunca deve ser versionado
 **/.htpasswd
+
+# Arte enviada pelo painel de professores. Em produção isto é um volume Docker
+# (profdex-uploads); em desenvolvimento, uma pasta local com os arquivos de
+# quem você cadastrou testando.
+/profdex-back/uploads/

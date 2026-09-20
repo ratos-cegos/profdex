@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import api from '../services/api'
-import { normalizeKey } from '../data/professorTypes'
+import { normalizeKey } from '../data/types'
 import { useCapturesStore } from './captures'
 
 export const useProfessorsStore = defineStore('professors', () => {

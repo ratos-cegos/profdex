@@ -164,7 +164,11 @@ function matchups(types) {
   align-items: center;
   gap: 8px;
 }
-.copy__head > span {
+/* `span.pixel`, não `> span`: o nó raiz do StarRating também é um span filho
+   direto daqui, e no Vue ele recebe o atributo de escopo DESTE componente. Um
+   seletor de elemento pintava as estrelas vazias de dourado — as cinco ficavam
+   cheias, e o exemplar aparecia como 5 de 5 qualquer que fosse o IV. */
+.copy__head > span.pixel {
   color: var(--unifil-gold);
   font-size: 7px;
 }

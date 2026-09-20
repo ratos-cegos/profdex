@@ -24,6 +24,7 @@ const abas = [
   // "Fichas" e não "QR Codes": o repositório inteiro chama o objeto de ficha
   // (o script, o comentário do CaptureToken, a folha impressa). QR é o meio.
   { name: 'admin-fichas', label: 'Fichas de Captura' },
+  { name: 'admin-professores', label: 'Professores' },
 ]
 
 const atual = computed(() => route.name)

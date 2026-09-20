@@ -4,6 +4,7 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import { TYPE_CYCLE } from '../../battle/engine/types';
 import { MAX_COPIES_PANEL } from '../capture-sheet';
 import { GenerateSheetDto } from './generate-sheet.dto';
 
@@ -11,8 +12,14 @@ describe('GenerateSheetDto', () => {
   const errorsFor = (payload: unknown) =>
     validate(plainToInstance(GenerateSheetDto, payload));
 
-  it('aceita uma tiragem sem filtro de variante', async () => {
+  it('aceita uma tiragem sem filtro de tipo', async () => {
     await expect(errorsFor({ copies: 3 })).resolves.toHaveLength(0);
+  });
+
+  it('aceita os tipos da roda', async () => {
+    await expect(
+      errorsFor({ copies: 1, types: [...TYPE_CYCLE] }),
+    ).resolves.toHaveLength(0);
   });
 
   it('aceita o teto do painel', async () => {
@@ -30,9 +37,19 @@ describe('GenerateSheetDto', () => {
     },
   );
 
-  it('recusa variantId que não é uuid', async () => {
-    expect(
-      await errorsFor({ copies: 1, variantIds: ['nao-e-uuid'] }),
-    ).not.toHaveLength(0);
+  // A allowlist é o que impede a tiragem de imprimir ficha de um tipo que o
+  // sorteio nunca vai resolver — papel que só devolve erro para o aluno.
+  it.each([
+    ['tipo que saiu da roda', ['logica']],
+    ['tipo inexistente', ['nao-existe']],
+    ['id antigo renomeado', ['ia-ml']],
+    ['tipo válido junto de um inválido', ['ia', 'npi']],
+  ])('recusa %s', async (_caso, types) => {
+    expect(await errorsFor({ copies: 1, types })).not.toHaveLength(0);
+  });
+
+  it('recusa mais tipos do que a roda tem', async () => {
+    const demais = Array.from({ length: TYPE_CYCLE.length + 1 }, () => 'ia');
+    expect(await errorsFor({ copies: 1, types: demais })).not.toHaveLength(0);
   });
 });

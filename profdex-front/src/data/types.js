@@ -19,22 +19,22 @@ export const NEUTRAL = 1
 
 export const TYPE_CYCLE = [
   {
-    id: 'logica',
-    label: 'Lógica',
-    icon: '🧩',
+    id: 'humanas',
+    label: 'Humanas',
+    icon: '📚',
     color: '#6C4DE0',
-    description: 'Prova formal, dedução e abstração pura.',
+    description: 'Ética, impacto social e o lado humano da tecnologia.',
   },
   {
-    id: 'calculo',
-    label: 'Cálculo',
+    id: 'matematica',
+    label: 'Matemática',
     icon: '📐',
     color: '#F03E3E',
-    description: 'Limites, derivadas e otimização contínua.',
+    description: 'Cálculo, estatística e otimização.',
   },
   {
-    id: 'ia-ml',
-    label: 'IA / ML',
+    id: 'ia',
+    label: 'IA',
     icon: '🧠',
     color: '#12B886',
     description: 'Redes neurais, aprendizado e previsão.',
@@ -54,11 +54,12 @@ export const TYPE_CYCLE = [
     description: 'Hardware, pipelines e baixo nível.',
   },
   {
-    id: 'npi',
-    label: 'NPI',
-    icon: '🧑‍🏫',
+    id: 'engenharia-software',
+    label: 'Engenharia de Software',
+    short: 'ENSW',
+    icon: '📋',
     color: '#495057',
-    description: 'Práticas integradoras: projetos, code review e entregas.',
+    description: 'Requisitos, modelagem e processo de entrega.',
   },
   {
     id: 'redes',
@@ -89,16 +90,6 @@ const INDEX_BY_ID = new Map(TYPE_CYCLE.map((t, i) => [t.id, i]))
 export function getType(id) {
   const i = INDEX_BY_ID.get(id)
   return i === undefined ? null : TYPE_CYCLE[i]
-}
-
-// Deriva um id de tipo de forma determinística a partir de uma "semente"
-// (slug/id/nome do professor). Estável: o mesmo professor cai sempre no mesmo
-// tipo, mesmo que a API não traga um campo `type`.
-export function typeIdFromSeed(seed) {
-  const s = String(seed ?? '')
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
-  return TYPE_CYCLE[h % N].id
 }
 
 // Tipo `n` posições adiante na roda (usado p/ garantir tipos distintos).
@@ -142,6 +133,26 @@ export function typeMultiplier(attackType, defenderTypes) {
   return list.reduce((mult, d) => mult * effectiveness(attackType, d), 1)
 }
 
+// Info visual (ícone, label, cor) de uma lista de ids de tipo. É o que as
+// telas recebem do professor e transformam em badge.
+export function typeInfos(types) {
+  return (types ?? []).map(getType).filter(Boolean)
+}
+
+// Normaliza um texto para chave: sem acentos, minúsculo, espaços→hífen. Mora
+// aqui desde que `professorTypes.js` morreu (tarefa 13) — o único uso que
+// sobrou é casar o parâmetro de uma rota (/arena/eron, /arena/mário) com o
+// slug ou o nome que a API devolve.
+export function normalizeKey(text) {
+  return String(text ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 // Agrupa todos os tipos ofensivos pela efetividade contra uma combinação de
 // tipos. A função é pura para que cards, seletor de batalha e testes usem a
 // mesma regra da arena.
@@ -160,8 +171,9 @@ export function fraquezasDe(defenderTypes) {
 // ── Cor legível ─────────────────────────────────────────────────────────────
 // Trazidos da landing page junto com o TypeIcon. Os ícones de tipo herdam
 // `currentColor`, então quem decide a cor é quem os renderiza — e a paleta dos
-// 9 tipos vai de #495057 (NPI, quase preto) a #F5A623 (Arquitetura, laranja
-// claro). Uma cor fixa reprovaria em contraste na metade dos casos.
+// 9 tipos vai de #495057 (Eng. de Software, quase preto) a #F5A623
+// (Arquitetura, laranja claro). Uma cor fixa reprovaria em contraste na metade
+// dos casos.
 
 /**
  * Preto ou branco SOBRE a cor do tipo, escolhido por luminância relativa
@@ -188,9 +200,9 @@ export function onColor(hex) {
  * Versão da cor do tipo que dá para LER sobre o fundo escuro do app.
  *
  * A paleta canônica foi desenhada para PREENCHER áreas, não para virar cor de
- * traço. O NPI (`#495057`) sobre `--bg-deep` (`#121418`) dá 1,7:1 — o ícone
- * sumiria. Este helper clareia até passar em 4,5:1 mantendo o matiz: continua
- * sendo "a cor do NPI", só que visível.
+ * traço. A Eng. de Software (`#495057`) sobre `--bg-deep` (`#121418`) dá 1,7:1
+ * — o ícone sumiria. Este helper clareia até passar em 4,5:1 mantendo o matiz:
+ * continua sendo "a cor da Eng. de Software", só que visível.
  *
  * @param {string} hex Cor canônica do tipo.
  * @param {number} minContrast Contraste mínimo desejado (4.5 = AA para texto).

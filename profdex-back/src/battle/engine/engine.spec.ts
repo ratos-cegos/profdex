@@ -7,16 +7,15 @@ import {
 } from './engine';
 import { buildMoveset, CATEGORY, getMoveById, MOVE_BY_ID } from './moves';
 import { typeMultiplier } from './types';
-import { typesForProfessor } from './professor-types';
 
 describe('engine (port do battleEngine.js)', () => {
-  const attack = getMoveById('modus-ponta-pe')!; // 70 · sempre acerta · sem efeitos
+  const attack = getMoveById('entrega-garantida')!; // 70 · sempre acerta · sem efeitos
 
   function makeState() {
     return {
       player: createCombatant({
         name: 'A',
-        types: ['logica'],
+        types: ['redes'],
         moves: [attack],
       }),
       enemy: createCombatant({
@@ -34,7 +33,7 @@ describe('engine (port do battleEngine.js)', () => {
     // ranqueado, a sorte da captura influencia, não decide. Ver iv-balance.spec.
     const combatant = createCombatant({
       name: 'IV',
-      types: ['logica'],
+      types: ['humanas'],
       ivs: { ivHp: 15, ivRigor: 12, ivDidatica: 8, ivRaciocinio: 4 },
     });
     expect(combatant.maxHp).toBe(125); // 120 + 5
@@ -49,13 +48,13 @@ describe('engine (port do battleEngine.js)', () => {
 
     const events = performMove(state, 'player', attack);
 
-    // 70 poder × 0.4 escala × 1.5 STAB (lógica→lógica) × ~1 variância = ~42
+    // 70 poder × 0.4 escala × 1.5 STAB (redes→redes) × ~1 variância = ~42
     const damage = events.find((e) => e.type === 'damage');
     expect(damage).toBeDefined();
     expect(state.enemy.hp).toBeLessThan(state.enemy.maxHp);
     expect(events[0]).toEqual({
       type: 'message',
-      text: 'A usou Modus Ponta-Pé!',
+      text: 'A usou Entrega Garantida!',
     });
   });
 
@@ -115,28 +114,17 @@ describe('dados portados (paridade com o front)', () => {
   });
 
   it('type wheel: 2 seguintes fortes, 2 anteriores fracos', () => {
-    expect(typeMultiplier('logica', ['calculo'])).toBe(2);
-    expect(typeMultiplier('logica', ['ia-ml'])).toBe(2);
-    expect(typeMultiplier('logica', ['algoritmos'])).toBe(0.5);
-    expect(typeMultiplier('logica', ['robotica'])).toBe(1);
+    expect(typeMultiplier('humanas', ['matematica'])).toBe(2);
+    expect(typeMultiplier('humanas', ['ia'])).toBe(2);
+    expect(typeMultiplier('humanas', ['algoritmos'])).toBe(0.5);
+    expect(typeMultiplier('humanas', ['robotica'])).toBe(1);
     // tipo duplo: produto (4× no melhor caso)
-    expect(typeMultiplier('logica', ['calculo', 'ia-ml'])).toBe(4);
-  });
-
-  it('resolves professor types by slug with stable fallback', () => {
-    expect(typesForProfessor({ slug: 'eron' })).toEqual([
-      'arquitetura',
-      'ia-ml',
-    ]);
-    expect(typesForProfessor({ slug: 'mario' })).toEqual(['algoritmos']);
-    const fallback = typesForProfessor({ slug: 'desconhecido-xyz' });
-    expect(fallback).toHaveLength(1);
-    expect(typesForProfessor({ slug: 'desconhecido-xyz' })).toEqual(fallback);
+    expect(typeMultiplier('humanas', ['matematica', 'ia'])).toBe(4);
   });
 
   it('buildMoveset returns 4 moves with at least one utility', () => {
     for (let i = 0; i < 20; i++) {
-      const deck = buildMoveset(['arquitetura', 'ia-ml']);
+      const deck = buildMoveset(['arquitetura', 'ia']);
       expect(deck).toHaveLength(4);
       expect(deck.some((m) => m.category !== CATEGORY.ATAQUE)).toBe(true);
     }

@@ -8,7 +8,11 @@ export class ProfessorsService {
 
   async findAll(userId: string) {
     const [professors, discoveries, captures] = await Promise.all([
+      // Só os ATIVOS: desativar um professor no painel o tira da Profdex e do
+      // sorteio de captura. Quem já o capturou continua com o exemplar — a
+      // coleção do aluno vem de `captures`, que não passa por este filtro.
       this.prisma.professor.findMany({
+        where: { active: true },
         orderBy: { name: 'asc' },
         select: PUBLIC_PROFESSOR_SELECT,
       }),

@@ -67,8 +67,8 @@ const secondsLeft = computed(() => {
   return Math.max(0, Math.ceil((deadline - now.value) / 1000))
 })
 
-// Os tipos de cada exemplar, não os do professor: um Eron de IA/ML e um de
-// Arquitetura + IA/ML aparecem com badges diferentes.
+// Os tipos de cada exemplar, não os do professor: um Eron de IA e um de
+// Arquitetura + IA aparecem com badges diferentes.
 function typesOf(professor) {
   const combinacoes = new Set()
   for (const exemplar of professor.exemplares) {
@@ -154,7 +154,7 @@ async function escolherLead(membro) {
         @click="removerSlot(i - 1)"
       >
         <template v-if="time[i - 1]">
-          <ProfessorFace class="slot__face" :slug="time[i - 1].professor.slug" :name="time[i - 1].professor.name" />
+          <ProfessorFace class="slot__face" :professor="time[i - 1].professor" />
           <span class="slot__remover" aria-hidden="true">✕</span>
         </template>
         <span v-else class="pixel slot__vazio">{{ i }}</span>
@@ -188,7 +188,7 @@ async function escolherLead(membro) {
                 :disabled="battle.pvp.youPicked || enviando"
                 @click="escolherLead(m)"
               >
-                <ProfessorFace class="lead-card__face" :slug="m.professor.slug" :name="m.professor.name" />
+                <ProfessorFace class="lead-card__face" :professor="m.professor" />
                 <span class="pixel lead-card__nome">{{ m.professor.name }}</span>
                 <TypeBadges :types="m.types" />
                 <span class="lead-card__cta">Entrar primeiro</span>
@@ -201,7 +201,7 @@ async function escolherLead(membro) {
           <h2 class="pixel preview__titulo">TIME DE {{ battle.pvp.foe?.name?.toUpperCase() }}</h2>
           <ul class="preview__lista">
             <li v-for="(m, i) in battle.pvp.foe?.team ?? []" :key="i" class="preview__foe">
-              <ProfessorFace class="lead-card__face" :slug="m.professor.slug" :name="m.professor.name" />
+              <ProfessorFace class="lead-card__face" :professor="m.professor" />
               <span class="pixel lead-card__nome">{{ m.professor.name }}</span>
               <TypeBadges :types="m.types" />
             </li>
@@ -231,7 +231,7 @@ async function escolherLead(membro) {
               @click="abrir(professor)"
             >
               <span class="pick-card__avatar">
-                <ProfessorFace :slug="professor.slug" :name="professor.name" />
+                <ProfessorFace :professor="professor" />
                 <span v-if="professor.exemplares.length > 1" class="pick-card__count pixel">
                   ×{{ professor.exemplares.length }}
                 </span>
@@ -591,6 +591,8 @@ async function escolherLead(membro) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* Topo: sprite de corpo inteiro num avatar pequeno — ver ProfCard.vue. */
+  object-position: top;
 }
 
 .pick-card__name {

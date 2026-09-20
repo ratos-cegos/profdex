@@ -96,7 +96,7 @@ escreve SQL, é o da coluna da direita que vale:
 | `QuizAttempt` | `quiz_attempts` | Tentativas na bancada |
 | `PasswordResetToken` | `password_reset_tokens` | Hashes de link de redefinição |
 | `Battle` | `battles` | Histórico de batalhas PvP |
-| `Professor` | `professors` | Os professores |
+| `Professor` | `professors` | Os professores: nome, tipos, arte, ativo |
 | `ProfessorVariant` | `professor_variants` | Cada combinação de tipos de um professor |
 | `CaptureToken` | `capture_tokens` | Fichas de QR impressas (hash + uso único) |
 | `Discovery` | `discoveries` | Quem já viu qual professor |
@@ -105,6 +105,33 @@ escreve SQL, é o da coluna da direita que vale:
 Existe também `_prisma_migrations`, de controle do Prisma. **Nunca mexa nela** —
 apagar linhas dali faz o Prisma achar que migrations já aplicadas estão
 pendentes.
+
+## O professor se descreve sozinho
+
+Desde a tarefa 13, `professors` guarda tudo que o app sabe sobre um professor:
+
+| Coluna | O quê |
+|---|---|
+| `types` | 1 a 2 ids da roda. É daqui que saem as variantes e o combatente do PvP |
+| `sprite_front_url` | Arte de frente — Profdex, scan, arena, rosto da ficha |
+| `sprite_back_url` | Arte de costas — quando o professor é quem o aluno controla |
+| `model_url` | `.glb` da tela de AR |
+| `pixel_art` | A arte é pixel art de verdade? (liga `image-rendering: pixelated`) |
+| `active` | Desativado sai da Profdex e do sorteio, sem perder exemplares |
+
+Antes disso, tipos e arte viviam em **quatro arquivos hardcoded por slug** (dois
+no backend, dois no frontend) e cadastrar um professor exigia commit e deploy.
+Os arquivos foram apagados: quem precisa de tipo lê `professor.types`.
+
+As URLs carregam `?v=<timestamp>`, que muda quando a arte é substituída — sem
+isso o navegador e o cache do PWA serviriam a imagem antiga por até 30 dias.
+As colunas `marker1_index`/`marker2_index` são legado da AR por marcador e
+nenhuma tela as lê.
+
+**Nunca apague um professor.** Cinco tabelas apontam para ele (`captures`,
+`discoveries`, `battle_slots`, `professor_variants` e, por tabela, as fichas):
+o delete cascatearia na coleção dos alunos e no histórico de ranking. O
+"remover" do painel é `active = false`.
 
 ## Por que não dá para simplesmente apagar `users`
 

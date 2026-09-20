@@ -31,7 +31,7 @@ describe('balanceamento dos IVs', () => {
 
   function duelar(a: Ivs, b: Ivs): 'A' | 'B' | 'empate' {
     // Espelho perfeito: mesmos tipos e mesmo deck. A única variável é o IV.
-    const types = ['logica'];
+    const types = ['humanas'];
     const moves = buildMoveset(types);
     const state = {
       player: createCombatant({ name: 'A', types, moves, ivs: a }),
@@ -68,14 +68,14 @@ describe('balanceamento dos IVs', () => {
     expect(ivBonus(15)).toBe(IV_BONUS_MAX);
     expect(ivBonus(undefined)).toBe(0);
     // O banco guarda a faixa larga; quem estreita é o motor.
-    expect(createCombatant({ name: 'x', types: ['logica'], ivs: { ivHp: 15 } }).maxHp).toBe(125);
+    expect(createCombatant({ name: 'x', types: ['humanas'], ivs: { ivHp: 15 } }).maxHp).toBe(125);
   });
 
   it('não dá iniciativa permanente a quem tem 1 ponto a mais de velocidade', () => {
     // Este é o caso que quebrou antes: com ordem de turno em degrau, 1 ponto
     // de diferença garantia agir primeiro em todos os turnos, e valia ~69%.
-    const rapido = createCombatant({ name: 'A', types: ['logica'], ivs: { ...ZERO, ivRaciocinio: 8 } });
-    const lento = createCombatant({ name: 'B', types: ['logica'], ivs: { ...ZERO, ivRaciocinio: 7 } });
+    const rapido = createCombatant({ name: 'A', types: ['humanas'], ivs: { ...ZERO, ivRaciocinio: 8 } });
+    const lento = createCombatant({ name: 'B', types: ['humanas'], ivs: { ...ZERO, ivRaciocinio: 7 } });
     const state = { player: rapido, enemy: lento } as BattleState;
 
     let primeiroDoA = 0;
@@ -90,8 +90,8 @@ describe('balanceamento dos IVs', () => {
 
   it('mantém a velocidade relevante: 0 vs 15 pende, mas não decide', () => {
     const state = {
-      player: createCombatant({ name: 'A', types: ['logica'], ivs: { ...ZERO, ivRaciocinio: 15 } }),
-      enemy: createCombatant({ name: 'B', types: ['logica'], ivs: ZERO }),
+      player: createCombatant({ name: 'A', types: ['humanas'], ivs: { ...ZERO, ivRaciocinio: 15 } }),
+      enemy: createCombatant({ name: 'B', types: ['humanas'], ivs: ZERO }),
     } as BattleState;
 
     // Determinístico de propósito: a probabilidade É a regra, e conferi-la
@@ -112,8 +112,8 @@ describe('balanceamento dos IVs', () => {
     // Guarda de fumaça: garante que a probabilidade acima é mesmo usada, e não
     // apenas calculável. Margem larga, para não virar teste instável.
     const state = {
-      player: createCombatant({ name: 'A', types: ['logica'], ivs: { ...ZERO, ivRaciocinio: 15 } }),
-      enemy: createCombatant({ name: 'B', types: ['logica'], ivs: ZERO }),
+      player: createCombatant({ name: 'A', types: ['humanas'], ivs: { ...ZERO, ivRaciocinio: 15 } }),
+      enemy: createCombatant({ name: 'B', types: ['humanas'], ivs: ZERO }),
     } as BattleState;
 
     let primeiroDoA = 0;

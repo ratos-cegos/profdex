@@ -15,7 +15,7 @@ import {
 test('IVs alteram vida e atributos, com o teto de bônus do ranqueado', () => {
   const combatant = createCombatant({
     name: 'Exemplar',
-    types: ['logica'],
+    types: ['humanas'],
     ivs: { ivHp: 15, ivRigor: 12, ivDidatica: 8, ivRaciocinio: 4 },
   })
   // O banco guarda 0–15; o combate usa 0–5.
@@ -36,8 +36,8 @@ test('velocidade pesa a moeda da ordem de turno, não decide sozinha', () => {
   // Antes o empate ia sempre para o jogador, o que dava iniciativa permanente
   // contra o bot (que não tem IVs). Agora é probabilístico, igual ao servidor.
   const state = {
-    player: createCombatant({ name: 'A', types: ['logica'], ivs: { ivRaciocinio: 15 } }),
-    enemy: createCombatant({ name: 'B', types: ['logica'] }),
+    player: createCombatant({ name: 'A', types: ['humanas'], ivs: { ivRaciocinio: 15 } }),
+    enemy: createCombatant({ name: 'B', types: ['humanas'] }),
   }
 
   // Determinístico: a probabilidade é a regra. Amostrar aqui deixaria o teste

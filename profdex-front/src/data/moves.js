@@ -103,18 +103,18 @@ const ACC = { SEMPRE: 1, ALTA: 0.95, PADRAO: 0.9, BAIXA: 0.6, MUITO_BAIXA: 0.5 }
 // ── Movepool por tipo ───────────────────────────────────────────────────────
 // A ordem das chaves segue a roda de TYPE_CYCLE.
 export const MOVES_BY_TYPE = {
-  logica: [
-    { id: 'modus-ponta-pe', name: 'Modus Ponta-Pé', category: CATEGORY.ATAQUE, power: 70, accuracy: ACC.SEMPRE, raw: '70 · nunca erra', description: 'Lógica proposicional: se p→q e p é verdade, então q — a conclusão chega inevitável.', effects: [] },
-    { id: 'prova-que-doi', name: 'Prova que Dói', category: CATEGORY.ATAQUE, power: 85, accuracy: ACC.PADRAO, raw: '85 · 10% travar', description: 'Prova por contradição (reductio ad absurdum): assume o oposto até tudo explodir.', effects: [paralyze(0.1)] },
-    { id: 'loop-sem-fim-de-papo', name: 'Loop Sem Fim de Papo', category: CATEGORY.ATAQUE, power: 35, accuracy: ACC.PADRAO, raw: 'cresce/turno', description: 'Recursão sem caso-base: a função se chama pra sempre e o dano se acumula.', effects: [grow(15)] },
-    { id: 'pra-todo-mundo', name: 'Pra Todo Mundo (∀)', category: CATEGORY.ATAQUE, power: 60, accuracy: ACC.SEMPRE, raw: '60 · efeito garantido', description: 'Quantificador universal: o "para todo" não abre exceção — atinge sem escapatória.', effects: [] },
-    { id: 'verdade-absoluta', name: 'Verdade Absoluta', category: CATEGORY.BUFF, power: null, accuracy: 1, raw: '+Defesa', description: 'Axioma: ponto de partida que não se questiona; blinda a defesa do professor.', effects: [buff(STAT.DIDATICA)] },
-    { id: 'cai-na-real', name: 'Cai na Real', category: CATEGORY.DEBUFF, power: null, accuracy: 1, raw: '-Ataque alvo', description: 'Tabela-verdade: expõe onde o argumento do oponente é falso e enfraquece seu ataque.', effects: [debuff(STAT.RIGOR)] },
-    { id: 'conversa-mole', name: 'Conversa Mole', category: CATEGORY.STATUS, power: null, accuracy: 1, raw: 'confunde', description: 'Falácia: argumento inválido que parece válido; o alvo se confunde e pode se atingir.', effects: [confuse(1)] },
-    { id: 'vira-o-nao', name: 'Vira o Não', category: CATEGORY.DEFESA, power: null, accuracy: 1, raw: 'reflete', description: 'Operador de negação (NOT): inverte o próximo golpe e devolve parte dele.', effects: [shield('reflect', 0.5)] },
+  humanas: [
+    { id: 'multa-da-lgpd', name: 'Multa da LGPD', category: CATEGORY.ATAQUE, power: 85, accuracy: ACC.PADRAO, raw: '85', description: 'Sanção da LGPD: tratar dado pessoal sem base legal custa caro, e a multa chega de uma vez.', effects: [] },
+    { id: 'vies-escondido', name: 'Viés Escondido', category: CATEGORY.ATAQUE, power: 75, accuracy: ACC.PADRAO, raw: '75 · 15% confundir', description: 'Viés algorítmico: o modelo herda o preconceito dos dados e decide errado com cara de neutro.', effects: [confuse(0.15)] },
+    { id: 'treplica-sem-do', name: 'Tréplica sem Dó', category: CATEGORY.ATAQUE, power: 80, accuracy: ACC.PADRAO, raw: '80 · combo', description: 'Debate regrado: a tréplica fecha a argumentação em cima de tudo que já foi dito.', effects: [comboBonus()] },
+    { id: 'dilema-do-bonde', name: 'Dilema do Bonde', category: CATEGORY.ATAQUE, power: 100, accuracy: ACC.BAIXA, raw: '100 · precisão baixa', description: 'Experimento mental da ética: toda escolha machuca alguém, e nenhuma delas é segura.', effects: [] },
+    { id: 'revisao-por-pares', name: 'Revisão por Pares', category: CATEGORY.DEBUFF, power: null, accuracy: 1, raw: '-Ataque alvo', description: 'Peer review: outro pesquisador confere o método e derruba o que não se sustenta.', effects: [debuff(STAT.RIGOR)] },
+    { id: 'direito-de-resposta', name: 'Direito de Resposta', category: CATEGORY.DEFESA, power: null, accuracy: 1, raw: 'reflete', description: 'Direito de resposta: a acusação volta para quem fez, na mesma proporção em que saiu.', effects: [shield('reflect', 0.5)] },
+    { id: 'letra-miuda', name: 'Letra Miúda', category: CATEGORY.STATUS, power: null, accuracy: 1, raw: 'dano/turno', description: 'Termo de uso que ninguém lê: a cláusula escondida vai cobrando o preço a cada turno.', effects: [dot()] },
+    { id: 'roda-de-conversa', name: 'Roda de Conversa', category: CATEGORY.CURA, power: null, accuracy: 1, raw: 'limpa status +Cafeína', description: 'Escuta ativa: parar para ouvir o grupo desfaz o mal-entendido e devolve o fôlego.', effects: [cleanse(), heal(0.2)] },
   ],
 
-  calculo: [
+  matematica: [
     { id: 'area-da-treta', name: 'Área da Treta', category: CATEGORY.ATAQUE, power: 90, accuracy: ACC.PADRAO, raw: '90', description: 'Integral definida: soma a área sob a curva e despeja todo o acúmulo de uma vez.', effects: [] },
     { id: 'efeito-domino', name: 'Efeito Dominó', category: CATEGORY.ATAQUE, power: 80, accuracy: ACC.PADRAO, raw: '80 · combo', description: 'Regra da cadeia: derivada de função composta; encadeia dano se vier após outro efeito.', effects: [comboBonus()] },
     { id: 'tende-ao-perrengue', name: 'Tende ao Perrengue', category: CATEGORY.ATAQUE, power: 40, accuracy: ACC.PADRAO, raw: 'cresce/turno', description: 'Limite ao infinito (x→∞): o dano cresce sem parar conforme os turnos passam.', effects: [grow(15)] },
@@ -125,7 +125,7 @@ export const MOVES_BY_TYPE = {
     { id: 'regra-do-hospital', name: 'Regra do Hospital', category: CATEGORY.CURA, power: null, accuracy: 1, raw: '+Cafeína', description: "Regra de L'Hôpital: resolve a indeterminação 0/0 e recupera o fôlego.", effects: [heal(0.3)] },
   ],
 
-  'ia-ml': [
+  ia: [
     { id: 'descida-ladeira-abaixo', name: 'Descida Ladeira Abaixo', category: CATEGORY.ATAQUE, power: 75, accuracy: ACC.PADRAO, raw: '75 · +precisão/uso', description: 'Gradiente descendente: minimiza o erro passo a passo; melhora a mira a cada uso.', effects: [accuracyGain()] },
     { id: 'decoreba', name: 'Decoreba', category: CATEGORY.ATAQUE, power: 100, accuracy: ACC.BAIXA, raw: '100 · precisão baixa', description: 'Overfitting: decorou os dados de treino; bate forte mas erra o que é novo.', effects: [] },
     { id: 'puxao-de-sinapse', name: 'Puxão de Sinapse', category: CATEGORY.BUFF, power: null, accuracy: 1, raw: '+Ataque/turno', description: 'Rede neural: camadas que treinam e aumentam o ataque a cada turno.', effects: [growPerTurn(STAT.RIGOR)] },
@@ -158,15 +158,15 @@ export const MOVES_BY_TYPE = {
     { id: 'cooler-no-talo', name: 'Cooler no Talo', category: CATEGORY.CURA, power: null, accuracy: 1, raw: 'limpa status +Cafeína', description: 'Dissipador de calor: resfria o sistema, remove status e recupera um pouco de vida.', effects: [cleanse(), heal(0.2)] },
   ],
 
-  npi: [
-    { id: 'demo-da-semana', name: 'Demo da Semana', category: CATEGORY.ATAQUE, power: 80, accuracy: ACC.ALTA, raw: '80 · alta precisão', description: 'Apresentação semanal de projetos: entrega um resultado bem ensaiado e certeiro.', effects: [] },
-    { id: 'deu-merge', name: 'Deu Merge', category: CATEGORY.ATAQUE, power: 85, accuracy: ACC.PADRAO, raw: '85 · combo', description: 'Integração de código (merge): junta o trabalho de todos; dano extra com efeito ativo.', effects: [comboBonus()] },
-    { id: 'corre-que-e-entrega', name: 'Corre que é Entrega!', category: CATEGORY.ATAQUE, power: 100, accuracy: ACC.PADRAO, raw: '100 · recuo', description: 'Deadline do projeto: sob pressão do prazo, despeja tudo — poderoso, mas exaure.', effects: [recoil(0.25)] },
-    { id: 'puxao-de-orelha', name: 'Puxão de Orelha', category: CATEGORY.DEBUFF, power: null, accuracy: 1, raw: '-Velocidade alvo', description: 'Feedback duro do instrutor: a cobrança direta desconcentra e atrasa o adversário.', effects: [debuff(STAT.RACIOCINIO)] },
-    { id: 'revisao-de-codigo', name: 'Revisão de Código', category: CATEGORY.DEBUFF, power: null, accuracy: 1, raw: '-Ataque alvo', description: 'Code review: aponta cada falha e antipadrão no código do oponente, enfraquecendo-o.', effects: [debuff(STAT.RIGOR)] },
-    { id: 'apadrinha-ai', name: 'Apadrinha Aí', category: CATEGORY.BUFF, power: null, accuracy: 1, raw: '+Ataque/turno', description: 'Apadrinhamento: um veterano orienta o aluno, que fica mais forte a cada turno.', effects: [growPerTurn(STAT.RIGOR)] },
-    { id: 'programacao-em-dupla', name: 'Programação em Dupla', category: CATEGORY.DEFESA, power: null, accuracy: 1, raw: '+Defesa', description: 'Pair programming: dois na mesma tela, um revisa e o outro digita — a defesa dobra.', effects: [buff(STAT.DIDATICA)] },
-    { id: 'caca-ao-bug', name: 'Caça ao Bug', category: CATEGORY.CURA, power: null, accuracy: 1, raw: 'limpa status +Cafeína', description: 'Debugging: elimina o erro na raiz, removendo efeitos negativos e recuperando fôlego.', effects: [cleanse(), heal(0.2)] },
+  'engenharia-software': [
+    { id: 'escopo-que-cresceu', name: 'Escopo que Cresceu', category: CATEGORY.ATAQUE, power: 35, accuracy: ACC.PADRAO, raw: 'cresce/turno', description: 'Scope creep: o escopo incha a cada reunião e o estrago cresce junto com ele.', effects: [grow(15)] },
+    { id: 'juros-da-divida-tecnica', name: 'Juros da Dívida Técnica', category: CATEGORY.ATAQUE, power: 110, accuracy: ACC.PADRAO, raw: '110 · recuo', description: 'Dívida técnica: a gambiarra de ontem cobra juros hoje, e quem escreveu paga junto.', effects: [recoil(0.25)] },
+    { id: 'review-da-sprint', name: 'Review da Sprint', category: CATEGORY.ATAQUE, power: 85, accuracy: ACC.PADRAO, raw: '85 · combo', description: 'Sprint review: o time mostra o incremento pronto e cada entrega anterior soma no total.', effects: [comboBonus()] },
+    { id: 'requisito-de-ultima-hora', name: 'Requisito de Última Hora', category: CATEGORY.ATAQUE, power: 90, accuracy: ACC.PADRAO, raw: '90 · 15% travar', description: 'Mudança de requisito no fim do ciclo: chega sem aviso e pode travar o time inteiro.', effects: [paralyze(0.15)] },
+    { id: 'diagrama-de-classes', name: 'Diagrama de Classes', category: CATEGORY.BUFF, power: null, accuracy: 1, raw: '+Defesa', description: 'Modelagem em UML: a estrutura desenhada antes de codar é o que sustenta o sistema.', effects: [buff(STAT.DIDATICA)] },
+    { id: 'levantou-os-requisitos', name: 'Levantou os Requisitos', category: CATEGORY.BUFF, power: null, accuracy: 1, raw: '+Ataque/turno', description: 'Elicitação de requisitos: entender o problema de verdade faz o ataque acertar o alvo certo.', effects: [growPerTurn(STAT.RIGOR)] },
+    { id: 'reuniao-que-podia-ser-email', name: 'Reunião que Podia Ser E-mail', category: CATEGORY.DEBUFF, power: null, accuracy: 1, raw: '-Velocidade alvo', description: 'Cerimônia mal dimensionada: consome a hora do time e atrasa a entrega do adversário.', effects: [debuff(STAT.RACIOCINIO)] },
+    { id: 'refatorou-geral', name: 'Refatorou Geral', category: CATEGORY.CURA, power: null, accuracy: 1, raw: '+Cafeína/stats', description: 'Refatoração: reescreve sem mudar o comportamento, paga a dívida e recupera o fôlego.', effects: [heal(0.25), resetDebuffs()] },
   ],
 
   redes: [

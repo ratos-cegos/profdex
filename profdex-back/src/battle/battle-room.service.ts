@@ -14,7 +14,7 @@ import {
   upkeep,
 } from './engine/engine';
 import { buildMoveset, getMoveById, Move } from './engine/moves';
-import { typesForProfessor } from './engine/professor-types';
+import { PUBLIC_PROFESSOR_SELECT } from '../professors/public-professor.select';
 import { RatingOutcome, RatingService } from './rating.service';
 import {
   Action,
@@ -246,7 +246,9 @@ export class BattleRoomService implements OnModuleDestroy {
           ivRigor: true,
           ivDidatica: true,
           ivRaciocinio: true,
-          professor: { select: { id: true, slug: true, name: true } },
+          // A allowlist pública inteira: este objeto atravessa o socket até a
+          // arena do adversário, que desenha o professor com a arte do banco.
+          professor: { select: PUBLIC_PROFESSOR_SELECT },
           variant: { select: { types: true } },
         },
       })
@@ -277,11 +279,13 @@ export class BattleRoomService implements OnModuleDestroy {
     const byId = new Map(captures.map((c) => [c.id, c]));
     me.team = captureIds.map((id) => {
       const capture = byId.get(id)!;
-      // Tipos e deck vêm gravados na captura. O fallback cobre exemplares
-      // anteriores a este modelo, que o seed ainda não corrigiu.
+      // Tipos e deck vêm gravados na captura — é a variante que o aluno pegou,
+      // não os tipos atuais do professor: editar a tabela não pode reescrever o
+      // exemplar. O fallback cobre capturas anteriores a este modelo, que o
+      // seed ainda não corrigiu, e aí sim vale o que o professor diz hoje.
       const types = capture.variant?.types?.length
         ? capture.variant.types
-        : typesForProfessor(capture.professor);
+        : capture.professor.types;
       const moves = capture.moves
         .map((moveId) => getMoveById(moveId))
         .filter((move): move is Move => move !== null);

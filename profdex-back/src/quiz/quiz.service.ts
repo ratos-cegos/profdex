@@ -11,7 +11,6 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { typesForProfessor } from '../battle/engine/professor-types';
 import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -49,7 +48,17 @@ interface ProfessorRow {
   id: string;
   name: string;
   slug: string;
+  types: string[];
 }
+
+/**
+ * Só professor ATIVO é sugerido ao aluno que acerta: mandar alguém atrás de um
+ * professor fora de circulação é mandá-lo para uma ficha que não captura nada.
+ */
+const PROFESSOR_DO_TEMA_SELECT = {
+  where: { active: true },
+  select: { id: true, name: true, slug: true, types: true },
+} as const;
 
 /**
  * Quiz de bancada do evento.
@@ -119,9 +128,7 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
         where: { active: true },
         _count: { _all: true },
       }),
-      this.prisma.professor.findMany({
-        select: { id: true, name: true, slug: true },
-      }),
+      this.prisma.professor.findMany(PROFESSOR_DO_TEMA_SELECT),
     ]);
 
     const porTema = new Map(contagens.map((c) => [c.theme, c._count._all]));
@@ -286,9 +293,9 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
 
     this.registrarMetricas(session.userId, acertou);
 
-    const professores = await this.prisma.professor.findMany({
-      select: { id: true, name: true, slug: true },
-    });
+    const professores = await this.prisma.professor.findMany(
+      PROFESSOR_DO_TEMA_SELECT,
+    );
 
     return {
       correct: acertou,
@@ -562,7 +569,7 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
 
   private professoresDoTema(professores: ProfessorRow[], theme: string) {
     return professores
-      .filter((p) => typesForProfessor(p).includes(theme))
+      .filter((p) => p.types.includes(theme))
       .map(({ name, slug }) => ({ name, slug }));
   }
 

@@ -4,30 +4,7 @@ import {
   backfillCaptureVariants,
   ensureProfessorVariants,
 } from '../professors/professor-variants';
-
-const PROFESSORS = [
-  {
-    id: 'prof-mario',
-    name: 'Mario',
-    slug: 'mario',
-    marker1Index: 0,
-    marker2Index: 1,
-  },
-  {
-    id: 'prof-eron',
-    name: 'Eron',
-    slug: 'eron',
-    marker1Index: 2,
-    marker2Index: 3,
-  },
-  {
-    id: 'prof-gustavo',
-    name: 'Gustavo',
-    slug: 'gustavo',
-    marker1Index: 4,
-    marker2Index: 5,
-  },
-];
+import { SEED_PROFESSORS } from '../professors/seed-professors';
 
 @Injectable()
 export class SeedService implements OnModuleInit {
@@ -39,14 +16,16 @@ export class SeedService implements OnModuleInit {
     try {
       const count = await this.prisma.professor.count();
       if (count === 0) {
-        for (const prof of PROFESSORS) {
+        for (const prof of SEED_PROFESSORS) {
           await this.prisma.professor.upsert({
             where: { slug: prof.slug },
             update: {},
             create: prof,
           });
         }
-        this.logger.log(`Banco populado com ${PROFESSORS.length} professores`);
+        this.logger.log(
+          `Banco populado com ${SEED_PROFESSORS.length} professores`,
+        );
       }
 
       // Fora do `if`: professor cadastrado antes deste modelo também precisa
