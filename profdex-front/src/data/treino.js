@@ -16,5 +16,24 @@
  */
 export const TREINO_ENEMY_KEY = 'gustavo'
 
+/** O boneco que o jogador controla na arena de treino. */
+export const PLAYER_KEY = 'gustavo'
+
 /** Nome exibido quando a lista de professores ainda não carregou. */
 export const TREINO_ENEMY_FALLBACK_NAME = 'Gustavo'
+
+/**
+ * O que a arena assume quando a lista de professores não veio (backend fora do
+ * ar em dev, ou F5 antes do preload terminar).
+ *
+ * Existe porque a batalha monta os combatentes no `setup`: sem tipo não há deck
+ * de golpes, e a tela quebraria em vez de degradar. É o ÚNICO lugar do front
+ * que ainda cita arte e tipo de um professor específico — e só como último
+ * recurso, para uma tela de treino que não vale ranking.
+ */
+export const PLAYER_FALLBACK = {
+  types: ['arquitetura'],
+  spriteFrontUrl: '/professors/gustavo-frente.png',
+  spriteBackUrl: '/professors/gustavo-costas.png',
+  pixelArt: true,
+}

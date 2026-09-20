@@ -3,12 +3,11 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import BancoDeReservas from '../components/BancoDeReservas.vue'
 import BattleHpBar from '../components/BattleHpBar.vue'
-import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
 import DamagePopup from '../components/DamagePopup.vue'
 import MoveButton from '../components/MoveButton.vue'
 import ProfessorFace from '../components/ProfessorFace.vue'
 import { useBattleStore } from '../stores/battle'
-import { spriteUrlForProfessor } from '../data/professorSprites'
+import { spriteFrenteDe } from '../data/professorArte'
 
 // Arena PvP: o servidor resolve tudo; esta tela só envia a intenção de golpe
 // e ANIMA a fila de eventos de cada rodada (mesma linguagem do useBattle.js).
@@ -133,8 +132,8 @@ async function entrarCom(membro) {
 // Sprites 2D, não .glb: dois modelos de dezenas de MB por partida faziam o
 // Safari do iPhone descartar a aba no meio da batalha.
 // Ver docs/BUG-BATALHA-TRAVANDO.md.
-const youSprite = computed(() => spriteUrlForProfessor(pvp.value?.you?.professor))
-const foeSprite = computed(() => spriteUrlForProfessor(pvp.value?.foe?.professor))
+const youSprite = computed(() => spriteFrenteDe(pvp.value?.you?.professor))
+const foeSprite = computed(() => spriteFrenteDe(pvp.value?.foe?.professor))
 
 const resultText = computed(() => {
   const r = pvp.value?.result
@@ -329,7 +328,14 @@ onUnmounted(() => clock && clearInterval(clock))
     }"
   >
     <div class="pvp-arena__bg">
-      <BinaryTunnelScene :speed="5" color="#ff2bc4" />
+      <img
+        class="pvp-arena__cenario"
+        src="/cenarios/ginasio-unifil.jpg"
+        alt=""
+        aria-hidden="true"
+        decoding="async"
+        fetchpriority="high"
+      />
     </div>
     <img class="pvp-arena__brand" src="/marca/logotipo-branco.png" alt="UNIFIL" />
 
@@ -397,7 +403,7 @@ onUnmounted(() => clock && clearInterval(clock))
               type="button"
               @click="entrarCom(m)"
             >
-              <ProfessorFace class="entrada__face" :slug="m.professor.slug" :name="m.professor.name" />
+              <ProfessorFace class="entrada__face" :professor="m.professor" />
               <span class="entrada__nome">{{ m.professor.name }}</span>
               <span class="entrada__hp">{{ m.hp }}/{{ m.maxHp }}</span>
             </button>
@@ -421,7 +427,7 @@ onUnmounted(() => clock && clearInterval(clock))
               :disabled="!canAct"
               @click="trocarPara(m)"
             >
-              <ProfessorFace class="entrada__face" :slug="m.professor.slug" :name="m.professor.name" />
+              <ProfessorFace class="entrada__face" :professor="m.professor" />
               <span class="entrada__nome">{{ m.professor.name }}</span>
               <span class="entrada__hp">{{ m.hp }}/{{ m.maxHp }}</span>
             </button>
@@ -534,10 +540,39 @@ onUnmounted(() => clock && clearInterval(clock))
   }
 }
 
+/* O ginásio da UNIFIL, o mesmo fundo da arena de treino — as duas telas são a
+   mesma batalha para quem joga, e cenários diferentes fariam a ranqueada
+   parecer outro jogo. Enquadramento explicado em ArenaView.vue. */
 .pvp-arena__bg {
   position: absolute;
   inset: 0;
-  opacity: 0.8;
+  overflow: hidden;
+  background: var(--bg-deep);
+}
+
+.pvp-arena__cenario {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 120%;
+  object-fit: cover;
+  object-position: center bottom;
+}
+
+/* Escurecimento: a quadra é clara e alaranjada, e aqui o HUD tem DUAS barras de
+   HP mais o banco de reservas de cada lado. */
+.pvp-arena__bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 12, 16, 0.62) 0%,
+    rgba(10, 12, 16, 0.22) 26%,
+    rgba(10, 12, 16, 0.12) 52%,
+    rgba(10, 12, 16, 0.55) 100%
+  );
 }
 
 .pvp-arena__foe,

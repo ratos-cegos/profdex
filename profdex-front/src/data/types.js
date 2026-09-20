@@ -92,16 +92,6 @@ export function getType(id) {
   return i === undefined ? null : TYPE_CYCLE[i]
 }
 
-// Deriva um id de tipo de forma determinística a partir de uma "semente"
-// (slug/id/nome do professor). Estável: o mesmo professor cai sempre no mesmo
-// tipo, mesmo que a API não traga um campo `type`.
-export function typeIdFromSeed(seed) {
-  const s = String(seed ?? '')
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
-  return TYPE_CYCLE[h % N].id
-}
-
 // Tipo `n` posições adiante na roda (usado p/ garantir tipos distintos).
 export function shiftType(id, n) {
   const i = INDEX_BY_ID.get(id)
@@ -141,6 +131,26 @@ export function effectiveness(attackerId, defenderId) {
 export function typeMultiplier(attackType, defenderTypes) {
   const list = Array.isArray(defenderTypes) ? defenderTypes : [defenderTypes]
   return list.reduce((mult, d) => mult * effectiveness(attackType, d), 1)
+}
+
+// Info visual (ícone, label, cor) de uma lista de ids de tipo. É o que as
+// telas recebem do professor e transformam em badge.
+export function typeInfos(types) {
+  return (types ?? []).map(getType).filter(Boolean)
+}
+
+// Normaliza um texto para chave: sem acentos, minúsculo, espaços→hífen. Mora
+// aqui desde que `professorTypes.js` morreu (tarefa 13) — o único uso que
+// sobrou é casar o parâmetro de uma rota (/arena/eron, /arena/mário) com o
+// slug ou o nome que a API devolve.
+export function normalizeKey(text) {
+  return String(text ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 // Agrupa todos os tipos ofensivos pela efetividade contra uma combinação de

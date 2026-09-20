@@ -1,6 +1,6 @@
 <script setup>
 import TypeIcon from './TypeIcon.vue'
-import { typeInfos } from '../data/professorTypes'
+import { typeInfos } from '../data/types'
 
 // As etiquetas de tipo de um exemplar. Os tipos são a informação que sustenta
 // toda decisão da batalha (a roda de vantagens), então aparecem na seleção, no

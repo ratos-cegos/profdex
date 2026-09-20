@@ -7,7 +7,6 @@ import {
 } from './engine';
 import { buildMoveset, CATEGORY, getMoveById, MOVE_BY_ID } from './moves';
 import { typeMultiplier } from './types';
-import { typesForProfessor } from './professor-types';
 
 describe('engine (port do battleEngine.js)', () => {
   const attack = getMoveById('entrega-garantida')!; // 70 · sempre acerta · sem efeitos
@@ -121,14 +120,6 @@ describe('dados portados (paridade com o front)', () => {
     expect(typeMultiplier('humanas', ['robotica'])).toBe(1);
     // tipo duplo: produto (4× no melhor caso)
     expect(typeMultiplier('humanas', ['matematica', 'ia'])).toBe(4);
-  });
-
-  it('resolves professor types by slug with stable fallback', () => {
-    expect(typesForProfessor({ slug: 'eron' })).toEqual(['arquitetura', 'ia']);
-    expect(typesForProfessor({ slug: 'mario' })).toEqual(['algoritmos']);
-    const fallback = typesForProfessor({ slug: 'desconhecido-xyz' });
-    expect(fallback).toHaveLength(1);
-    expect(typesForProfessor({ slug: 'desconhecido-xyz' })).toEqual(fallback);
   });
 
   it('buildMoveset returns 4 moves with at least one utility', () => {

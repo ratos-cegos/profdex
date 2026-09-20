@@ -4,6 +4,7 @@ import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BottomSheet from '../components/BottomSheet.vue'
 import { COMO_FUNCIONA_QR } from '../data/comoFunciona.js'
+import { spriteFrenteDe } from '../data/professorArte.js'
 import { useProfessorsStore } from '../stores/professors'
 import { openBackCamera } from '../composables/useBackCamera'
 
@@ -261,7 +262,7 @@ onUnmounted(() => {
             <div class="capture-avatar">
               <img
                 v-if="!captureAvatarError"
-                :src="`/professors/${foundProfessor.slug}-cartoon.png`"
+                :src="spriteFrenteDe(foundProfessor)"
                 :alt="foundProfessor.name"
                 class="capture-img"
                 @error="captureAvatarError = true"
@@ -603,6 +604,8 @@ onUnmounted(() => {
   width: 64px; height: 64px;
   border-radius: 50%;
   object-fit: cover;
+  /* Topo: sprite de corpo inteiro num avatar pequeno — ver ProfCard.vue. */
+  object-position: top;
   border: 2px solid var(--yellow);
 }
 .found-fallback {
@@ -640,6 +643,8 @@ onUnmounted(() => {
   width: 96px; height: 96px;
   border-radius: 50%;
   object-fit: cover;
+  /* É a tela da recompensa: o aluno precisa ver o ROSTO de quem capturou. */
+  object-position: top;
   border: 3px solid var(--yellow);
   box-shadow: 0 0 24px rgba(237, 175, 104, 0.35);
   animation: pulse 1s ease-in-out infinite;

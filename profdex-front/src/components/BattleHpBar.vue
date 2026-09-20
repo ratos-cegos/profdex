@@ -83,6 +83,9 @@ function hideBrokenImage(event) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* Topo: a sprite de frente é de corpo inteiro, e centralizar mostraria o
+     tronco em vez do rosto. Ver o comentário em ProfCard.vue. */
+  object-position: top;
 }
 
 .hp-panel__info {

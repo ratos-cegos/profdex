@@ -31,7 +31,7 @@ const proporcao = (m) => (m.maxHp ? Math.max(0, m.hp) / m.maxHp : 0)
       }"
       :title="m.professor.name"
     >
-      <ProfessorFace class="banco__face" :slug="m.professor.slug" :name="m.professor.name" />
+      <ProfessorFace class="banco__face" :professor="m.professor" />
       <span class="banco__hp">
         <span
           class="banco__hp-fill"

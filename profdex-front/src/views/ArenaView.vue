@@ -2,16 +2,23 @@
 import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BattleHpBar from '../components/BattleHpBar.vue'
-import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
 import DamagePopup from '../components/DamagePopup.vue'
 import MoveButton from '../components/MoveButton.vue'
 import { useBattle } from '../composables/useBattle.js'
 import { openBackCamera } from '../composables/useBackCamera.js'
 import { useProfessorsStore } from '../stores/professors'
 import { buildMoveset } from '../data/moves.js'
-import { typesForProfessor, PROFESSOR_TYPES, PLAYER_KEY } from '../data/professorTypes.js'
-import { ehPixelArt, PLAYER_SPRITE_URL, spriteUrlForProfessor } from '../data/professorSprites.js'
-import { TREINO_ENEMY_FALLBACK_NAME, TREINO_ENEMY_KEY } from '../data/treino.js'
+import {
+  ehPixelArt,
+  spriteCostasDe,
+  spriteFrenteDe,
+} from '../data/professorArte.js'
+import {
+  PLAYER_FALLBACK,
+  PLAYER_KEY,
+  TREINO_ENEMY_FALLBACK_NAME,
+  TREINO_ENEMY_KEY,
+} from '../data/treino.js'
 
 const MAX_HP = 120
 
@@ -31,6 +38,17 @@ const enemyProfessor = store.findByKey(TREINO_ENEMY_KEY) || {
   id: TREINO_ENEMY_KEY,
   name: TREINO_ENEMY_FALLBACK_NAME,
   slug: TREINO_ENEMY_KEY,
+  ...PLAYER_FALLBACK,
+}
+
+// O boneco do jogador. Sai da MESMA lista, pelo mesmo caminho: desde a tarefa
+// 13 tipos e arte vêm do banco, e manter uma segunda fonte para o nosso lado
+// faria o Gustavo da arena divergir do Gustavo da Profdex sem ninguém notar.
+const playerProfessor = store.findByKey(PLAYER_KEY) || {
+  id: PLAYER_KEY,
+  name: TREINO_ENEMY_FALLBACK_NAME,
+  slug: PLAYER_KEY,
+  ...PLAYER_FALLBACK,
 }
 
 // ── Realidade aumentada: DESATIVADA por enquanto. O combate acontece sempre
@@ -73,10 +91,9 @@ onMounted(() => {
 onUnmounted(stopCamera)
 
 // ── Tipos dos combatentes ───────────────────────────────────────────────────
-// Jogador: controlamos o Gustavo (Arquitetura). Inimigo: tipos (1–2) do
-// professor vindo da rota, resolvidos pela planilha (fallback determinístico).
-const enemyTypes = typesForProfessor(enemyProfessor)
-const playerTypes = PROFESSOR_TYPES[PLAYER_KEY]
+// Os dois lados trazem os tipos (1–2) gravados na própria linha do banco.
+const enemyTypes = enemyProfessor.types
+const playerTypes = playerProfessor.types
 
 // Os icones de tipo vao como prop `types` do BattleHpBar, nao concatenados no
 // `name`: sao componentes SVG e nao sobrevivem a virar string. De quebra, o
@@ -91,7 +108,7 @@ const enemy = {
   moves: buildMoveset(enemyTypes),
 }
 const player = {
-  name: 'Gustavo',
+  name: playerProfessor.name,
   types: playerTypes,
   maxHp: MAX_HP,
   moves: playerMoves,
@@ -124,8 +141,8 @@ onMounted(start)
 // Sprite 2D e não .glb — os modelos passam de 25 MB cada (o do Gustavo, 74 MB)
 // e dois deles na mesma tela estouravam a memória da aba no celular.
 // Ver docs/BUG-BATALHA-TRAVANDO.md.
-const enemySpriteSrc = spriteUrlForProfessor(enemyProfessor)
-const playerSpriteSrc = PLAYER_SPRITE_URL
+const enemySpriteSrc = spriteFrenteDe(enemyProfessor)
+const playerSpriteSrc = spriteCostasDe(playerProfessor)
 
 // AR ancorado (WebXR) e AR Quick Look (iOS) DESATIVADOS por enquanto — a arena
 // roda só no cenário 3D. O código foi removido; ver histórico do git para
@@ -140,9 +157,17 @@ function goBack() {
   <main class="arena" :class="{ 'arena--defeat': playerFainted, 'arena--victory': enemyFainted }">
     <!-- Palco: inimigo ao fundo (de frente) e jogador em primeiro plano (de costas) -->
     <div class="arena__stage" :class="{ 'arena__stage--ar': arEnabled }">
-      <!-- Fundo do combate: câmera (AR) ou o cenário do túnel binário -->
+      <!-- Fundo do combate: câmera (AR) ou o ginásio da UNIFIL -->
       <video v-show="arEnabled" ref="camVideo" class="arena__camera" autoplay playsinline muted />
-      <BinaryTunnelScene v-if="!arEnabled" class="arena__scenario" :speed="4" />
+      <img
+        v-if="!arEnabled"
+        class="arena__scenario"
+        src="/cenarios/ginasio-unifil.jpg"
+        alt=""
+        aria-hidden="true"
+        decoding="async"
+        fetchpriority="high"
+      />
       <img class="arena__brand" src="/marca/logotipo-branco.png" alt="UNIFIL" />
 
       <div class="arena__fighter arena__fighter--enemy">
@@ -151,7 +176,7 @@ function goBack() {
           :class="{
             'arena__model--hit': enemyHit,
             'arena__model--fainted': enemyFainted,
-            'arena__model--pixel': ehPixelArt(enemySpriteSrc),
+            'arena__model--pixel': ehPixelArt(enemyProfessor),
           }"
           :src="enemySpriteSrc"
           :alt="`Prof. ${enemyProfessor.name} em batalha`"
@@ -165,7 +190,7 @@ function goBack() {
           :class="{
             'arena__model--hit': playerHit,
             'arena__model--fainted': playerFainted,
-            'arena__model--pixel': ehPixelArt(playerSpriteSrc),
+            'arena__model--pixel': ehPixelArt(playerProfessor),
           }"
           :src="playerSpriteSrc"
           alt="Seu personagem"
@@ -197,7 +222,7 @@ function goBack() {
         :types="enemyTypes"
         :hp="enemyHp"
         :max-hp="enemy.maxHp"
-        :avatar-src="`/professors/${enemyProfessor.slug}-cartoon.png`"
+        :avatar-src="enemySpriteSrc"
       />
       <span v-if="enemyStatus" class="arena__status arena__status--enemy">
         {{ enemyStatus }}
@@ -284,11 +309,28 @@ function goBack() {
     prendendo os modelos (z-index:1) abaixo do HUD (z-index:2). Assim os
     bonecos nunca cobrem os botões/textos. */
   z-index: 0;
-  /* Piso da arena: gradiente sutil para dar profundidade */
-  background:
-    radial-gradient(ellipse 65% 18% at 32% 42%, rgba(237, 175, 104, 0.12), transparent),
-    radial-gradient(ellipse 70% 16% at 72% 74%, rgba(237, 175, 104, 0.14), transparent),
-    linear-gradient(180deg, var(--bg-deep) 0%, #1a1e26 55%, var(--bg-deep) 100%);
+  /* Cor de espera enquanto a foto do ginásio não carrega. Escura de propósito:
+     o palco pisca do escuro para a quadra, e não do claro para o escuro. */
+  background: var(--bg-deep);
+}
+
+/* Escurecimento por cima da quadra. A foto é clara e alaranjada; sem isto, o
+   texto branco do HUD e a silhueta dos bonecos brigam com o piso. Mais forte
+   nas pontas (onde ficam as barras de HP e o painel de comandos) e quase
+   transparente no miolo, que é onde a quadra precisa aparecer. */
+.arena__stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 12, 16, 0.62) 0%,
+    rgba(10, 12, 16, 0.22) 26%,
+    rgba(10, 12, 16, 0.12) 52%,
+    rgba(10, 12, 16, 0.55) 100%
+  );
 }
 
 /* No modo AR o gradiente some para a câmera aparecer limpa */
@@ -306,11 +348,26 @@ function goBack() {
   z-index: 0;
 }
 
-/* Camada de fundo: cenário do túnel binário (AR desligada) */
+/* Camada de fundo: o ginásio da UNIFIL (AR desligada).
+ *
+ * `height: 120%` ancorado embaixo, e não `inset: 0`, para ENQUADRAR a foto: ela
+ * é um retrato de corpo inteiro do ginásio (arquibancada em cima, quadra
+ * embaixo) e, mostrada inteira, deixaria a linha da quadra por volta de 43% da
+ * tela — com o oponente (que ocupa 10%–34%) flutuando na arquibancada.
+ *
+ * Cortando ~17% do topo, a quadra começa por volta de 32%: o oponente fica com
+ * os pés na linha de fundo e o jogador, no meio da quadra. Sobra arquibancada e
+ * placar o bastante para o lugar continuar reconhecível.
+ */
 .arena__scenario {
   position: absolute;
-  inset: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 120%;
   z-index: 0;
+  object-fit: cover;
+  object-position: center bottom;
 }
 
 /* Sprites 2D dos combatentes. Ocupam o mesmo lugar dos antigos <model-viewer>;

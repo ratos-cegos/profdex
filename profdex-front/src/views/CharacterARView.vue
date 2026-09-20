@@ -3,8 +3,8 @@ import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ARViewer from '../components/ARViewer.vue'
 import { useProfessorsStore } from '../stores/professors'
-import { modelUrlForProfessor } from '../data/professorModels.js'
-import { typeInfos, typesForProfessor } from '../data/professorTypes.js'
+import { modeloDe } from '../data/professorArte.js'
+import { typeInfos } from '../data/types.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,11 +16,16 @@ const routeCharacter = computed(() => window.history.state?.character || null)
 const character = computed(
   () =>
     store.findByKey(route.params.id) ||
-    routeCharacter.value || { id: 'modelo-padrao', name: 'Professor', slug: 'professor' },
+    routeCharacter.value || {
+      id: 'modelo-padrao',
+      name: 'Professor',
+      slug: 'professor',
+      types: [],
+    },
 )
 
 const viewerConfig = computed(() => ({
-  src: modelUrlForProfessor(character.value),
+  src: modeloDe(character.value),
   alt: `Modelo 3D do Prof. ${character.value.name}`,
   arPlacement: 'floor',
   autoRotate: true,
@@ -39,7 +44,7 @@ const viewerConfig = computed(() => ({
 
 const photoMeta = computed(() => ({
   name: character.value.name,
-  types: typeInfos(typesForProfessor(character.value)).map((type) => type.label),
+  types: typeInfos(character.value.types).map((type) => type.label),
 }))
 
 onMounted(() => {

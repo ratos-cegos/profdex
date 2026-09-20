@@ -6,7 +6,8 @@ import ProfessorGolpes from '../components/ProfessorGolpes.vue'
 import ProfessorIdentidade from '../components/ProfessorIdentidade.vue'
 import TypeIcon from '../components/TypeIcon.vue'
 import { movesForTypes } from '../data/moves.js'
-import { typeInfos, typesForProfessor } from '../data/professorTypes.js'
+import { spriteFrenteDe } from '../data/professorArte.js'
+import { typeInfos } from '../data/types.js'
 import { useCapturesStore } from '../stores/captures.js'
 import { useProfessorsStore } from '../stores/professors.js'
 
@@ -35,13 +36,14 @@ const professor = computed(
       id: 'modelo-padrao',
       name: 'Professor',
       slug: 'professor',
+      types: [],
     },
 )
 const dexNum = computed(() => {
   const index = professors.professors.findIndex((item) => item.id === professor.value.id)
   return index < 0 ? '#—' : `#${String(index + 1).padStart(3, '0')}`
 })
-const typeIds = computed(() => typesForProfessor(professor.value))
+const typeIds = computed(() => professor.value.types ?? [])
 const types = computed(() => typeInfos(typeIds.value))
 const description = computed(
   () =>
@@ -122,7 +124,7 @@ function openAr() {
       <div class="detail__avatar">
         <img
           v-if="!imageError"
-          :src="`/professors/${professor.slug}-face.png`"
+          :src="spriteFrenteDe(professor)"
           :alt="professor.name"
           @error="imageError = true"
         /><span v-else>{{ professor.name[0] }}</span>
