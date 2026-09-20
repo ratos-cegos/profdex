@@ -932,10 +932,50 @@ export class BattleRoomService implements OnModuleDestroy {
     this.close(room);
   }
 
-  /** Snapshot para reconexão no meio da batalha (null = sem sala). */
+  // ── Saída da preparação ───────────────────────────────────────────────────
+
+  /**
+   * Sair da seleção (`picking`/`preview`) sem punição — o mesmo desfecho do
+   * `onPickTimeout` quando ninguém escolheu: a sala fecha, os dois voltam para
+   * `disponivel`, e não há linha em `battles` (ela só nasce em `begin`), logo
+   * nem Elo nem cooldown são consumidos.
+   *
+   * Batalha começada NÃO sai por aqui: isso viraria rota de fuga de derrota, e
+   * desistir depois do `begin` já tem regra própria (3 faltas = abandono).
+   */
+  leaveSelection(userId: string): Ack {
+    const room = this.roomOf(userId);
+    if (!room) return { ok: false, message: 'Nenhuma batalha em andamento.' };
+    if (room.phase !== 'picking' && room.phase !== 'preview') {
+      return {
+        ok: false,
+        message: 'A batalha já começou — sair agora conta como abandono.',
+      };
+    }
+
+    // Payload por lado: quem saiu não precisa de aviso de erro na tela, quem
+    // ficou precisa saber que a batalha não vai acontecer.
+    for (const key of ['player', 'enemy'] as const) {
+      const slot = room.players[key];
+      this.emitter.emitToUser(slot.userId, 'battle:cancelled', {
+        reason: 'left',
+        byYou: slot.userId === userId,
+      });
+    }
+    this.logger.log(`Seleção ${room.id} cancelada: ${userId} saiu`);
+    this.close(room);
+    return { ok: true };
+  }
+
+  /**
+   * Snapshot para reconexão. SEM sala, devolve `{ phase: 'idle' }` — nunca
+   * null: o cliente que voltou de uma queda precisa ouvir "acabou" para sair do
+   * estado antigo, e o silêncio era exatamente o que deixava a arena com os
+   * botões mortos. Ver docs/BUG-BATALHA-TRAVANDO.md (P1).
+   */
   resync(userId: string): unknown {
     const room = this.roomOf(userId);
-    if (!room || room.phase === 'done') return null;
+    if (!room || room.phase === 'done') return { phase: 'idle' };
     const me = this.slotOf(room, userId);
     const foe = room.players[this.otherKey(me.key)];
     const base = {

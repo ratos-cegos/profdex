@@ -696,7 +696,73 @@ describe('BattleRoomService', () => {
     expect(closed).toHaveLength(1);
   });
 
+  // Antes disto, quem entrava na seleção sem ter o que selecionar (ou sem
+  // querer batalhar) só saía pelo timeout de 60s — com os DOIS presos e com
+  // status `em_batalha`. Ver docs/tasks/14-antitravamento-batalha.md.
+  describe('sair da seleção', () => {
+    it('fecha a sala para os dois na fase de escolha do time', () => {
+      service.create(ana, bia);
+
+      expect(service.leaveSelection(ana.userId)).toEqual({ ok: true });
+
+      expect(lastPayload(ana.userId, 'battle:cancelled')).toEqual({
+        reason: 'left',
+        byYou: true,
+      });
+      expect(lastPayload(bia.userId, 'battle:cancelled')).toEqual({
+        reason: 'left',
+        byYou: false,
+      });
+      expect(closed).toEqual([[ana.userId, bia.userId]]);
+      expect(service.hasActiveRoom(ana.userId)).toBe(false);
+      expect(service.hasActiveRoom(bia.userId)).toBe(false);
+      // A linha em `battles` só nasce no `begin`: nada aqui pontua nem consome
+      // o cooldown de 12h da dupla.
+      expect(battleCreate).not.toHaveBeenCalled();
+    });
+
+    it('vale também no preview, antes de a batalha começar', async () => {
+      await pickBoth([0], [0]);
+
+      expect(service.leaveSelection(bia.userId).ok).toBe(true);
+      expect(service.hasActiveRoom(ana.userId)).toBe(false);
+      expect(battleCreate).not.toHaveBeenCalled();
+    });
+
+    it('é recusada com a batalha em andamento — desistir é abandono', async () => {
+      await startBattle([0], [0]);
+
+      expect(service.leaveSelection(ana.userId)).toEqual({
+        ok: false,
+        message: expect.stringContaining('abandono'),
+      });
+      expect(service.hasActiveRoom(ana.userId)).toBe(true);
+      expect(eventsFor(bia.userId, 'battle:cancelled')).toHaveLength(0);
+    });
+
+    it('é recusada sem sala nenhuma', () => {
+      expect(service.leaveSelection(ana.userId).ok).toBe(false);
+    });
+  });
+
   describe('resync', () => {
+    // O silêncio de quem não tem sala era o buraco P1: o cliente voltava de uma
+    // queda com `phase: 'active'` e `youMoved: true` em memória e nada nunca
+    // mais chegava para corrigir isso.
+    it('devolve a fase `idle` quando não há sala', () => {
+      expect(service.resync(ana.userId)).toEqual({ phase: 'idle' });
+    });
+
+    it('devolve `idle` também depois de a batalha terminar', async () => {
+      await startBattle([0], [0]);
+      nocauteNoProximoGolpe('enemy');
+      service.move(ana.userId, meusGolpes(ana)[0].id);
+      service.move(bia.userId, meusGolpes(bia)[0].id);
+      await flush();
+
+      expect(service.resync(ana.userId)).toEqual({ phase: 'idle' });
+    });
+
     it('devolve o time e o próprio deck no meio da batalha', async () => {
       await startBattle([0, 1], [0]);
 

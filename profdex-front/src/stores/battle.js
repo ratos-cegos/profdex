@@ -4,12 +4,15 @@ import { io } from 'socket.io-client'
 import router from '../router'
 import { useAuthStore } from './auth'
 import { applyMoveAck } from './battle-move'
+import { applyResync } from './battle-resync'
+import { checarSocketVivo, ensureSocket } from './battle-socket'
 
 // Estado do PvP: conexão com o lobby de batalha via Socket.IO.
 //
-// A conexão é única por app (não por tela): quem entrou na área de batalha
-// continua "online" — e alcançável por convites — enquanto navega pelo resto
-// do app. Só cai no logout/expiração da sessão ou ao fechar a aba.
+// A conexão é única por app (não por tela) e abre logo APÓS O LOGIN, em
+// qualquer rota autenticada (ver App.vue): antes ela só existia dentro da área
+// de batalha, e um convite recebido em outra tela morria em 60s sem o aluno
+// saber que existiu. Só cai no logout/expiração da sessão ou ao fechar a aba.
 //
 // O handshake usa path /api/socket.io porque o cookie de sessão (HttpOnly,
 // path=/api) é a autenticação — no path padrão o navegador nem o enviaria.
@@ -46,6 +49,13 @@ export const useBattleStore = defineStore('battle', () => {
 
   let socket = null
 
+  // Janela mínima em segundo plano para desconfiar do socket. Abaixo disso a
+  // aba não chegou a ser congelada pelo sistema — e um ciclo disconnect/connect
+  // a cada troca de aba no desktop seria pior que o problema.
+  const MIN_OCULTO_MS = 3000
+  let visibilityListener = null
+  let ocultoDesde = 0
+
   const auth = useAuthStore()
 
   // Lista exibida no lobby (o servidor já exclui o próprio usuário).
@@ -55,27 +65,38 @@ export const useBattleStore = defineStore('battle', () => {
   // mostrado no botão da tela de batalha.
   const opponentCount = computed(() => Math.max(0, onlineTotal.value - 1))
 
+  // Chamado no `onMounted` de várias telas e no login: é idempotente, e com um
+  // socket desconectado em mãos ele RECONECTA em vez de sair pela tangente.
   function connect() {
-    if (socket) return
-    unauthorized.value = false
-
+    const jaExistia = !!socket
     const base = import.meta.env.VITE_WS_URL || ''
-    socket = io(`${base}/battle`, {
-      path: '/api/socket.io',
-      withCredentials: true,
-      // Backoff largo e bem embaralhado: num evento com centenas de celulares
-      // no mesmo Wi-Fi, uma oscilação derruba todo mundo junto — e com o padrão
-      // (até 5s, jitter 0.5) todos voltariam dentro da mesma janela de segundos,
-      // o que vira um pico de reconexão capaz de derrubar o servidor de novo.
-      reconnectionDelayMax: 30000,
-      randomizationFactor: 0.75,
-    })
+    socket = ensureSocket(socket, () =>
+      io(`${base}/battle`, {
+        path: '/api/socket.io',
+        withCredentials: true,
+        // Backoff largo e bem embaralhado: num evento com centenas de celulares
+        // no mesmo Wi-Fi, uma oscilação derruba todo mundo junto — e com o padrão
+        // (até 5s, jitter 0.5) todos voltariam dentro da mesma janela de segundos,
+        // o que vira um pico de reconexão capaz de derrubar o servidor de novo.
+        reconnectionDelayMax: 30000,
+        randomizationFactor: 0.75,
+      }),
+    )
+    // Reconectar um socket que já existe não duplica os listeners abaixo.
+    if (jaExistia) return
+    unauthorized.value = false
+    observarVisibilidade()
 
     socket.on('connect', () => {
       connected.value = true
       // Reconexão cria um socket novo, e as salas do servidor são por socket:
       // se a tela de jogadores está aberta, é preciso se reinscrever.
       if (lobbySubscribed.value) subscribeLobby()
+      // O `disconnect` limpou os convites (sem socket eles não valem), mas um
+      // blip de rede não os mata no servidor: em vez de assumir que não há
+      // nada, pergunta. O estado da batalha vem sozinho, no `battle:resync`
+      // que o servidor emite a cada conexão.
+      refreshInvites()
     })
 
     socket.on('disconnect', () => {
@@ -175,9 +196,16 @@ export const useBattleStore = defineStore('battle', () => {
       if (pvp.value) pvp.value.foePicked = true
     })
 
-    socket.on('battle:cancelled', () => {
+    // `reason: 'left'` é alguém saindo da seleção (nunca de batalha começada),
+    // e `byYou` diz de que lado: quem clicou em "sair" não precisa de aviso
+    // nenhum, quem ficou precisa saber por que a tela voltou.
+    socket.on('battle:cancelled', ({ reason, byYou } = {}) => {
       pvp.value = null
-      lastError.value = 'A seleção expirou — batalha cancelada.'
+      if (reason === 'left') {
+        if (!byYou) lastError.value = 'O rival saiu da seleção.'
+      } else {
+        lastError.value = 'A seleção expirou — batalha cancelada.'
+      }
       router.push({ name: 'batalha' })
     })
 
@@ -250,47 +278,38 @@ export const useBattleStore = defineStore('battle', () => {
       }
     })
 
-    // Reconexão no meio da batalha: o servidor manda o snapshot e a UI se
-    // reconstrói na tela certa. Também chega a pedido (requestResync), com o
-    // jogador já na tela — daí o `goTo` em vez de um push direto.
-    //
-    // `syncedAt` marca cada snapshot: como ele não traz fila de eventos para
-    // animar, é o sinal que a arena usa para realinhar as barras de HP.
+    // Reconexão: o servidor manda o snapshot e a UI se reconstrói na tela
+    // certa. Chega a cada conexão, a pedido (requestResync) e na volta do app
+    // ao primeiro plano — com o jogador já na tela, daí o `goTo` em vez de um
+    // push direto. `phase: 'idle'` é "não há sala": ver battle-resync.js.
     socket.on('battle:resync', (snap) => {
-      const base = {
-        battleId: snap.battleId,
-        opponent: snap.opponent,
-        phase: snap.phase,
-        pendingEvents: [],
-        result: null,
-        syncedAt: Date.now(),
-      }
-      // `picking` e `preview` são as duas etapas da mesma tela: em picking o
-      // jogador monta o time, em preview escolhe o lead vendo o rival.
-      if (snap.phase === 'picking' || snap.phase === 'preview') {
-        pvp.value = {
-          ...base,
-          pickDeadline: snap.deadline,
-          youPicked: snap.youPicked,
-          foePicked: snap.foePicked,
-          you: snap.you ?? null,
-          foe: snap.foe ?? null,
-        }
-        goTo('pvp-pick')
-      } else if (snap.phase === 'active' || snap.phase === 'switching') {
-        pvp.value = {
-          ...base,
-          turn: snap.turn,
-          deadline: snap.deadline,
-          you: snap.you,
-          foe: snap.foe,
-          youMoved: snap.youMoved,
-          foeMoved: snap.foeMoved,
-          youChoose: snap.youChoose ?? false,
-        }
-        goTo('pvp-arena')
-      }
+      const { pvp: proximo, rota, aviso } = applyResync(snap, pvp.value)
+      pvp.value = proximo
+      if (aviso) lastError.value = aviso
+      if (rota) goTo(rota)
     })
+  }
+
+  /**
+   * Volta do app ao primeiro plano: confere se o socket ainda está vivo.
+   *
+   * O listener é registrado uma vez (na primeira conexão) e removido no
+   * `disconnect`. A checagem só dispara depois de alguns segundos oculto —
+   * trocar de aba no desktop não pode derrubar a conexão de ninguém.
+   */
+  function observarVisibilidade() {
+    if (visibilityListener || typeof document === 'undefined') return
+    visibilityListener = () => {
+      if (document.visibilityState === 'hidden') {
+        ocultoDesde = Date.now()
+        return
+      }
+      const oculto = ocultoDesde ? Date.now() - ocultoDesde : 0
+      ocultoDesde = 0
+      if (oculto < MIN_OCULTO_MS) return
+      checarSocketVivo(socket)
+    }
+    document.addEventListener('visibilitychange', visibilityListener)
   }
 
   /** Navega só se já não estivermos lá — o resync a pedido chega na tela certa. */
@@ -302,6 +321,11 @@ export const useBattleStore = defineStore('battle', () => {
     if (!socket) return
     socket.disconnect()
     socket = null
+    if (visibilityListener) {
+      document.removeEventListener('visibilitychange', visibilityListener)
+      visibilityListener = null
+    }
+    ocultoDesde = 0
     connected.value = false
     lobbyUsers.value = []
     onlineTotal.value = 0
@@ -374,6 +398,27 @@ export const useBattleStore = defineStore('battle', () => {
     return ack
   }
 
+  /**
+   * Repõe os convites que o servidor ainda considera vivos.
+   *
+   * O `disconnect` limpa a lista local, então sem isto um blip de rede apagava
+   * da tela um desafio que continua de pé no servidor — e travava o próprio
+   * jogador no "Você já tem um convite pendente" sem nada explicando na tela.
+   */
+  async function refreshInvites() {
+    const ack = await command('invite:pending')
+    if (!ack.ok) return ack
+    // União, não substituição: entre a pergunta e a resposta cabe um
+    // `invite:received` novo, e a lista do servidor (montada antes dele) o
+    // apagaria. Convite local obsoleto não existe aqui — a queda limpou tudo.
+    const doServidor = ack.incoming ?? []
+    const idsDoServidor = new Set(doServidor.map((i) => i.inviteId))
+    const chegadosAgora = incomingInvites.value.filter((i) => !idsDoServidor.has(i.inviteId))
+    incomingInvites.value = [...doServidor, ...chegadosAgora]
+    outgoingInvite.value = ack.outgoing ?? outgoingInvite.value
+    return ack
+  }
+
   async function declineInvite(inviteId) {
     dropInvite(inviteId) // some da UI já; o servidor confirma pelo ack
     return command('invite:decline', { inviteId })
@@ -419,6 +464,17 @@ export const useBattleStore = defineStore('battle', () => {
   /** Quem entra primeiro, escolhido depois de ver o time do rival. */
   function chooseLead(captureId) {
     return marcarEscolhaSeAindaVale('battle:lead', { captureId })
+  }
+
+  /**
+   * Sai da preparação (seleção de time ou lead) sem punição: o servidor cancela
+   * a sala para os dois e devolve ambos ao lobby. Recusado depois que a batalha
+   * começa — desistir ali é abandono, e abandono tem regra própria.
+   */
+  async function leaveSelection() {
+    const ack = await command('battle:leave')
+    if (!ack.ok) lastError.value = ack.message
+    return ack
   }
 
   /**
@@ -505,8 +561,10 @@ export const useBattleStore = defineStore('battle', () => {
     sendInvite,
     acceptInvite,
     declineInvite,
+    refreshInvites,
     pickTeam,
     chooseLead,
+    leaveSelection,
     switchTo,
     enterWith,
     submitMove,

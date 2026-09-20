@@ -6,8 +6,10 @@ com mais frequência no **Safari do iOS** e, mais raramente, no **Chrome
 Android**.
 
 São **dois problemas encadeados**: um que provoca o recarregamento e outro que
-impede o app de se recuperar dele. O primeiro já foi corrigido; o segundo está
-diagnosticado e ainda não.
+impede o app de se recuperar dele. Os dois já foram corrigidos — o segundo pela
+tarefa 14 (`docs/tasks/14-antitravamento-batalha.md`), que também cobriu dois
+travamentos que este documento não previa (ver
+[Parte 2](#o-que-este-documento-não-previa)).
 
 > **Leia a [Parte 3](#parte-3--a-causa-do-travamento-em-massa-corrigido) antes
 > das outras.** Nos testes com ~10 jogadores o travamento apareceu em muitas
@@ -50,11 +52,12 @@ Efeito no bundle da rota de batalha: `professorModels` (440 kB, que era o
 
 ---
 
-## Parte 2 — por que o app não se recupera (DIAGNOSTICADO, NÃO CORRIGIDO)
+## Parte 2 — por que o app não se recupera (CORRIGIDO na tarefa 14)
 
-O recarregamento era o gatilho, mas **qualquer** interrupção longa produz o
+O recarregamento era o gatilho, mas **qualquer** interrupção longa produzia o
 mesmo travamento: o celular bloquear a tela, o aluno trocar de app por alguns
-minutos, o Wi-Fi do evento oscilar. A cadeia é esta:
+minutos, o Wi-Fi do evento oscilar. A cadeia era esta — o diagnóstico fica
+registrado porque é ele que explica as correções listadas adiante:
 
 **1. O servidor encerra a batalha depois de 3 minutos de silêncio.**
 `PHASE_TIMEOUT_MS = 60s` × `MAX_MISSED_PHASES = 3` (`battle-room.service.ts`).
@@ -68,7 +71,8 @@ está congelada, o iOS mantém a página viva mas sem rede. O servidor emite; a
 mensagem se perde. Não há `connectionStateRecovery` configurado no gateway, ou
 seja, o Socket.IO **não reenvia** o que foi perdido.
 
-**3. Ao reconectar, o servidor não diz nada.** Em `battle.gateway.ts`:
+**3. Ao reconectar, o servidor não dizia nada.** Era assim em
+`battle.gateway.ts`:
 
 ```ts
 if (this.rooms.hasActiveRoom(user.id)) {
@@ -78,11 +82,11 @@ if (this.rooms.hasActiveRoom(user.id)) {
 }
 ```
 
-A sala já não existe → **nenhum evento é enviado**. O resync só cobre "voltei e
-a batalha continua"; o caso "voltei e a batalha acabou sem mim" não é coberto
-por ninguém.
+A sala já não existe → **nenhum evento era enviado**. O resync só cobria "voltei
+e a batalha continua"; o caso "voltei e a batalha acabou sem mim" não era
+coberto por ninguém.
 
-**4. O cliente fica preso no estado antigo.** O store continua com
+**4. O cliente ficava preso no estado antigo.** O store continua com
 `pvp.phase === 'active'` e, se o jogador tinha enviado um golpe,
 `pvp.youMoved === true`. E o botão de ataque depende exatamente disso
 (`PvpArenaView.vue`):
@@ -95,10 +99,12 @@ const canAct = computed(() =>
   !showResult.value)
 ```
 
-Nenhum dos dois chega mais. **Os ataques ficam mortos para sempre**, e o F5
-"resolve" porque joga fora o estado em memória.
+Nenhum dos dois chegava mais. **Os ataques ficavam mortos para sempre**, e o F5
+"resolvia" porque jogava fora o estado em memória.
 
-### Três agravantes que também precisam de conserto
+### Três agravantes que também precisavam de conserto
+
+(O (a) e o (c) já foram; o (b) é o P3, ainda pendente.)
 
 **a) Socket zumbi.** Quando o iOS congela a aba, o `socket.connected` do cliente
 continua `true` por até ~45s (`pingInterval` 25s + `pingTimeout` 20s) depois de
@@ -135,37 +141,85 @@ Se a reconexão acontecer depois disso, o handshake falha, o servidor manda
 — sem nada na tela explicando. Num evento de horas isso acontece sozinho. Já
 estava anotado como item 11 de [CARGA-PVP.md](./CARGA-PVP.md).
 
+### O que este documento não previa
+
+O teste em jogo mostrou mais dois travamentos, dos quais a cadeia acima não dá
+notícia. Os dois foram corrigidos junto, na tarefa 14.
+
+**d) Convite aceito com um dos lados sem nenhum professor.** `invite:accept`
+validava presença, status e cooldown, e **criava a sala**. Ninguém perguntava se
+os dois tinham exemplar. Quem não tinha nada entrava em `picking`, não conseguia
+confirmar time, e os **dois** ficavam presos até o timeout de 60s — com o status
+em `em_batalha`, invisíveis para o resto do lobby. Agora a contagem de capturas
+é conferida no envio **e** no aceite (é a última porta antes de a sala nascer), e
+o convite só é consumido quando tudo passa: quem captura durante os 60s consegue
+aceitar normalmente. De quebra, a preparação ganhou saída explícita
+(`battle:leave`), válida só em `picking`/`preview` — em batalha começada
+desistir continua sendo abandono.
+
+**e) A notificação de desafio presa a uma tela.** O socket só conectava em
+`BatalhaView`, `PvpPickView` e `PvpArenaView`, e o banner de convite existia
+**só na primeira**. Sair da tela de batalha escondia o convite, que morria em
+60s sem o aluno saber que existiu — é o "mexer rápido na tela e sumir a
+notificação". Agora o socket abre logo após o login, em qualquer rota
+autenticada (`App.vue`), e o banner é um componente montado fora do
+`RouterView`. O que **não** mudou é a lista de jogadores, que continua sob
+demanda (`lobby:subscribe` ao abrir o modal): era ela que escalava mal, não a
+conexão — ver [CARGA-PVP.md](./CARGA-PVP.md). Como o cliente limpa os convites
+ao perder a conexão, o (re)connect agora pede `invite:pending` ao servidor em
+vez de assumir que não há nada.
+
 ---
 
 ## Correções propostas, na ordem que eu faria
 
-**P1 — o servidor sempre responde a reconexão.** Emitir `battle:resync` também
-quando não há sala, com `{ phase: 'idle' }`; no cliente, `phase === 'idle'`
-limpa o `pvp` pendente, avisa "a batalha foi encerrada enquanto você esteve sem
-conexão" e volta ao lobby. É a correção que fecha o buraco principal e mexe em
-poucas linhas dos dois lados.
+| # | Situação |
+|---|---|
+| P1 | **Implementada** (tarefa 14) |
+| P2 | **Implementada** (tarefa 14) |
+| P3 | Pendente |
+| P4 | **Implementada** (tarefa 14) |
+| P5 | **Resolvida** antes da tarefa 14, pela sessão de 8h |
+| P6 | Fora de escopo — é otimização, não softlock |
 
-**P2 — detectar o socket zumbi na volta do app.** No `visibilitychange` para
-`visible`, disparar um `battle:sync` com ack e timeout curto (~2s); sem
-resposta, forçar `socket.disconnect(); socket.connect()`. Resolve a janela de
-45s de conexão morta **e** já traz o snapshot na volta — um mecanismo para os
-dois problemas.
+**P1 — o servidor sempre responde a reconexão. IMPLEMENTADA.** `battle:resync`
+é emitido também quando não há sala, com `{ phase: 'idle' }` — em
+`handleConnection` e no handler pedido pelo cliente, que antes devolvia
+`{ ok: false }` e não emitia nada. No cliente, `phase === 'idle'` limpa o `pvp`
+pendente, avisa "a batalha foi encerrada enquanto você esteve sem conexão" e
+volta ao lobby; a tela de resultado (`done`) é preservada, que ali a sala fechou
+de propósito. A tradução do snapshot mora em `stores/battle-resync.js`, testada
+em `test/battle-resync.test.js`.
 
-**P3 — não redirecionar antes do resync.** Na arena e na seleção, quando `pvp`
-está `null` logo após montar, mostrar "reconectando…" e dar ~3s para o snapshot
-chegar antes de decidir sair. Elimina a corrida de navegação e o pisca-pisca.
+**P2 — detectar o socket zumbi na volta do app. IMPLEMENTADA.** No
+`visibilitychange` para `visible`, depois de a aba ter ficado oculta por mais de
+3s, o cliente dispara um `battle:resync` com ack e timeout de 2s; sem resposta,
+força `socket.disconnect(); socket.connect()`. Resolve a janela de 45s de
+conexão morta **e** já traz o snapshot na volta. O ciclo só dispara por
+`visibilitychange` — nunca em cadeia, para não entrar em laço com o backoff de
+reconexão do Socket.IO. Ver `stores/battle-socket.js`.
 
-**P4 — `connect()` reconectar de fato.** Se o socket existe mas está
-desconectado, chamar `socket.connect()` em vez de retornar.
+**P3 — não redirecionar antes do resync. PENDENTE.** Na arena e na seleção,
+quando `pvp` está `null` logo após montar, mostrar "reconectando…" e dar ~3s
+para o snapshot chegar antes de decidir sair. Elimina a corrida de navegação e o
+pisca-pisca. Continua valendo, e ficou menos provável desde que o socket passou
+a abrir no login (o snapshot já está a caminho quando a tela monta).
 
-**P5 — sessão compatível com a duração do evento.** Renovar o cookie a cada
-request autenticado, ou subir o TTL para a janela do evento. Sem isso, P1–P4
-consertam a batalha e o aluno cai no login no meio dela.
+**P4 — `connect()` reconectar de fato. IMPLEMENTADA.** Com um socket
+desconectado em mãos, `connect()` chama `socket.connect()` em vez de retornar;
+com um socket conectado continua sendo no-op, porque as três telas de batalha o
+chamam em todo `onMounted`. Ver `ensureSocket` em `stores/battle-socket.js`.
 
-**P6 (opcional) — cortar o último contexto WebGL no celular.** O
-`BinaryTunnelScene` ainda carrega o três.js (716 kB) e mantém um canvas
-animado. Trocar por um fundo CSS em telas pequenas ou com
-`prefers-reduced-motion` tira o que sobrou de pressão de memória.
+**P5 — sessão compatível com a duração do evento. JÁ RESOLVIDA** (commit
+`043bebc`, antes da tarefa 14): o TTL da sessão passou de 15min para **8 horas**
+(`SESSION_MAX_AGE` em `auth/auth-session.ts`, espelhado no `expiresIn` do
+JwtModule). Sem isso, P1–P4 consertariam a batalha e o aluno cairia no login no
+meio dela.
+
+**P6 (opcional) — cortar o último contexto WebGL no celular. FORA DE ESCOPO.**
+O fundo animado já saiu da arena PvP (hoje é a foto do ginásio da UNIFIL), mas
+onde o três.js ainda carrega a troca por fundo CSS em telas pequenas ou com
+`prefers-reduced-motion` segue valendo. É otimização de memória, não softlock.
 
 ---
 
@@ -242,8 +296,9 @@ e `profdex-front/test/battle-move.test.js`.
 
 ### O que isto significa para a Parte 2
 
-As correções P1–P6 continuam **válidas e não implementadas** — são falhas reais.
-Mas nenhuma delas teria corrigido o travamento relatado no teste: a Parte 2
+As correções P1–P6 continuavam **válidas** — são falhas reais (P1, P2, P4 e P5
+já foram feitas; ver a tabela acima). Mas nenhuma delas teria corrigido o
+travamento relatado no teste: a Parte 2
 descreve um caminho de falha que exige perda de rede prolongada, e o que
 derrubava as batalhas era o caminho feliz. Vale a mesma leitura para a análise
 de viabilidade do Nakama, que adotou a Parte 2 como tese central: a plataforma
@@ -262,5 +317,11 @@ retorna cedo; a expiração em 15min.
 **Hipótese não reproduzida:** que o descarte da aba pelo Safari seja o gatilho
 específico dos casos relatados — não tenho iPhone para reproduzir. O que é
 certo é que o consumo de memória estava muito acima do razoável e que, *seja
-qual for* a causa da interrupção, a Parte 2 trava o jogo do mesmo jeito. Por
-isso ela precisa ser corrigida mesmo agora que o 3D saiu.
+qual for* a causa da interrupção, a Parte 2 travava o jogo do mesmo jeito. Por
+isso ela foi corrigida mesmo depois de o 3D sair.
+
+Regressão travada por teste, nos dois lados:
+`battle.gateway.spec.ts` (convite sem exemplar; `handleConnection` sem sala
+emitindo `phase: 'idle'`), `battle-room.service.spec.ts` (`leaveSelection` e o
+resync `idle`), `profdex-front/test/battle-resync.test.js` e
+`profdex-front/test/battle-socket.test.js`.

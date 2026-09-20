@@ -35,6 +35,7 @@ const aberto = ref(null)
 // O time em montagem, na ordem dos slots.
 const time = ref([])
 const enviando = ref(false)
+const saindo = ref(false)
 
 onMounted(() => {
   battle.connect() // idempotente; cobre refresh no meio da seleção (resync)
@@ -57,9 +58,7 @@ const capturados = computed(() =>
     .filter((p) => p.exemplares.length > 0),
 )
 
-const grupos = computed(() =>
-  aberto.value ? captures.groupedByVariant(aberto.value.id) : [],
-)
+const grupos = computed(() => (aberto.value ? captures.groupedByVariant(aberto.value.id) : []))
 
 const secondsLeft = computed(() => {
   const deadline = battle.pvp?.pickDeadline
@@ -81,6 +80,33 @@ function typesOf(professor) {
 const emPreview = computed(() => battle.pvp?.phase === 'preview')
 const timeCheio = computed(() => time.value.length >= MAX_TIME)
 const jaNoTime = (id) => time.value.some((e) => e.id === id)
+
+// Sem nada para escolher, a tela precisa dizer isso — e dar saída. Enquanto a
+// lista não chegou, "vazio" ainda não quer dizer "não tem".
+const semExemplar = computed(() => !captures.loading && !capturados.value.length)
+
+/**
+ * Sai da seleção sem punição: o servidor cancela a sala para os dois e devolve
+ * ambos ao lobby. Antes daqui, quem caísse numa seleção que não podia (ou não
+ * queria) concluir só saía pelo timeout de 60s — com os dois presos.
+ */
+async function sairDaSelecao() {
+  if (saindo.value) return
+  saindo.value = true
+  try {
+    const ack = await battle.leaveSelection()
+    // Recusado (a batalha já começou, ou a sala já não existe): a tela não pode
+    // ficar presa aqui de qualquer jeito.
+    if (!ack.ok) {
+      battle.leaveBattle()
+      router.replace({ name: 'batalha' })
+    }
+    // No caminho feliz quem navega é o `battle:cancelled` do servidor, que
+    // precisa chegar aos DOIS.
+  } finally {
+    saindo.value = false
+  }
+}
 
 function abrir(professor) {
   if (battle.pvp?.youPicked) return
@@ -135,9 +161,16 @@ async function escolherLead(membro) {
         <span class="pixel pick__eyebrow">BATALHA CONTRA</span>
         <h1 class="pixel pick__title">{{ battle.pvp.opponent.name }}</h1>
       </div>
-      <span class="pixel pick__timer" :class="{ 'pick__timer--low': secondsLeft <= 10 }">
-        {{ secondsLeft }}s
-      </span>
+      <div class="pick__header-acoes">
+        <span class="pixel pick__timer" :class="{ 'pick__timer--low': secondsLeft <= 10 }">
+          {{ secondsLeft }}s
+        </span>
+        <!-- Saída explícita: a preparação não pontua nem consome cooldown, e
+             ficar preso nela até o timeout de 60s trava os DOIS jogadores. -->
+        <button class="pick__sair" type="button" :disabled="saindo" @click="sairDaSelecao">
+          Sair da seleção
+        </button>
+      </div>
     </header>
 
     <!-- A faixa é o que diz, sem texto, "são até 3 e esta é a ordem". A ordem
@@ -150,7 +183,9 @@ async function escolherLead(membro) {
         :class="{ 'slot--cheio': time[i - 1], 'slot--proximo': time.length === i - 1 }"
         type="button"
         :disabled="!time[i - 1] || battle.pvp.youPicked"
-        :aria-label="time[i - 1] ? `Remover ${time[i - 1].professor.name} do time` : `Slot ${i} vazio`"
+        :aria-label="
+          time[i - 1] ? `Remover ${time[i - 1].professor.name} do time` : `Slot ${i} vazio`
+        "
         @click="removerSlot(i - 1)"
       >
         <template v-if="time[i - 1]">
@@ -174,8 +209,8 @@ async function escolherLead(membro) {
       <!-- ── Fase 2: team preview + escolha do lead ───────────────────────── -->
       <template v-if="emPreview">
         <p class="pick__hint">
-          Times revelados. Escolha quem entra primeiro — o rival escolhe o dele
-          ao mesmo tempo, sem ver o seu.
+          Times revelados. Escolha quem entra primeiro — o rival escolhe o dele ao mesmo tempo, sem
+          ver o seu.
         </p>
 
         <section class="preview">
@@ -211,16 +246,32 @@ async function escolherLead(membro) {
 
       <!-- ── Fase 1, etapa 1: qual professor ──────────────────────────────── -->
       <template v-else-if="!aberto">
-        <p class="pick__hint">
-          Monte seu time com até {{ MAX_TIME }} professores. Quanto mais levar,
-          mais chances de virar o jogo — o rival não vê sua escolha até os dois
-          confirmarem.
+        <p v-if="!semExemplar" class="pick__hint">
+          Monte seu time com até {{ MAX_TIME }} professores. Quanto mais levar, mais chances de
+          virar o jogo — o rival não vê sua escolha até os dois confirmarem.
         </p>
 
-        <p v-if="!capturados.length" class="pick__empty">
-          Você ainda não capturou nenhum professor — capture um pela tela de
-          Scanear para poder batalhar.
+        <p v-if="captures.loading && !capturados.length" class="pick__empty">
+          Carregando seus professores…
         </p>
+
+        <!-- Sem exemplar não há o que confirmar: em vez de uma lista vazia sem
+             explicação, o estado é dito e a saída fica à mão. -->
+        <section v-else-if="semExemplar" class="pick__vazio">
+          <p class="pixel pick__vazio-titulo">SEM PROFESSORES</p>
+          <p class="pick__empty">
+            Você ainda não capturou nenhum professor — capture um pela tela de Scanear para poder
+            batalhar.
+          </p>
+          <button
+            class="pixel pick__vazio-btn"
+            type="button"
+            :disabled="saindo"
+            @click="sairDaSelecao"
+          >
+            SAIR DA SELEÇÃO
+          </button>
+        </section>
 
         <ul v-else class="pick__grid">
           <li v-for="professor in capturados" :key="professor.id">
@@ -493,6 +544,61 @@ async function escolherLead(membro) {
   background: rgba(255, 203, 5, 0.12);
 }
 
+.pick__header-acoes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.pick__sair {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pick__sair:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Estado vazio: o aviso e a saída no mesmo bloco, centralizados. */
+.pick__vazio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  text-align: center;
+}
+
+.pick__vazio-titulo {
+  margin: 0;
+  font-size: 10px;
+  color: var(--yellow);
+}
+
+.pick__vazio-btn {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: var(--yellow, #ffcb05);
+  color: #1a1a1a;
+  border: 2px solid var(--yellow, #ffcb05);
+  font-size: 10px;
+  cursor: pointer;
+}
+
 .pick__timer {
   font-size: 18px;
   color: white;
@@ -549,7 +655,9 @@ async function escolherLead(membro) {
   border: 2px solid var(--border);
   color: var(--text);
   cursor: pointer;
-  transition: transform 0.15s, border-color 0.15s;
+  transition:
+    transform 0.15s,
+    border-color 0.15s;
 }
 
 .pick-card:not(:disabled):active {
@@ -643,7 +751,9 @@ async function escolherLead(membro) {
   border: 2px solid var(--border);
   color: var(--text);
   cursor: pointer;
-  transition: transform 0.15s, border-color 0.15s;
+  transition:
+    transform 0.15s,
+    border-color 0.15s;
 }
 
 .exemplar-card:not(:disabled):active {
@@ -679,7 +789,9 @@ async function escolherLead(membro) {
   font-size: 11px;
   color: var(--text-muted);
 }
-.exemplar-card__stars { margin-left: auto; }
+.exemplar-card__stars {
+  margin-left: auto;
+}
 
 .exemplar-card__moves {
   display: flex;

@@ -93,6 +93,34 @@ export class InviteService {
     return invite;
   }
 
+  /**
+   * Lê o convite SEM consumir — o aceite valida presença e capturas antes de
+   * tomá-lo. Consumir primeiro deixaria quem acabou de capturar sem como
+   * tentar de novo dentro dos 60s do convite.
+   */
+  peekAsTarget(inviteId: string, byUserId: string): Invite | null {
+    const invite = this.byId.get(inviteId);
+    if (!invite || invite.toId !== byUserId) return null;
+    return this.view(invite);
+  }
+
+  /** Convites vivos em que o usuário é o ALVO (o que a tela dele mostra). */
+  incomingFor(userId: string): Invite[] {
+    const out: Invite[] = [];
+    for (const id of this.incomingOf(userId)) {
+      const invite = this.byId.get(id);
+      if (invite) out.push(this.view(invite));
+    }
+    return out;
+  }
+
+  /** O convite em voo enviado pelo usuário — no máximo um por vez. */
+  outgoingOf(userId: string): Invite | null {
+    const id = this.outgoingByUser.get(userId);
+    const invite = id ? this.byId.get(id) : undefined;
+    return invite ? this.view(invite) : null;
+  }
+
   /** Cancela tudo que envolve o usuário (ex.: ficou offline). Devolve os removidos. */
   cancelAllFor(userId: string): Invite[] {
     const ids = new Set<string>(this.incomingOf(userId));
@@ -115,6 +143,16 @@ export class InviteService {
       return id ? this.byId.get(id)?.toId === to : false;
     };
     return between(a, b) || between(b, a);
+  }
+
+  /** Sem o handle do timer, que é detalhe interno e não pode vazar no socket. */
+  private view(entry: InviteEntry): Invite {
+    return {
+      id: entry.id,
+      fromId: entry.fromId,
+      toId: entry.toId,
+      expiresAt: entry.expiresAt,
+    };
   }
 
   private remove(inviteId: string): void {

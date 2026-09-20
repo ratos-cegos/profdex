@@ -30,6 +30,7 @@ quadrado da população online — e o pior caso não é o uso normal, é a
 | 9 | Ranking sem cache e sem índice utilizável | 🟢 Baixo | Aberto |
 | 10 | Vazamentos no `InviteService` | 🟢 Baixo | Aberto |
 | 11 | Sessão de 15min vs. evento de horas | 🟡 Médio | ✅ Corrigido (8h) |
+| 12 | Socket aberto por todo aluno logado (não só na tela de batalha) | 🟡 Vigiar | Mudança deliberada (tarefa 14) |
 
 ---
 
@@ -285,6 +286,25 @@ a conta não dá acesso a nada além da própria coleção.
 **Se um dia isso não bastar:** refresh silencioso do cookie enquanto o socket
 está vivo (sessão deslizante) resolve sem alargar a janela de risco, ao custo
 de um interceptor no auth.
+
+---
+
+## 12. 🟡 O socket agora abre no login — MEDIR ANTES DO EVENTO (20/09/2026)
+
+A conexão passou a ser do app, e não da tela de batalha: antes o convite só
+alcançava quem estivesse na área de batalha e morria em 60s sem o aluno saber
+que existiu (ver [BUG-BATALHA-TRAVANDO.md](./BUG-BATALHA-TRAVANDO.md), Parte 2,
+item "e").
+
+O custo novo é **um socket e uma entrada de presença por aluno logado** — e
+não um fanout novo: a lista de jogadores continua sob demanda (item 1), e quem
+está com o modal fechado segue recebendo só o total, com throttle. Conexão
+ociosa é o que o Node aguenta melhor; o que escalava mal era a mensagem por
+evento de presença, que não mudou.
+
+O que muda é o **denominador do pico**: com 1000+ alunos, conexões simultâneas
+deixam de ser "quem está jogando" e passam a ser "quem está com o app aberto".
+Vale rodar o harness da seção seguinte antes do evento com esse número em mente.
 
 ---
 

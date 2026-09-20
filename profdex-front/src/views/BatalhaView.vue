@@ -5,19 +5,24 @@ import BottomNav from '../components/BottomNav.vue'
 import AppHeader from '../components/AppHeader.vue'
 import TopTabs from '../components/TopTabs.vue'
 import { useProfessorsStore } from '../stores/professors'
+import { useCapturesStore } from '../stores/captures'
 import { useBattleStore } from '../stores/battle'
 
 const router = useRouter()
 const route = useRoute()
 const store = useProfessorsStore()
+const captures = useCapturesStore()
 const battle = useBattleStore()
 
-// Relógio para as contagens regressivas dos convites (1 tick/segundo).
+// Relógio para a contagem regressiva do convite enviado (1 tick/segundo).
 const now = ref(Date.now())
 let clock = null
 
 onMounted(() => {
   if (!store.professors.length) store.fetch().catch(() => {})
+  // Quem não capturou ninguém não consegue montar time: é melhor dizer isso
+  // aqui do que deixar o aluno descobrir preso na tela de seleção.
+  captures.ensureLoaded().catch(() => {})
   // Conecta no lobby PvP. A conexão é do app, não da tela: seguimos "online"
   // (e convidáveis) ao navegar — por isso não desconectamos no unmount.
   battle.connect()
@@ -38,25 +43,14 @@ function secondsLeft(expiresAt) {
   return Math.max(0, Math.ceil((expiresAt - now.value) / 1000))
 }
 
-// ── Convites recebidos ────────────────────────────────────────────────────
-// Cada convite vive 60s e qualquer um do lobby pode mandar o seu, então numa
-// sala cheia eles chegam vários de uma vez. Empilhados como banners, empurram
-// o resto da tela para fora — viram uma lista rolável de altura fixa: quem
-// expira primeiro fica no topo, e o resto rola sem mexer no layout.
-const INVITE_RENDER_CAP = 20
+// Os convites recebidos saíram daqui: viraram o ConviteBanner do App.vue, que
+// aparece em qualquer tela. Preso a esta view, o desafio sumia assim que o
+// aluno navegava — e morria em 60s sem ele saber que existiu.
 
-const sortedInvites = computed(() =>
-  [...battle.incomingInvites].sort((a, b) => a.expiresAt - b.expiresAt),
-)
-
-const visibleInvites = computed(() => sortedInvites.value.slice(0, INVITE_RENDER_CAP))
-
-const hiddenInviteCount = computed(() => sortedInvites.value.length - visibleInvites.value.length)
-
-// Com a caixa cheia, recusar um a um é pior que o problema original.
-function declineAll() {
-  for (const invite of [...battle.incomingInvites]) battle.declineInvite(invite.inviteId)
-}
+// Sem exemplar não há time para levar à arena, e o servidor recusa o convite
+// dos dois lados. O botão desabilitado é cortesia com a razão escrita na tela;
+// a trava de verdade está no gateway.
+const semExemplar = computed(() => !captures.captures.length)
 
 // ── Modal de jogadores online ─────────────────────────────────────────────
 // A lista fica atrás de um botão e é o SERVIDOR quem pagina (50 por resposta) e
@@ -140,60 +134,8 @@ function goBack() {
     <main class="batalha__main page">
       <TopTabs />
 
-      <!-- Convites recebidos: lista rolável com contagem regressiva (em qualquer aba) -->
-      <section v-if="battle.incomingInvites.length" class="invites" aria-live="polite">
-        <header class="invites__header">
-          <span class="pixel invites__title">
-            {{ battle.incomingInvites.length === 1 ? 'DESAFIO!' : 'DESAFIOS' }}
-            <template v-if="battle.incomingInvites.length > 1">
-              ({{ battle.incomingInvites.length }})
-            </template>
-          </span>
-          <button
-            v-if="battle.incomingInvites.length > 1"
-            class="invites__decline-all"
-            type="button"
-            @click="declineAll"
-          >
-            Recusar todos
-          </button>
-        </header>
-
-        <ul class="invites__list">
-          <li v-for="invite in visibleInvites" :key="invite.inviteId" class="invite-row">
-            <span class="invite-row__info">
-              <span class="invite-row__name">{{ invite.from.name }}</span>
-              <span
-                class="pixel invite-row__timer"
-                :class="{ 'invite-row__timer--urgent': secondsLeft(invite.expiresAt) <= 10 }"
-              >
-                {{ secondsLeft(invite.expiresAt) }}s
-              </span>
-            </span>
-            <span class="invite-row__actions">
-              <button
-                class="invite-row__btn invite-row__btn--accept"
-                type="button"
-                @click="battle.acceptInvite(invite.inviteId)"
-              >
-                Aceitar
-              </button>
-              <button
-                class="invite-row__btn"
-                type="button"
-                :aria-label="`Recusar desafio de ${invite.from.name}`"
-                @click="battle.declineInvite(invite.inviteId)"
-              >
-                ✕
-              </button>
-            </span>
-          </li>
-        </ul>
-
-        <p v-if="hiddenInviteCount > 0" class="invites__more">
-          +{{ hiddenInviteCount }} aguardando na fila
-        </p>
-      </section>
+      <!-- Os convites recebidos aparecem no ConviteBanner (App.vue), sobre
+           qualquer tela do app. -->
 
       <!-- Erros de comando (cooldown, jogador ocupado…) -->
       <p v-if="battle.lastError" class="lobby-error" role="alert">
@@ -222,6 +164,9 @@ function goBack() {
             <span class="option-sub">
               <template v-if="battle.unauthorized">Sessão expirada — refaça o login</template>
               <template v-else-if="!battle.connected">Conectando…</template>
+              <template v-else-if="semExemplar">
+                Capture um professor para poder desafiar
+              </template>
               <template v-else-if="!battle.opponentCount">Ninguém online agora</template>
               <template v-else>
                 {{ battle.opponentCount }}
@@ -273,6 +218,12 @@ function goBack() {
           autocomplete="off"
         />
 
+        <!-- A razão escrita na tela, e não um botão morto sem explicação. -->
+        <p v-if="semExemplar" class="modal__aviso">
+          Você ainda não capturou nenhum professor — capture um pela tela de Scanear para desafiar
+          alguém.
+        </p>
+
         <p v-if="lobbyLoading" class="modal__empty">Carregando…</p>
         <p v-else-if="!battle.opponents.length && lobbySearch.trim()" class="modal__empty">
           Nenhum jogador com esse nome.
@@ -300,7 +251,8 @@ function goBack() {
               v-else
               class="pixel lobby__challenge"
               type="button"
-              :disabled="!!battle.outgoingInvite"
+              :disabled="!!battle.outgoingInvite || semExemplar"
+              :title="semExemplar ? 'Capture um professor para desafiar' : undefined"
               @click="challenge(player)"
             >
               DESAFIAR
@@ -555,6 +507,16 @@ function goBack() {
   text-align: center;
 }
 
+.modal__aviso {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  border: 1px solid var(--yellow);
+  color: var(--text);
+  font-size: 12px;
+}
+
 .modal__list {
   list-style: none;
   margin: 0;
@@ -565,120 +527,7 @@ function goBack() {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Convites recebidos */
-.invites {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: var(--radius-lg);
-  background: var(--bg-card);
-  border: 2px solid var(--yellow);
-}
-
-.invites__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.invites__title {
-  font-size: 9px;
-  color: var(--yellow);
-}
-
-.invites__decline-all {
-  flex-shrink: 0;
-  min-height: 32px;
-  padding: 0 10px;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-/* Altura fixa: a lista rola por dentro em vez de empurrar a tela. O limite
-   equivale a ~3 linhas — o bastante para a próxima aparecer meio cortada e
-   sinalizar que há mais. */
-.invites__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-  max-height: 172px;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.invite-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-}
-
-.invite-row__info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.invite-row__name {
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.invite-row__timer {
-  flex-shrink: 0;
-  font-size: 7px;
-  color: var(--text-muted);
-}
-
-.invite-row__timer--urgent {
-  color: var(--red-light);
-}
-
-.invite-row__actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.invite-row__btn {
-  min-height: 34px;
-  padding: 0 10px;
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  color: var(--text);
-  border: 1px solid var(--border);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.invite-row__btn--accept {
-  background: var(--red-dark);
-  border-color: var(--red-light);
-  color: white;
-}
-
-.invites__more {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  text-align: center;
-}
+/* Os estilos dos convites recebidos foram com eles para o ConviteBanner. */
 
 /* Erro de comando */
 .lobby-error {
