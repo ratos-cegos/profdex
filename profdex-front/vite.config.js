@@ -137,9 +137,13 @@ export default defineConfig(async ({ mode }) => {
               // primeira abertura da dex, e na prática nunca mudam durante o
               // evento. Os markers de AR não entram — 4MB não cabem num cache
               // que o navegador pode despejar a qualquer momento.
+              // `cenarios` entrou junto: o ginásio é o fundo das duas arenas,
+              // pesa ~700KB e nunca muda durante o evento. Sem cache, ele volta
+              // da rede a cada batalha, no Wi-Fi do estande.
               urlPattern: ({ url }) =>
-                /^\/(professors|marca)\/.*\.(png|jpg|webp)$/.test(url.pathname) &&
-                !url.pathname.endsWith('-marker.png'),
+                /^\/(professors|marca|cenarios)\/.*\.(png|jpg|webp)$/.test(
+                  url.pathname,
+                ) && !url.pathname.endsWith('-marker.png'),
               handler: 'CacheFirst',
               options: {
                 cacheName: 'profdex-imagens',

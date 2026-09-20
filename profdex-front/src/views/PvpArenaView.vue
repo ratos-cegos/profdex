@@ -3,7 +3,6 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import BancoDeReservas from '../components/BancoDeReservas.vue'
 import BattleHpBar from '../components/BattleHpBar.vue'
-import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
 import DamagePopup from '../components/DamagePopup.vue'
 import MoveButton from '../components/MoveButton.vue'
 import ProfessorFace from '../components/ProfessorFace.vue'
@@ -329,7 +328,14 @@ onUnmounted(() => clock && clearInterval(clock))
     }"
   >
     <div class="pvp-arena__bg">
-      <BinaryTunnelScene :speed="5" color="#ff2bc4" />
+      <img
+        class="pvp-arena__cenario"
+        src="/cenarios/ginasio-unifil.jpg"
+        alt=""
+        aria-hidden="true"
+        decoding="async"
+        fetchpriority="high"
+      />
     </div>
     <img class="pvp-arena__brand" src="/marca/logotipo-branco.png" alt="UNIFIL" />
 
@@ -534,10 +540,39 @@ onUnmounted(() => clock && clearInterval(clock))
   }
 }
 
+/* O ginásio da UNIFIL, o mesmo fundo da arena de treino — as duas telas são a
+   mesma batalha para quem joga, e cenários diferentes fariam a ranqueada
+   parecer outro jogo. Enquadramento explicado em ArenaView.vue. */
 .pvp-arena__bg {
   position: absolute;
   inset: 0;
-  opacity: 0.8;
+  overflow: hidden;
+  background: var(--bg-deep);
+}
+
+.pvp-arena__cenario {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 120%;
+  object-fit: cover;
+  object-position: center bottom;
+}
+
+/* Escurecimento: a quadra é clara e alaranjada, e aqui o HUD tem DUAS barras de
+   HP mais o banco de reservas de cada lado. */
+.pvp-arena__bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 12, 16, 0.62) 0%,
+    rgba(10, 12, 16, 0.22) 26%,
+    rgba(10, 12, 16, 0.12) 52%,
+    rgba(10, 12, 16, 0.55) 100%
+  );
 }
 
 .pvp-arena__foe,

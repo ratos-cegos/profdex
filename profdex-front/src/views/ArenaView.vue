@@ -2,7 +2,6 @@
 import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BattleHpBar from '../components/BattleHpBar.vue'
-import BinaryTunnelScene from '../components/BinaryTunnelScene.vue'
 import DamagePopup from '../components/DamagePopup.vue'
 import MoveButton from '../components/MoveButton.vue'
 import { useBattle } from '../composables/useBattle.js'
@@ -158,9 +157,17 @@ function goBack() {
   <main class="arena" :class="{ 'arena--defeat': playerFainted, 'arena--victory': enemyFainted }">
     <!-- Palco: inimigo ao fundo (de frente) e jogador em primeiro plano (de costas) -->
     <div class="arena__stage" :class="{ 'arena__stage--ar': arEnabled }">
-      <!-- Fundo do combate: câmera (AR) ou o cenário do túnel binário -->
+      <!-- Fundo do combate: câmera (AR) ou o ginásio da UNIFIL -->
       <video v-show="arEnabled" ref="camVideo" class="arena__camera" autoplay playsinline muted />
-      <BinaryTunnelScene v-if="!arEnabled" class="arena__scenario" :speed="4" />
+      <img
+        v-if="!arEnabled"
+        class="arena__scenario"
+        src="/cenarios/ginasio-unifil.jpg"
+        alt=""
+        aria-hidden="true"
+        decoding="async"
+        fetchpriority="high"
+      />
       <img class="arena__brand" src="/marca/logotipo-branco.png" alt="UNIFIL" />
 
       <div class="arena__fighter arena__fighter--enemy">
@@ -302,11 +309,28 @@ function goBack() {
     prendendo os modelos (z-index:1) abaixo do HUD (z-index:2). Assim os
     bonecos nunca cobrem os botões/textos. */
   z-index: 0;
-  /* Piso da arena: gradiente sutil para dar profundidade */
-  background:
-    radial-gradient(ellipse 65% 18% at 32% 42%, rgba(237, 175, 104, 0.12), transparent),
-    radial-gradient(ellipse 70% 16% at 72% 74%, rgba(237, 175, 104, 0.14), transparent),
-    linear-gradient(180deg, var(--bg-deep) 0%, #1a1e26 55%, var(--bg-deep) 100%);
+  /* Cor de espera enquanto a foto do ginásio não carrega. Escura de propósito:
+     o palco pisca do escuro para a quadra, e não do claro para o escuro. */
+  background: var(--bg-deep);
+}
+
+/* Escurecimento por cima da quadra. A foto é clara e alaranjada; sem isto, o
+   texto branco do HUD e a silhueta dos bonecos brigam com o piso. Mais forte
+   nas pontas (onde ficam as barras de HP e o painel de comandos) e quase
+   transparente no miolo, que é onde a quadra precisa aparecer. */
+.arena__stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 12, 16, 0.62) 0%,
+    rgba(10, 12, 16, 0.22) 26%,
+    rgba(10, 12, 16, 0.12) 52%,
+    rgba(10, 12, 16, 0.55) 100%
+  );
 }
 
 /* No modo AR o gradiente some para a câmera aparecer limpa */
@@ -324,11 +348,26 @@ function goBack() {
   z-index: 0;
 }
 
-/* Camada de fundo: cenário do túnel binário (AR desligada) */
+/* Camada de fundo: o ginásio da UNIFIL (AR desligada).
+ *
+ * `height: 120%` ancorado embaixo, e não `inset: 0`, para ENQUADRAR a foto: ela
+ * é um retrato de corpo inteiro do ginásio (arquibancada em cima, quadra
+ * embaixo) e, mostrada inteira, deixaria a linha da quadra por volta de 43% da
+ * tela — com o oponente (que ocupa 10%–34%) flutuando na arquibancada.
+ *
+ * Cortando ~17% do topo, a quadra começa por volta de 32%: o oponente fica com
+ * os pés na linha de fundo e o jogador, no meio da quadra. Sobra arquibancada e
+ * placar o bastante para o lugar continuar reconhecível.
+ */
 .arena__scenario {
   position: absolute;
-  inset: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 120%;
   z-index: 0;
+  object-fit: cover;
+  object-position: center bottom;
 }
 
 /* Sprites 2D dos combatentes. Ocupam o mesmo lugar dos antigos <model-viewer>;
