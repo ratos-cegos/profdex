@@ -26,13 +26,29 @@ export type TypeId = (typeof TYPE_CYCLE)[number];
 const N = TYPE_CYCLE.length;
 const INDEX_BY_ID = new Map<string, number>(TYPE_CYCLE.map((t, i) => [t, i]));
 
-// Deriva um tipo estável a partir de uma "semente" (slug/id/nome) — mesmo hash
-// do front, para professor sem tipo mapeado cair no MESMO tipo dos dois lados.
-export function typeIdFromSeed(seed: string | null | undefined): TypeId {
-  const s = seed ?? '';
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return TYPE_CYCLE[h % N];
+// Chave estável de uma combinação de tipos: ids ordenados e unidos por "+".
+// A ordenação é o que faz ["ia","humanas"] e ["humanas","ia"] serem a mesma
+// variante, sem depender da ordem em que o professor lista os tipos.
+export function typeKeyOf(types: string[]): string {
+  return [...new Set(types)].sort().join('+');
+}
+
+// Todas as combinações não-vazias dos tipos de um professor — é isso que vira
+// uma variante colecionável. Um professor de dois tipos rende três (cada tipo
+// sozinho e os dois juntos); de um tipo, rende uma só.
+// Ordem: das mais simples para as mais completas, alfabética dentro de cada
+// tamanho, para a tiragem impressa sair sempre igual.
+export function typeCombinations(types: string[]): string[][] {
+  const unicos = [...new Set(types)].sort();
+  const combinacoes: string[][] = [];
+
+  for (let mascara = 1; mascara < 1 << unicos.length; mascara++) {
+    combinacoes.push(unicos.filter((_, i) => mascara & (1 << i)));
+  }
+
+  return combinacoes.sort(
+    (a, b) => a.length - b.length || typeKeyOf(a).localeCompare(typeKeyOf(b)),
+  );
 }
 
 // Multiplicador de `attackerId` atacando `defenderId`.

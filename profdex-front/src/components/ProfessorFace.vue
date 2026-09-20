@@ -5,10 +5,20 @@
 //
 // Existia como o mesmo trecho repetido nove vezes entre a seleção, o preview, o
 // banco de reservas e a ficha — cada cópia com o seu próprio `@error` inline.
-defineProps({
-  slug: { type: String, required: true },
-  name: { type: String, default: '' },
+//
+// Recebe o PROFESSOR inteiro (e não o slug) desde a tarefa 13: a arte deixou de
+// ser montada por convenção de nome de arquivo e passou a vir do banco.
+import { computed } from 'vue'
+import { spriteFrenteDe } from '../data/professorArte.js'
+
+const props = defineProps({
+  professor: { type: Object, required: true },
 })
+
+// O rosto e o cartoon caíram para a sprite de frente: são três arquivos da
+// mesma pessoa, e exigir três uploads por professor multiplicava o trabalho do
+// cadastro sem mudar o que o aluno vê num avatar de 40px.
+const src = computed(() => spriteFrenteDe(props.professor))
 
 // `visibility` e não `display`: o espaço reservado continua ocupado, então a
 // grade não se reorganiza quando uma arte falta.
@@ -18,5 +28,5 @@ function esconder(event) {
 </script>
 
 <template>
-  <img :src="`/professors/${slug}-face.png`" :alt="name" decoding="async" @error="esconder" />
+  <img :src="src" :alt="professor.name" decoding="async" @error="esconder" />
 </template>

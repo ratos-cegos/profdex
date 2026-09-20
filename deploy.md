@@ -202,6 +202,50 @@ Antes do primeiro deploy com o novo compose, confira com `docker volume ls`
 na instância se esse é de fato o nome existente — senão o `up` criaria um
 volume novo vazio em vez de reaproveitar o banco de produção.
 
+## Arte dos professores — o segundo volume
+
+O cadastro de professores pelo painel (`/admin/professores`) grava sprites e
+modelos `.glb` num volume Docker próprio, `profdex-uploads`:
+
+```yaml
+services:
+  app:
+    volumes:
+      - profdex-uploads:/app/uploads     # o app GRAVA
+  nginx:
+    volumes:
+      - profdex-uploads:/var/www/uploads:ro   # o nginx SERVE
+```
+
+O nginx serve isso direto do disco em `location /uploads/`, sem passar pelo
+Node. A URL guardada no banco carrega `?v=<timestamp>`, que muda quando o admin
+troca a arte — é o que permite `expires 30d` sem servir a imagem antiga.
+
+**Duas coisas para não descobrir tarde:**
+
+1. **Valide o volume ANTES de liberar a tela.** Se `app` subir sem ele, o
+   upload "funciona" e os arquivos somem no próximo `up --build`. Depois de um
+   deploy, confira:
+
+   ```bash
+   docker volume ls | grep profdex-uploads
+   docker compose exec app ls -la /app/uploads
+   curl -I https://$DOMAIN/uploads/<slug>-frente.png   # deve dar 200
+   ```
+
+2. **Este volume entra na rotina de backup.** É estado fora do Postgres: um
+   backup que só leve o banco restaura professores com três URLs apontando
+   para arquivos que não existem mais.
+
+   ```bash
+   docker run --rm -v profdex-uploads:/dados -v "$PWD":/backup alpine \
+     tar czf /backup/profdex-uploads-$(date +%F).tar.gz -C /dados .
+   ```
+
+Os três professores do seed (Mário, Eron, Gustavo) **não** usam este volume: a
+arte deles é publicada junto do build do front, em `profdex-front/public/`, e
+as URLs gravadas apontam para `/professors/...` e `/models/...`.
+
 ## Troca da roda de tipos — passo manual
 
 A roda passou de 9 tipos para outros 9 (Lógica e NPI saíram; Humanas e

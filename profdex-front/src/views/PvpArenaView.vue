@@ -8,7 +8,7 @@ import DamagePopup from '../components/DamagePopup.vue'
 import MoveButton from '../components/MoveButton.vue'
 import ProfessorFace from '../components/ProfessorFace.vue'
 import { useBattleStore } from '../stores/battle'
-import { spriteUrlForProfessor } from '../data/professorSprites'
+import { spriteFrenteDe } from '../data/professorArte'
 
 // Arena PvP: o servidor resolve tudo; esta tela só envia a intenção de golpe
 // e ANIMA a fila de eventos de cada rodada (mesma linguagem do useBattle.js).
@@ -133,8 +133,8 @@ async function entrarCom(membro) {
 // Sprites 2D, não .glb: dois modelos de dezenas de MB por partida faziam o
 // Safari do iPhone descartar a aba no meio da batalha.
 // Ver docs/BUG-BATALHA-TRAVANDO.md.
-const youSprite = computed(() => spriteUrlForProfessor(pvp.value?.you?.professor))
-const foeSprite = computed(() => spriteUrlForProfessor(pvp.value?.foe?.professor))
+const youSprite = computed(() => spriteFrenteDe(pvp.value?.you?.professor))
+const foeSprite = computed(() => spriteFrenteDe(pvp.value?.foe?.professor))
 
 const resultText = computed(() => {
   const r = pvp.value?.result
@@ -397,7 +397,7 @@ onUnmounted(() => clock && clearInterval(clock))
               type="button"
               @click="entrarCom(m)"
             >
-              <ProfessorFace class="entrada__face" :slug="m.professor.slug" :name="m.professor.name" />
+              <ProfessorFace class="entrada__face" :professor="m.professor" />
               <span class="entrada__nome">{{ m.professor.name }}</span>
               <span class="entrada__hp">{{ m.hp }}/{{ m.maxHp }}</span>
             </button>
@@ -421,7 +421,7 @@ onUnmounted(() => clock && clearInterval(clock))
               :disabled="!canAct"
               @click="trocarPara(m)"
             >
-              <ProfessorFace class="entrada__face" :slug="m.professor.slug" :name="m.professor.name" />
+              <ProfessorFace class="entrada__face" :professor="m.professor" />
               <span class="entrada__nome">{{ m.professor.name }}</span>
               <span class="entrada__hp">{{ m.hp }}/{{ m.maxHp }}</span>
             </button>

@@ -1,5 +1,6 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { spriteFrenteDe } from '../data/professorArte.js'
 
 const props = defineProps({
   professor: {
@@ -15,7 +16,9 @@ const props = defineProps({
 const emit = defineEmits(['details'])
 
 const imgError = ref(false)
-const cartoonSrc = `/professors/${props.professor.slug}-cartoon.png`
+// A arte vem do professor (banco), não de uma convenção de nome de arquivo:
+// o cartoon e o rosto caíram para a sprite de frente na tarefa 13.
+const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
 </script>
 
 <template>

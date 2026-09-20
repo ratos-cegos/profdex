@@ -1,6 +1,7 @@
 import {
   effectiveness,
-  typeIdFromSeed,
+  typeCombinations,
+  typeKeyOf,
   typeMultiplier,
   NEUTRAL,
   NOT_EFFECTIVE,
@@ -86,11 +87,28 @@ describe('roda de tipos', () => {
     expect(typeMultiplier('robotica', ['matematica', 'ia'])).toBe(0.25);
   });
 
-  it('typeIdFromSeed devolve sempre um tipo da roda, e o mesmo para a mesma semente', () => {
-    for (const semente of ['eron', 'mario', 'prof-x', '', 'ácentõs']) {
-      const tipo = typeIdFromSeed(semente);
-      expect(TYPE_CYCLE).toContain(tipo);
-      expect(typeIdFromSeed(semente)).toBe(tipo);
-    }
+  // As combinações de tipo saíram de professor-types.ts quando o mapa por slug
+  // morreu (tarefa 13) — a mecânica é da roda, não do elenco.
+  it('professor de um tipo rende uma única variante', () => {
+    expect(typeCombinations(['algoritmos'])).toEqual([['algoritmos']]);
+  });
+
+  it('professor de dois tipos rende três: cada um sozinho e os dois juntos', () => {
+    expect(typeCombinations(['arquitetura', 'ia'])).toEqual([
+      ['arquitetura'],
+      ['ia'],
+      ['arquitetura', 'ia'],
+    ]);
+  });
+
+  it('a ordem em que os tipos chegam não muda a tiragem', () => {
+    expect(typeCombinations(['ia', 'arquitetura'])).toEqual(
+      typeCombinations(['arquitetura', 'ia']),
+    );
+    expect(typeKeyOf(['ia', 'arquitetura'])).toBe('arquitetura+ia');
+  });
+
+  it('tipo repetido não duplica variante', () => {
+    expect(typeCombinations(['humanas', 'humanas'])).toEqual([['humanas']]);
   });
 });

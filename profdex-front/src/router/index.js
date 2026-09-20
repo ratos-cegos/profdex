@@ -217,6 +217,13 @@ const router = createRouter({
           name: 'admin-fichas',
           component: () => import('../views/AdminFichasView.vue'),
         },
+        {
+          // Cadastro de professores. Antes desta tela, um professor novo
+          // exigia editar quatro arquivos e fazer deploy.
+          path: 'professores',
+          name: 'admin-professores',
+          component: () => import('../views/AdminProfessoresView.vue'),
+        },
       ],
     },
     {

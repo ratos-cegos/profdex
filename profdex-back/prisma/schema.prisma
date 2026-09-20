@@ -347,21 +347,54 @@ model BattleSlot {
   @@map("battle_slots")
 }
 
+// O professor se descreve sozinho: tipos e arte moram AQUI, não em mapas por
+// slug no código. Antes, cadastrar alguém era editar quatro arquivos e fazer
+// deploy — e qualquer um deles esquecido virava "o professor novo não aparece".
+//
+// `slug` é derivado do nome pelo servidor e IMUTÁVEL: ele nomeia os arquivos de
+// arte no volume de uploads, e renomear em cascata é risco sem retorno.
 model Professor {
-  id           String             @id @default(uuid())
-  name         String
-  slug         String             @unique
-  modelUrl     String?            @map("model_url")
-  marker1Index Int                @map("marker1_index")
-  marker2Index Int                @map("marker2_index")
+  id   String @id @default(uuid())
+  name String
+  slug String @unique
+
+  // 1 a 2 ids da roda (ver src/battle/engine/types.ts). O teto de 2 é de
+  // produto, não de banco: três tipos levam a escala de dano a 8× e explodem a
+  // tiragem de variantes. Quem impõe é o DTO.
+  types String[]
+
+  // Arte. Caminhos servidos publicamente — `/uploads/<slug>-frente.png` para
+  // quem foi cadastrado pelo painel, `/professors/...` para os três do seed,
+  // cuja arte já vive no build do front. Opcionais no banco porque as linhas
+  // anteriores a esta migration nasceram sem elas; o cadastro exige as três.
+  //
+  // A URL guardada inclui `?v=<timestamp>`: substituir a arte sobrescreve o
+  // arquivo com o MESMO nome, e sem a versão o navegador (e o cache do PWA)
+  // continuaria servindo a imagem antiga por até 30 dias.
+  spriteFrontUrl String? @map("sprite_front_url")
+  spriteBackUrl  String? @map("sprite_back_url")
+  modelUrl       String? @map("model_url")
+
+  // A arte é mista: o Gustavo é pixel art de verdade e precisa de
+  // `image-rendering: pixelated`; os cartoons entram reduzidos e o mesmo filtro
+  // serrilharia as bordas deles. Substituiu o SPRITES_PIXEL_ART do front.
+  pixelArt Boolean @default(false) @map("pixel_art")
+
   // Professor desativado sai do SORTEIO da captura sem sumir da coleção de quem
-  // já o capturou (ver capture-lottery.ts). O painel que liga e desliga isso é
-  // da tarefa 13; a coluna nasce aqui porque é o sorteio que precisa dela.
-  active       Boolean            @default(true)
-  discoveries  Discovery[]
-  captures     Capture[]
-  variants     ProfessorVariant[]
-  battleSlots  BattleSlot[]
+  // já o capturou (ver capture-lottery.ts). É o "remover" do painel: apagar de
+  // verdade cascatearia em captures, discoveries e battle_slots.
+  active Boolean @default(true)
+
+  // Legado da AR por marcador: colunas obrigatórias que o front nunca leu
+  // (nenhuma referência em profdex-front/src). Ganharam default para não
+  // travarem migration nem cadastro, e ficam FORA do formulário.
+  marker1Index Int @default(0) @map("marker1_index")
+  marker2Index Int @default(0) @map("marker2_index")
+
+  discoveries Discovery[]
+  captures    Capture[]
+  variants    ProfessorVariant[]
+  battleSlots BattleSlot[]
 
   @@map("professors")
 }

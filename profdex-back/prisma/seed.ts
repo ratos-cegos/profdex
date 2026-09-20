@@ -15,6 +15,7 @@ import {
   backfillCaptureVariants,
   ensureProfessorVariants,
 } from '../src/professors/professor-variants';
+import { SEED_PROFESSORS } from '../src/professors/seed-professors';
 import { seedQuiz } from './quiz-seed';
 
 const prisma = new PrismaClient();
@@ -29,30 +30,50 @@ const ADMIN = {
   password: process.env.ADMIN_PASSWORD || '123456',
 };
 
-const PROFESSORS = [
-  { name: 'Mário', slug: 'mario', marker1Index: 0, marker2Index: 1 },
-  { name: 'Eron', slug: 'eron', marker1Index: 2, marker2Index: 3 },
-  { name: 'Gustavo', slug: 'gustavo', marker1Index: 4, marker2Index: 5 },
-];
-
+/**
+ * Insere os três professores com arte pronta (ver src/professors/seed-professors.ts).
+ *
+ * Só COMPLETA o que falta: se a linha já existe com tipos, o seed não a toca.
+ * Desde a tarefa 13 o professor é editável pelo painel — sobrescrever aqui
+ * desfaria em silêncio o trabalho de quem cadastrou, e o seed roda em toda
+ * instalação. O preenchimento só acontece no banco anterior à migração, onde
+ * `types` está vazio e o professor sumiria do sorteio de captura.
+ */
 async function seedProfessors() {
-  for (const prof of PROFESSORS) {
-    await prisma.professor.upsert({
+  let criados = 0;
+  let completados = 0;
+
+  for (const prof of SEED_PROFESSORS) {
+    const existente = await prisma.professor.findUnique({
       where: { slug: prof.slug },
-      update: {},
-      create: prof,
+      select: { id: true, types: true },
     });
+
+    if (!existente) {
+      await prisma.professor.create({ data: prof });
+      criados += 1;
+      continue;
+    }
+
+    if (existente.types.length === 0) {
+      await prisma.professor.update({ where: { id: existente.id }, data: prof });
+      completados += 1;
+    }
   }
-  console.log(`Professores: ${PROFESSORS.length} inseridos`);
+
+  console.log(
+    `Professores: ${criados} criados, ${completados} completados, ` +
+      `${SEED_PROFESSORS.length - criados - completados} já em dia`,
+  );
 }
 
 /**
  * Materializa as combinações de tipos de cada professor.
  *
- * As variantes saem de PROFESSOR_TYPES (código) mas vivem no banco: é delas que
- * o gerador de QR tira quantas fichas distintas existem, e é a elas que cada
- * exemplar capturado fica preso — mexer na tabela de tipos depois não reescreve
- * o que já está no bolso do aluno.
+ * As variantes derivam de `professors.types` (banco) mas vivem em tabela
+ * própria: é delas que o gerador de QR tira quantas fichas distintas existem, e
+ * é a elas que cada exemplar capturado fica preso — editar os tipos de um
+ * professor depois não reescreve o que já está no bolso do aluno.
  */
 async function seedVariants() {
   const novas = await ensureProfessorVariants(prisma);

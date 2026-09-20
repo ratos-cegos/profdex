@@ -9,9 +9,17 @@ import { useBattle } from '../composables/useBattle.js'
 import { openBackCamera } from '../composables/useBackCamera.js'
 import { useProfessorsStore } from '../stores/professors'
 import { buildMoveset } from '../data/moves.js'
-import { typesForProfessor, PROFESSOR_TYPES, PLAYER_KEY } from '../data/professorTypes.js'
-import { ehPixelArt, PLAYER_SPRITE_URL, spriteUrlForProfessor } from '../data/professorSprites.js'
-import { TREINO_ENEMY_FALLBACK_NAME, TREINO_ENEMY_KEY } from '../data/treino.js'
+import {
+  ehPixelArt,
+  spriteCostasDe,
+  spriteFrenteDe,
+} from '../data/professorArte.js'
+import {
+  PLAYER_FALLBACK,
+  PLAYER_KEY,
+  TREINO_ENEMY_FALLBACK_NAME,
+  TREINO_ENEMY_KEY,
+} from '../data/treino.js'
 
 const MAX_HP = 120
 
@@ -31,6 +39,17 @@ const enemyProfessor = store.findByKey(TREINO_ENEMY_KEY) || {
   id: TREINO_ENEMY_KEY,
   name: TREINO_ENEMY_FALLBACK_NAME,
   slug: TREINO_ENEMY_KEY,
+  ...PLAYER_FALLBACK,
+}
+
+// O boneco do jogador. Sai da MESMA lista, pelo mesmo caminho: desde a tarefa
+// 13 tipos e arte vêm do banco, e manter uma segunda fonte para o nosso lado
+// faria o Gustavo da arena divergir do Gustavo da Profdex sem ninguém notar.
+const playerProfessor = store.findByKey(PLAYER_KEY) || {
+  id: PLAYER_KEY,
+  name: TREINO_ENEMY_FALLBACK_NAME,
+  slug: PLAYER_KEY,
+  ...PLAYER_FALLBACK,
 }
 
 // ── Realidade aumentada: DESATIVADA por enquanto. O combate acontece sempre
@@ -73,10 +92,9 @@ onMounted(() => {
 onUnmounted(stopCamera)
 
 // ── Tipos dos combatentes ───────────────────────────────────────────────────
-// Jogador: controlamos o Gustavo (Arquitetura). Inimigo: tipos (1–2) do
-// professor vindo da rota, resolvidos pela planilha (fallback determinístico).
-const enemyTypes = typesForProfessor(enemyProfessor)
-const playerTypes = PROFESSOR_TYPES[PLAYER_KEY]
+// Os dois lados trazem os tipos (1–2) gravados na própria linha do banco.
+const enemyTypes = enemyProfessor.types
+const playerTypes = playerProfessor.types
 
 // Os icones de tipo vao como prop `types` do BattleHpBar, nao concatenados no
 // `name`: sao componentes SVG e nao sobrevivem a virar string. De quebra, o
@@ -91,7 +109,7 @@ const enemy = {
   moves: buildMoveset(enemyTypes),
 }
 const player = {
-  name: 'Gustavo',
+  name: playerProfessor.name,
   types: playerTypes,
   maxHp: MAX_HP,
   moves: playerMoves,
@@ -124,8 +142,8 @@ onMounted(start)
 // Sprite 2D e não .glb — os modelos passam de 25 MB cada (o do Gustavo, 74 MB)
 // e dois deles na mesma tela estouravam a memória da aba no celular.
 // Ver docs/BUG-BATALHA-TRAVANDO.md.
-const enemySpriteSrc = spriteUrlForProfessor(enemyProfessor)
-const playerSpriteSrc = PLAYER_SPRITE_URL
+const enemySpriteSrc = spriteFrenteDe(enemyProfessor)
+const playerSpriteSrc = spriteCostasDe(playerProfessor)
 
 // AR ancorado (WebXR) e AR Quick Look (iOS) DESATIVADOS por enquanto — a arena
 // roda só no cenário 3D. O código foi removido; ver histórico do git para
@@ -151,7 +169,7 @@ function goBack() {
           :class="{
             'arena__model--hit': enemyHit,
             'arena__model--fainted': enemyFainted,
-            'arena__model--pixel': ehPixelArt(enemySpriteSrc),
+            'arena__model--pixel': ehPixelArt(enemyProfessor),
           }"
           :src="enemySpriteSrc"
           :alt="`Prof. ${enemyProfessor.name} em batalha`"
@@ -165,7 +183,7 @@ function goBack() {
           :class="{
             'arena__model--hit': playerHit,
             'arena__model--fainted': playerFainted,
-            'arena__model--pixel': ehPixelArt(playerSpriteSrc),
+            'arena__model--pixel': ehPixelArt(playerProfessor),
           }"
           :src="playerSpriteSrc"
           alt="Seu personagem"
@@ -197,7 +215,7 @@ function goBack() {
         :types="enemyTypes"
         :hp="enemyHp"
         :max-hp="enemy.maxHp"
-        :avatar-src="`/professors/${enemyProfessor.slug}-cartoon.png`"
+        :avatar-src="enemySpriteSrc"
       />
       <span v-if="enemyStatus" class="arena__status arena__status--enemy">
         {{ enemyStatus }}

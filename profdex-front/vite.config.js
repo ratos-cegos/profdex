@@ -177,6 +177,15 @@ export default defineConfig(async ({ mode }) => {
           // HMR da landing: o WebSocket do Vite dela também passa por aqui.
           ws: true,
         },
+        // Arte dos professores cadastrados pelo painel. Em produção quem serve
+        // é o nginx, direto do volume de uploads; em dev quem tem os arquivos é
+        // o backend. Sem este repasse, todo professor cadastrado localmente
+        // apareceria sem sprite — e pareceria bug do upload.
+        '/uploads': {
+          target: apiProxyTarget,
+          changeOrigin: true,
+          secure: true,
+        },
         '/api': {
           target: apiProxyTarget,
           changeOrigin: true,

@@ -57,6 +57,13 @@ services:
       - .env
     expose:
       - '3000'
+    volumes:
+      # Arte dos professores cadastrados pelo painel (tarefa 13). Volume
+      # NOMEADO, e não a camada de escrita do container: sem ele o upload
+      # "funciona" e os arquivos somem no próximo `up --build` — com a arte já
+      # cadastrada e ninguém olhando. Entra na rotina de backup junto do
+      # Postgres (ver deploy.md).
+      - profdex-uploads:/app/uploads
 
   frontend:
     build:
@@ -109,8 +116,15 @@ services:
     volumes:
       - ./nginx/templates:/etc/nginx/templates:ro
       - ./nginx/certs:/etc/nginx/certs:ro
+      # Somente leitura: o nginx SERVE a arte, o app é quem grava.
+      - profdex-uploads:/var/www/uploads:ro
 
 volumes:
+  # Arte enviada pelo painel de professores. É estado fora do Postgres: um
+  # backup que só leve o banco deixa todo professor cadastrado sem sprite e sem
+  # modelo 3D.
+  profdex-uploads:
+
   profdex-pgdata:
     # Nome fixo (em vez do padrão "<diretório-do-projeto>_profdex-pgdata"):
     # o compose de produção antigo vivia em profdex-back/docker-compose.prod.yml,

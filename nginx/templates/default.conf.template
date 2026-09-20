@@ -12,6 +12,9 @@
 #                          O prefixo é preservado (proxy_pass SEM barra final)
 #                          porque o build do Vite emite os assets já com
 #                          `base: '/landing/'` — ver profdex-landing/Dockerfile.
+#   /uploads/*           → arte dos professores cadastrados pelo painel, lida
+#                          direto do volume `profdex-uploads` (sem passar pelo
+#                          Node). Ver o bloco comentado mais abaixo.
 #   /api/*               → backend (container `app`) — o prefixo /api é
 #                          preservado porque o Nest já usa `setGlobalPrefix('api')`
 #   /api/socket.io/*     → mesmo backend, mesma location: o gateway de
@@ -39,6 +42,33 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
 
     client_max_body_size 10m;
+
+    # Arte dos professores cadastrados pelo painel, servida DIRETO do volume
+    # `profdex-uploads` (montado read-only aqui). Arquivo estático não tem por
+    # que atravessar o Node — e este bloco precisa vir antes de `location /`,
+    # senão a SPA responderia no lugar.
+    #
+    # Público de propósito: é a mesma arte que já vai no build do front, e o
+    # <img> do celular do aluno não carrega cookie de sessão.
+    #
+    # `alias` (e não `root`): o prefixo /uploads/ é trocado pelo caminho do
+    # disco, então /uploads/eron-frente.png lê /var/www/uploads/eron-frente.png.
+    location /uploads/ {
+        alias /var/www/uploads/;
+
+        add_header X-Content-Type-Options nosniff;
+        add_header Referrer-Policy no-referrer;
+
+        # A URL guardada no banco já carrega `?v=<timestamp>`, que muda quando o
+        # admin troca a arte. Com isso, cache longo é seguro: o arquivo antigo
+        # nunca é servido no lugar do novo, porque a URL nova é outra.
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000";
+
+        # Arte que ainda não subiu não pode cair na SPA e devolver o index.html
+        # com status 200 — um <img> "carregaria" HTML e falharia em silêncio.
+        try_files $uri =404;
+    }
 
     location /api/ {
         proxy_pass http://app:3000;

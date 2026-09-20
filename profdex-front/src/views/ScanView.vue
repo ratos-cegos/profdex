@@ -4,6 +4,7 @@ import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BottomSheet from '../components/BottomSheet.vue'
 import { COMO_FUNCIONA_QR } from '../data/comoFunciona.js'
+import { spriteFrenteDe } from '../data/professorArte.js'
 import { useProfessorsStore } from '../stores/professors'
 import { openBackCamera } from '../composables/useBackCamera'
 
@@ -261,7 +262,7 @@ onUnmounted(() => {
             <div class="capture-avatar">
               <img
                 v-if="!captureAvatarError"
-                :src="`/professors/${foundProfessor.slug}-cartoon.png`"
+                :src="spriteFrenteDe(foundProfessor)"
                 :alt="foundProfessor.name"
                 class="capture-img"
                 @error="captureAvatarError = true"
