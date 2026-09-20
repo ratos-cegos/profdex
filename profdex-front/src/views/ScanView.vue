@@ -604,6 +604,8 @@ onUnmounted(() => {
   width: 64px; height: 64px;
   border-radius: 50%;
   object-fit: cover;
+  /* Topo: sprite de corpo inteiro num avatar pequeno — ver ProfCard.vue. */
+  object-position: top;
   border: 2px solid var(--yellow);
 }
 .found-fallback {
@@ -641,6 +643,8 @@ onUnmounted(() => {
   width: 96px; height: 96px;
   border-radius: 50%;
   object-fit: cover;
+  /* É a tela da recompensa: o aluno precisa ver o ROSTO de quem capturou. */
+  object-position: top;
   border: 3px solid var(--yellow);
   box-shadow: 0 0 24px rgba(237, 175, 104, 0.35);
   animation: pulse 1s ease-in-out infinite;

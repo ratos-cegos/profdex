@@ -591,6 +591,8 @@ async function escolherLead(membro) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* Topo: sprite de corpo inteiro num avatar pequeno — ver ProfCard.vue. */
+  object-position: top;
 }
 
 .pick-card__name {

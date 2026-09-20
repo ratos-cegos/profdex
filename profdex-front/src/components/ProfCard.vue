@@ -155,6 +155,13 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
   height: 64px;
   border-radius: 50%;
   object-fit: cover;
+  /* Ancorado no TOPO, não no centro. Desde que a arte passou a vir do cadastro
+     (tarefa 13), a sprite de frente é o professor de CORPO INTEIRO — a da
+     Tânia tem 289×600. Num círculo de 64px, `cover` centralizado recorta
+     justamente a faixa do meio e entrega um avatar de tronco, sem rosto.
+     Nos cartoons quase quadrados (Mário, Eron) não há corte vertical, então
+     isto não muda nada para eles. */
+  object-position: top;
   border: 2px solid var(--yellow);
 }
 
