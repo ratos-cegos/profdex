@@ -249,10 +249,11 @@ que não é o ranqueado.
 |---|---|---|
 | `lobby:snapshot` | S→C | lista de online `{ id, name, rating, tier, status }` |
 | `lobby:update` | S→C | delta (entrou/saiu/mudou status) |
-| `invite:send` | C→S | `{ toUserId }` → erro amigável se cooldown/ocupado/spam |
+| `invite:send` | C→S | `{ toUserId }` → erro amigável se cooldown/ocupado/spam/**algum dos dois sem exemplar** |
 | `invite:received` | S→C | `{ inviteId, from, expiresAt }` |
-| `invite:accept` / `invite:decline` | C→S | `{ inviteId }` |
+| `invite:accept` / `invite:decline` | C→S | `{ inviteId }` — o aceite **repete** as checagens do envio (passam até 60s entre um e outro) e só consome o convite quando todas passam |
 | `invite:expired` / `invite:cancelled` | S→C | `{ inviteId }` |
+| `invite:pending` | C→S | `{}` → `{ incoming[], outgoing }` — o cliente pede a cada (re)conexão, porque limpa os convites ao cair |
 | `battle:start` | S→C | `{ battleId, pickDeadline, opponent }` → vai pra seleção |
 | `battle:pick` | C→S | `{ captureIds: string[] }` — 1 a 3, distintos, todos do próprio usuário |
 | `battle:pick:opponent` | S→C | `{}` — o rival confirmou o time (nunca o quê) |
@@ -267,7 +268,9 @@ que não é o ranqueado.
 | `battle:faint` | S→C | `{ deadline, youChoose, events[], you, foe }` — o ativo caiu; `youChoose` diz quem escolhe |
 | `battle:enter` | C→S | `{ captureId }` — quem entra no lugar de quem caiu |
 | `battle:end` | S→C | `{ result, reason, rating, you, foe }` |
-| `battle:resync` | C→S / S→C | reconexão: snapshot com a fase (`picking`/`preview`/`active`/`switching`) |
+| `battle:leave` | C→S | `{}` — sai da preparação; só vale em `picking`/`preview`, e fecha a sala para os dois sem pontuar nem consumir cooldown |
+| `battle:cancelled` | S→C | `{ reason, byYou? }` — `pick_timeout`, `left` (alguém saiu da preparação) ou `server_shutdown` |
+| `battle:resync` | C→S / S→C | reconexão: snapshot com a fase (`picking`/`preview`/`active`/`switching`), ou **`{ phase: 'idle' }` quando não há sala**. O servidor emite em toda conexão e sempre responde ao pedido — o silêncio deixava o cliente preso numa batalha que já acabou |
 
 ### REST
 

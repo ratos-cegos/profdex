@@ -12,6 +12,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { extractSessionTokenFromCookieHeader } from '../auth/auth-session';
 import { getAllowedOrigins } from '../config/http-security';
+import { PrismaService } from '../prisma/prisma.service';
 import { BattleRoomService } from './battle-room.service';
 import { CooldownService } from './cooldown.service';
 import { Invite, InviteService } from './invite.service';
@@ -101,6 +102,7 @@ export class BattleGateway
     private readonly invites: InviteService,
     private readonly cooldown: CooldownService,
     private readonly rooms: BattleRoomService,
+    private readonly prisma: PrismaService,
   ) {
     // O serviço de salas notifica jogadores por aqui — sem depender do socket.
     this.rooms.configure({
@@ -151,11 +153,15 @@ export class BattleGateway
 
     // Reconexão no meio de uma batalha: restaura o status (o join acima entrou
     // como 'disponivel') e entrega o snapshot para a UI se reconstruir.
-    if (this.rooms.hasActiveRoom(user.id)) {
+    if (this.rooms.hasActiveRoom(user.id))
       this.setStatus(user.id, 'em_batalha');
-      const snapshot = this.rooms.resync(user.id);
-      if (snapshot) client.emit('battle:resync', snapshot);
-    }
+
+    // O snapshot vai SEMPRE, inclusive o `{ phase: 'idle' }` de quem não tem
+    // sala. Sem ele, quem voltou de uma queda com a batalha já encerrada ficava
+    // com `phase: 'active'` e `youMoved: true` em memória e os botões da arena
+    // mortos para sempre — nenhum outro evento chega para corrigir isso.
+    // Ver docs/BUG-BATALHA-TRAVANDO.md (P1).
+    client.emit('battle:resync', this.rooms.resync(user.id));
   }
 
   handleDisconnect(client: Socket) {
@@ -244,6 +250,12 @@ export class BattleGateway
       return { ok: false, message: 'Você já está em batalha.' };
     }
 
+    const semExemplar = await this.quemNaoTemExemplar(
+      { id: me.id, name: me.name },
+      { id: target.id, name: target.name },
+    );
+    if (semExemplar) return semExemplar;
+
     const availableAt = await this.cooldown.availableAt(me.id, toUserId);
     if (availableAt) {
       return {
@@ -272,25 +284,46 @@ export class BattleGateway
     };
   }
 
+  /**
+   * Aceite do convite. É a última porta antes de a sala nascer, e por isso
+   * repete as checagens do envio: entre um e outro passam até 60 segundos, e
+   * nesse intervalo o outro lado pode ter entrado em batalha — ou o aluno pode
+   * ter acabado de capturar o primeiro professor (o que precisa funcionar).
+   *
+   * O convite só é CONSUMIDO quando tudo passa: recusar consumindo deixaria o
+   * aluno sem como tentar de novo depois de capturar, dentro do mesmo minuto.
+   */
   @SubscribeMessage('invite:accept')
-  onInviteAccept(
+  async onInviteAccept(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: unknown,
-  ): Ack {
+  ): Promise<Ack> {
     const me = this.userOf(client);
     const inviteId = this.readString(body, 'inviteId');
     if (!inviteId) return { ok: false, message: 'Convite inválido.' };
 
-    const invite = this.invites.takeAsTarget(inviteId, me.id);
-    if (!invite) return { ok: false, message: 'Esse convite não existe mais.' };
+    const pending = this.invites.peekAsTarget(inviteId, me.id);
+    if (!pending)
+      return { ok: false, message: 'Esse convite não existe mais.' };
 
-    const inviter = this.presence.getUser(invite.fromId);
+    const inviter = this.presence.getUser(pending.fromId);
     if (!inviter || inviter.status !== 'disponivel') {
       return { ok: false, message: 'Quem convidou não está mais disponível.' };
     }
     if (this.presence.getUser(me.id)?.status !== 'disponivel') {
       return { ok: false, message: 'Você já está em batalha.' };
     }
+
+    const semExemplar = await this.quemNaoTemExemplar(
+      { id: me.id, name: me.name },
+      { id: inviter.id, name: inviter.name },
+    );
+    if (semExemplar) return semExemplar;
+
+    // Daqui até o `create` não pode haver await: é o que impede dois aceites em
+    // voo (toque duplo) de criarem duas salas para o mesmo convite.
+    const invite = this.invites.takeAsTarget(inviteId, me.id);
+    if (!invite) return { ok: false, message: 'Esse convite não existe mais.' };
 
     // Nasce a sala: seleção às cegas de professor com 60s de prazo.
     const { battleId, pickDeadline } = this.rooms.create(
@@ -381,14 +414,57 @@ export class BattleGateway
     return this.rooms.enterWith(me.id, captureId);
   }
 
+  /**
+   * Desistir da PREPARAÇÃO (seleção de time ou lead) — nunca de batalha
+   * começada, que tem a regra própria do abandono. Sem isto, quem cai numa
+   * seleção que não quer (ou não pode) concluir fica preso até o timeout de
+   * 60s, com o status `em_batalha` e invisível para o resto do lobby.
+   */
+  @SubscribeMessage('battle:leave')
+  onBattleLeave(@ConnectedSocket() client: Socket): Ack {
+    const me = this.userOf(client);
+    return this.rooms.leaveSelection(me.id);
+  }
+
+  /**
+   * O snapshot vai SEMPRE, inclusive o `{ phase: 'idle' }` de quem não tem
+   * sala: é o que tira do limbo quem voltou de uma queda com a batalha já
+   * encerrada. O ack existe além do evento porque o cliente o usa com timeout
+   * curto para detectar socket zumbi (ver stores/battle.js).
+   */
   @SubscribeMessage('battle:resync')
   onBattleResync(@ConnectedSocket() client: Socket): Ack {
     const me = this.userOf(client);
-    const snapshot = this.rooms.resync(me.id);
-    if (!snapshot)
-      return { ok: false, message: 'Nenhuma batalha em andamento.' };
-    client.emit('battle:resync', snapshot);
+    client.emit('battle:resync', this.rooms.resync(me.id));
     return { ok: true };
+  }
+
+  /**
+   * Convites vivos do usuário — pedidos pelo cliente a cada (re)conexão.
+   *
+   * O store limpa os convites ao perder a conexão (sem socket eles não valem),
+   * então um blip de Wi-Fi apagava da tela um desafio que o servidor ainda
+   * considera vivo. Em vez de adivinhar, o cliente pergunta.
+   */
+  @SubscribeMessage('invite:pending')
+  onInvitePending(@ConnectedSocket() client: Socket): Ack {
+    const me = this.userOf(client);
+    const outgoing = this.invites.outgoingOf(me.id);
+    return {
+      ok: true,
+      incoming: this.invites.incomingFor(me.id).map((invite) => ({
+        inviteId: invite.id,
+        from: { id: invite.fromId, name: this.nameOf(invite.fromId) },
+        expiresAt: invite.expiresAt,
+      })),
+      outgoing: outgoing
+        ? {
+            inviteId: outgoing.id,
+            to: { id: outgoing.toId, name: this.nameOf(outgoing.toId) },
+            expiresAt: outgoing.expiresAt,
+          }
+        : null,
+    };
   }
 
   @SubscribeMessage('invite:decline')
@@ -417,6 +493,44 @@ export class BattleGateway
   }
 
   // ── Auxiliares ────────────────────────────────────────────────────────────
+
+  /**
+   * Recusa o convite quando um dos dois lados não tem nenhum exemplar — devolve
+   * null quando os dois podem batalhar.
+   *
+   * Sem esta checagem a sala nascia assim mesmo, quem não tem professor não
+   * conseguia confirmar time, e os DOIS ficavam presos até o timeout de 60s,
+   * com status `em_batalha` e invisíveis para o lobby. É uma contagem por lado,
+   * coberta pelo índice `[userId, professorId]` de `captures`.
+   */
+  private async quemNaoTemExemplar(
+    me: { id: string; name: string },
+    other: { id: string; name: string },
+  ): Promise<{ ok: false; message: string } | null> {
+    const [meuTotal, dele] = await Promise.all([
+      this.prisma.capture.count({ where: { userId: me.id } }),
+      this.prisma.capture.count({ where: { userId: other.id } }),
+    ]);
+    if (meuTotal === 0) {
+      return {
+        ok: false,
+        message:
+          'Você ainda não capturou nenhum professor — capture um para batalhar.',
+      };
+    }
+    if (dele === 0) {
+      return {
+        ok: false,
+        message: `${other.name} ainda não tem professores para batalhar.`,
+      };
+    }
+    return null;
+  }
+
+  /** Nome do usuário na presença — quem está offline não tem convite vivo. */
+  private nameOf(userId: string): string {
+    return this.presence.getUser(userId)?.name ?? 'Jogador';
+  }
 
   /**
    * Emite para TODOS os sockets (abas) de um usuário — um emit só, via sala
