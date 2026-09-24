@@ -21,7 +21,7 @@ import { QUIZ_QUESTIONS } from './quiz-questions';
  * ditado pelo aluno na hora de contestar. Reexecutar o seed não pode
  * renumerar a folha que já está na mesa.
  *
- * São 9000 códigos para um banco de ~180 questões — a rejeição por colisão
+ * São 9000 códigos para um banco de ~420 questões — a rejeição por colisão
  * praticamente não acontece, mas o teto existe para o seed falhar alto em vez
  * de girar para sempre se um dia o banco encostar no limite.
  */
