@@ -133,11 +133,6 @@ function goDetails(prof) {
             </span>
           </header>
 
-          <p class="raros__nota">
-            Professores raros existem. Eles não contam para completar a Profdex
-            e não saem em ficha comum.
-          </p>
-
           <div class="grid">
             <ProfCard
               v-for="(prof, i) in raros"
@@ -342,13 +337,6 @@ function goDetails(prof) {
 }
 
 .raros__contador span {
-  color: var(--text-muted);
-}
-
-.raros__nota {
-  margin: 0 0 4px;
-  font-size: 11px;
-  line-height: 1.6;
   color: var(--text-muted);
 }
 
