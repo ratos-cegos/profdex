@@ -6,6 +6,66 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 `Adicionado` para novidades, `Alterado` para mudanças de comportamento existente,
 `Corrigido` para defeitos e `Removido` para o que saiu.
 
+## [Não publicado] — branch `feat/professores-raros`
+
+### Adicionado
+
+- **Professor raro** (tarefa 15). Uma segunda via de aquisição, paralela e
+  independente da captura comum: um professor marcado como raro **não sai em
+  ficha comum, não conta para completar a Profdex**, e só é capturável por quem
+  acertar **5 questões em cada tipo dele** no quiz de bancada. Uma captura por
+  conta, para sempre.
+
+  Os **tipos do professor são os temas exigidos** — não há coluna separada. Um
+  raro de dois tipos exige os 5 em **cada** um ("E", não "OU"), o que faz do
+  número de temas o dial de dificuldade. Ele ganha **uma** variante (a
+  combinação completa) em vez das três do professor comum, porque tem arte e
+  pilha de papel próprias.
+
+  O aluno **nunca vê progresso** — nem no app, nem na bancada, nem parcial. A
+  bancada fica virada para ele, e um "4/5 rumo ao raro" revelaria o tema para a
+  fila inteira. O único aviso é a **cena dourada** no acerto que fecha o gate
+  (`ENTREGUE A FICHA ✦ <NOME>`), mais uma tarja de pendência no resultado e no
+  cartão do aluno até a ficha virar captura. Quem enxerga progresso é o
+  **painel**, que não fica virado para ninguém.
+
+  O **servidor é o porteiro do resgate**: a checagem roda dentro da transação da
+  captura e, nas três recusas (`RARO_INDISPONIVEL` 404, `RARO_BLOQUEADO` 403,
+  `RARO_JA_CAPTURADO` 409), **a ficha não é consumida**. Com gate humano, uma
+  ficha fotografada e mandada no grupo do WhatsApp entregaria o raro para quem
+  nunca respondeu nada.
+
+  Em batalha ele é um exemplar como qualquer outro — variante, deck e IVs saem
+  do sorteio normal, e a diferença é só cosmética (selo `✦`). O PvP é ranqueado
+  por Elo, e um raro estatisticamente superior faria o ranking medir quem
+  respondeu quiz, não quem joga melhor.
+
+  Também entram: cadastro pelo painel com validação de **um raro por tema**
+  (409 `TEMA_JA_TEM_RARO`), **tiragem de pilha própria** por raro em
+  `/admin/fichas` → `Raros ✦` (folha com moldura e os temas exigidos impressos),
+  rota `GET /professors/rares` que devolve só a contagem e os capturados, seção
+  `✦ Raros` na Profdex com entradas bloqueadas, e a seção `Raros ✦` de
+  `/admin/metrics` com quem capturou, `destravaram` vs `capturaram` e quem está
+  **a um acerto**.
+
+  Migração `20260924000000_add_professores_raros`: aditiva e sem backfill
+  (`professors.rare`, `qr_batches.rare_professor_id`, tabela `rare_unlocks`).
+  Aplicada num Postgres 16 descartável com todas as anteriores, e o
+  `prisma migrate diff` acusou zero divergência para o schema.
+
+### Alterado
+
+- **A palavra "dex" passou a excluir os raros nos três lugares que contam
+  coleção**, senão "100% da dex" ficaria inalcançável: `GET /professors`, o
+  `dexLeaderboard` do ranking (nos dois lados da fração) e o
+  `collection_completed` das métricas. O estoque por tipo de `/admin/fichas`
+  também ignora o raro — ele responde "quantos professores podem sair numa
+  ficha comum deste tipo", e o raro nunca sai numa.
+- **`ScanView` confere o código de erro antes do status HTTP.** As recusas de
+  ficha rara reusam 404 e 409, e a ordem anterior faria um `RARO_JA_CAPTURADO`
+  cair no texto genérico de "QR já utilizado" — mandando embora um aluno cuja
+  ficha continua valendo.
+
 ## [Não publicado] — branch `deploy`
 
 Trabalho da branch de deploy, sobre a `main` já integrada.

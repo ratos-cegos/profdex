@@ -74,4 +74,17 @@ export class AdminMetricsController {
   retention() {
     return this.metrics.retentionD1();
   }
+
+  /**
+   * Professores raros: quem capturou, quanto cada raro andou, e quem está a um
+   * acerto de destravar.
+   *
+   * Aqui pode mostrar tudo — inclusive progresso, que a bancada não mostra. O
+   * painel vive no `AdminLayout` e nunca fica virado para aluno; é justamente
+   * ele a mitigação da bancada não ter aviso prévio (tarefa 15, decisão 16).
+   */
+  @Get('rares')
+  rares() {
+    return this.metrics.rares();
+  }
 }

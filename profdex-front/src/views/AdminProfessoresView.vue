@@ -57,7 +57,7 @@ const professores = ref([])
 // Formulário. `editando` guarda o professor em edição — null é cadastro novo.
 const editando = ref(null)
 const aberto = ref(false)
-const form = reactive({ name: '', types: [], pixelArt: false })
+const form = reactive({ name: '', types: [], pixelArt: false, rare: false })
 const arquivos = reactive({ spriteFront: null, spriteBack: null, model: null })
 const previews = reactive({ spriteFront: '', spriteBack: '', model: '' })
 const erroForm = ref('')
@@ -80,7 +80,9 @@ const rotuloDoTipo = (id) => getType(id)?.label ?? id
 const tiposVazios = computed(() => {
   const comProfessor = new Set()
   for (const p of professores.value) {
-    if (!p.active) continue
+    // Raro não conta: ele nunca sai numa ficha comum (decisão 10), então um
+    // tipo que só tem raro continua sendo papel que não captura nada.
+    if (!p.active || p.rare) continue
     for (const t of p.types) comProfessor.add(t)
   }
   return TYPE_CYCLE.filter((t) => !comProfessor.has(t.id))
@@ -130,6 +132,7 @@ function abrirNovo() {
   form.name = ''
   form.types = []
   form.pixelArt = false
+  form.rare = false
   limparPreviews()
   erroForm.value = ''
   aberto.value = true
@@ -140,6 +143,8 @@ function abrirEdicao(professor) {
   form.name = professor.name
   form.types = [...professor.types]
   form.pixelArt = professor.pixelArt
+  // Só para exibir: `rare` é imutável e o PATCH não o envia.
+  form.rare = professor.rare
   limparPreviews()
   erroForm.value = ''
   aberto.value = true
@@ -195,6 +200,8 @@ async function salvar() {
   corpo.append('name', form.name.trim())
   corpo.append('types', JSON.stringify(form.types))
   corpo.append('pixelArt', String(form.pixelArt))
+  // Só no cadastro: `rare` é imutável, e o servidor ignora o campo no PATCH.
+  if (!editandoUm.value) corpo.append('rare', String(form.rare))
   for (const campo of CAMPOS_DE_ARTE) {
     if (arquivos[campo.key]) corpo.append(campo.key, arquivos[campo.key])
   }
@@ -310,7 +317,16 @@ onMounted(carregar)
         </p>
 
         <fieldset class="tipos">
-          <legend class="campo-rotulo">Tipos (até {{ MAX_TIPOS }})</legend>
+          <legend class="campo-rotulo">
+            {{ form.rare ? 'Tipos (= temas exigidos)' : 'Tipos' }}
+            (até {{ MAX_TIPOS }})
+          </legend>
+          <p v-if="form.rare" class="form__nota form__nota--raro">
+            Com <strong>{{ MAX_TIPOS }} tipos</strong> o aluno precisa de 5
+            acertos em <strong>cada um</strong> — 10 acertos, e o cooldown de
+            10 min por tema faz disso cerca de 100 min de bancada. O número de
+            temas é o que regula a dificuldade do raro.
+          </p>
           <div class="tipos__grade">
             <button
               v-for="t in TYPE_CYCLE"
@@ -372,6 +388,21 @@ onMounted(carregar)
           </span>
         </label>
 
+        <!-- Raro. Só no cadastro: mudar isso depois tiraria o professor da
+             contagem da dex de todo mundo e deixaria as variantes dele órfãs. -->
+        <label v-if="!editandoUm" class="confirmacao confirmacao--raro">
+          <input v-model="form.rare" type="checkbox" />
+          <span>
+            <strong>✦ Professor raro.</strong> Não sai em ficha comum, não conta
+            na Profdex, e exige 5 acertos em <strong>CADA</strong> tipo marcado.
+            <em>Escolha definitiva — não dá para mudar depois do cadastro.</em>
+          </span>
+        </label>
+        <p v-else-if="editando.rare" class="form__nota form__nota--raro">
+          <strong>✦ Professor raro.</strong> A raridade não muda na edição. Para
+          corrigir, desative este e cadastre outro.
+        </p>
+
         <p v-if="erroForm" class="aviso aviso--erro">{{ erroForm }}</p>
 
         <div v-if="enviando" class="progresso" role="status" aria-live="polite">
@@ -418,11 +449,17 @@ onMounted(carregar)
             <img class="linha__arte" :src="spriteFrenteDe(p)" :alt="p.name" />
 
             <div class="linha__id">
-              <strong class="linha__nome">{{ p.name }}</strong>
+              <strong class="linha__nome">
+                <span v-if="p.rare" class="selo-raro" title="Professor raro">✦</span>
+                {{ p.name }}
+              </strong>
               <span class="linha__slug">{{ p.slug }}</span>
             </div>
 
             <div class="linha__tipos">
+              <!-- No raro os tipos são também o gate do quiz: dizer só "tipos"
+                   esconderia que marcar dois dobra o esforço exigido do aluno. -->
+              <span v-if="p.rare" class="linha__gate">exige 5 acertos em</span>
               <span
                 v-for="t in p.types"
                 :key="t"
@@ -646,6 +683,36 @@ onMounted(carregar)
   background: var(--bg-card);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.confirmacao--raro {
+  border-color: var(--raro);
+  background: color-mix(in srgb, var(--raro) 10%, var(--bg-card));
+}
+
+.confirmacao--raro em {
+  display: block;
+  margin-top: 4px;
+  color: var(--raro);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.form__nota--raro {
+  color: var(--raro);
+}
+
+.selo-raro {
+  color: var(--raro);
+  font-size: 13px;
+}
+
+.linha__gate {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--raro);
+  align-self: center;
 }
 
 .progresso {

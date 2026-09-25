@@ -76,6 +76,20 @@ const cor = computed(() => temaAtual.value?.color ?? 'var(--red)')
 
 const DIFICULDADES = { facil: 'FÁCIL', media: 'MÉDIA', dificil: 'DIFÍCIL' }
 
+// ── Ficha rara ──────────────────────────────────────────────────────────────
+// O servidor é quem decide o que aparece aqui. A tela NUNCA calcula progresso:
+// ela fica virada para o aluno, e um "falta 1" revelaria para a fila inteira em
+// que tema existe raro. Antes do gate fechado, `resultado.raro` vem nulo e esta
+// tela é exatamente a de sempre (tarefa 15, decisão 15).
+const raroLiberado = computed(() => resultado.value?.raro?.liberado ?? null)
+
+// A pendência aparece nos dois lugares em que o operador olha: no resultado da
+// rodada e no cartão do aluno, logo depois da matrícula.
+const raroPendente = computed(() => resultado.value?.raro?.pendente ?? null)
+const raroPendentesDoAluno = computed(() => aluno.value?.raroPendentes ?? [])
+
+const rotuloDoTema = (id) => getType(id)?.label ?? id
+
 const temasExibidos = computed(() =>
   TYPE_CYCLE.map((t) => {
     const dados = temas.value.find((x) => x.theme === t.id)
@@ -319,6 +333,14 @@ function formatarEspera(s) {
         </div>
       </header>
 
+      <!-- Ficha rara que este aluno conquistou e ainda não recebeu. Vem antes
+           da rodada começar de propósito: é a única chance de entregar o papel
+           de quem destravou horas atrás e voltou à fila. Não vaza nada — só
+           chega aqui quem já viu a cena dourada. -->
+      <p v-for="r in raroPendentesDoAluno" :key="r.name" class="tarja-raro">
+        ✦ ficha rara pendente — <strong>{{ r.name }}</strong>
+      </p>
+
       <p class="chamada chamada--pequena">Escolha o tema da pergunta</p>
       <p v-if="erro" class="erro" role="alert">{{ erro }}</p>
 
@@ -388,12 +410,47 @@ function formatarEspera(s) {
       </div>
     </section>
 
+    <!-- ── Ficha rara: o acerto que fechou o gate ──────────────────────
+         Cena PRÓPRIA, não um enfeite na tela de acerto. Ela é o único aviso
+         que o operador recebe (ele descobre junto com o aluno — a mitigação
+         é o painel, em /admin/metrics, não esta tela), e precisa ser legível
+         de relance, de lado, com a fila andando. Fica até alguém tocar em
+         "próximo aluno": sumir sozinha perderia a entrega. -->
+    <section
+      v-else-if="etapa === 'resultado' && raroLiberado"
+      class="cena cena--centro cena--raro"
+    >
+      <span class="selo selo--raro">✦</span>
+      <p class="raro__eyebrow">FICHA RARA</p>
+      <h2 class="raro__nome">{{ raroLiberado.name }}</h2>
+      <p class="raro__ordem">ENTREGUE A FICHA ✦ {{ raroLiberado.name.toUpperCase() }}</p>
+      <p class="raro__apoio">
+        {{ aluno?.name }} completou os 5 acertos em
+        <strong>{{ raroLiberado.temas.map(rotuloDoTema).join(' e ') }}</strong
+        >. Pegue a pilha com o nome dele.
+      </p>
+      <p class="codigo-questao">Questão #{{ resultado.code }}</p>
+
+      <div class="botoes">
+        <button class="acao acao--secundaria" type="button" @click="voltarAosTemas">
+          OUTRO TEMA
+        </button>
+        <button class="acao" type="button" @click="proximoAluno">PRÓXIMO ALUNO</button>
+      </div>
+    </section>
+
     <!-- ── Resultado ──────────────────────────────────────────────────── -->
     <section
       v-else-if="etapa === 'resultado'"
       class="cena cena--centro"
       :class="resultado.correct ? 'cena--acerto' : 'cena--erro'"
     >
+      <!-- Tarja de pendência: quem destravou às 10h e voltou às 15h não pode
+           depender da memória do operador. -->
+      <p v-if="raroPendente" class="tarja-raro">
+        ✦ ficha rara pendente — <strong>{{ raroPendente.name }}</strong>
+      </p>
+
       <span class="selo">{{ resultado.correct ? '✓' : '✕' }}</span>
       <h2 class="veredito">
         {{
@@ -915,6 +972,76 @@ function formatarEspera(s) {
 
 .cena--erro {
   --tema: #e5484d;
+}
+
+/* Ficha rara.
+   Cor e escala de tipo deliberadamente diferentes do acerto comum: o operador
+   olha esta tela de lado, com a fila andando, e precisa distinguir "acertou" de
+   "entregue a ficha" sem ler. Fundo dourado inteiro, não um detalhe. */
+.cena--raro {
+  --tema: var(--raro);
+  background:
+    radial-gradient(circle at 50% 30%, rgba(245, 196, 81, 0.25), transparent 60%),
+    var(--raro-deep);
+}
+
+.selo--raro {
+  color: #2a1d00;
+}
+
+.raro__eyebrow {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: clamp(13px, 1.6vw, 20px);
+  font-weight: 700;
+  letter-spacing: 0.35em;
+}
+
+.raro__nome {
+  margin: 0;
+  color: var(--raro);
+  font-size: clamp(34px, 6.5vw, 82px);
+  line-height: 1.05;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.45);
+}
+
+/* A ordem para o OPERADOR, em imperativo. É o único aviso que ele recebe. */
+.raro__ordem {
+  margin: 0;
+  padding: clamp(8px, 1.2vw, 16px) clamp(16px, 2.4vw, 32px);
+  border: 3px solid var(--raro);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  color: #fff;
+  font-size: clamp(17px, 2.8vw, 36px);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.raro__apoio {
+  margin: 0;
+  max-width: 48ch;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: clamp(13px, 1.6vw, 20px);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.raro__apoio strong {
+  color: var(--raro);
+}
+
+/* Tarja de pendência: some só quando a ficha vira captura. */
+.tarja-raro {
+  margin: 0;
+  padding: 8px 18px;
+  border: 2px solid var(--raro);
+  border-radius: 999px;
+  background: rgba(245, 196, 81, 0.12);
+  color: var(--raro);
+  font-size: clamp(12px, 1.5vw, 18px);
+  font-weight: 700;
 }
 
 .selo {

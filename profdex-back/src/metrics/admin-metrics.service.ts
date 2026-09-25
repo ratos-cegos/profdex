@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { QUIZ_THEMES } from '../quiz/quiz.constants';
+import {
+  QUIZ_THEMES,
+  RARE_UNLOCK_CORRECT_ANSWERS,
+} from '../quiz/quiz.constants';
 import {
   EVENT_TYPES,
   INTERACTION_SOURCE_LABELS,
@@ -220,7 +223,9 @@ export class AdminMetricsService {
    * de linhas por hora — barata mesmo com milhões de eventos brutos acumulados.
    */
   async practiceQuiz(days = 7) {
-    const from = new Date(Date.now() - Math.min(Math.max(days, 1), 30) * 86_400_000);
+    const from = new Date(
+      Date.now() - Math.min(Math.max(days, 1), 30) * 86_400_000,
+    );
     from.setMinutes(0, 0, 0);
 
     const rows = await this.prisma.metricHourly.findMany({
@@ -267,6 +272,142 @@ export class AdminMetricsService {
       acertos: certos,
       taxa: total ? Math.round((certos / total) * 100) : null,
       porTema,
+    };
+  }
+
+  /**
+   * Professores raros: quem pegou, e quanto cada raro andou.
+   *
+   * Vive DENTRO de `/admin/metrics` e não numa aba própria: o volume é pequeno
+   * por natureza (1 raro por tema, 1 captura por conta), e uma aba seria tela
+   * vazia a maior parte do evento.
+   *
+   * O painel é o único lugar onde progresso de raro aparece — e pode, porque
+   * ele mora no `AdminLayout`, que nunca fica virado para aluno. É esta tela
+   * que compensa a bancada não ter aviso prévio (decisão 16).
+   */
+  async rares() {
+    const raros = await this.prisma.professor.findMany({
+      where: { rare: true, active: true },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        types: true,
+        variants: { select: { id: true } },
+      },
+    });
+
+    if (!raros.length) {
+      // Estado vazio explícito: a seção abre sem raro cadastrado, sem erro.
+      return { capturas: [], porRaro: [], aUmAcerto: [] };
+    }
+
+    const temasComRaro = [...new Set(raros.flatMap((r) => r.types))];
+    const variantIds = raros.flatMap((r) => r.variants.map((v) => v.id));
+
+    const [capturasRaras, unlocks, acertosPorTema, estoque] = await Promise.all(
+      [
+        this.prisma.capture.findMany({
+          where: { professor: { rare: true } },
+          orderBy: { capturedAt: 'desc' },
+          select: {
+            capturedAt: true,
+            professorId: true,
+            user: { select: { name: true, matricula: true } },
+            professor: { select: { name: true } },
+          },
+        }),
+        this.prisma.rareUnlock.findMany({
+          where: { theme: { in: temasComRaro } },
+          select: { userId: true, theme: true },
+        }),
+        // `groupBy` por (aluno, tema), restrito aos temas que TÊM raro, e o
+        // filtro de "exatamente 4" em memória: é a mesma ordem de grandeza que o
+        // `dexLeaderboard` já paga hoje, e o Prisma não expressa HAVING = 4.
+        this.prisma.quizAttempt.groupBy({
+          by: ['userId', 'theme'],
+          where: {
+            theme: { in: temasComRaro },
+            correct: true,
+            annulled: false,
+          },
+          _count: { _all: true },
+        }),
+        this.prisma.captureToken.groupBy({
+          by: ['variantId'],
+          where: { variantId: { in: variantIds }, redeemedAt: null },
+          _count: { _all: true },
+        }),
+      ],
+    );
+
+    const destravadosPorAluno = new Map<string, Set<string>>();
+    for (const u of unlocks) {
+      const set = destravadosPorAluno.get(u.userId) ?? new Set<string>();
+      set.add(u.theme);
+      destravadosPorAluno.set(u.userId, set);
+    }
+
+    const capturadoresPorRaro = new Map<string, Set<string>>();
+    for (const c of capturasRaras) {
+      const set = capturadoresPorRaro.get(c.professorId) ?? new Set<string>();
+      set.add(`${c.user.matricula}`);
+      capturadoresPorRaro.set(c.professorId, set);
+    }
+
+    const vivasPorVariante = new Map(
+      estoque
+        .filter((e) => e.variantId !== null)
+        .map((e) => [e.variantId as string, e._count._all]),
+    );
+
+    const porRaro = raros.map((raro) => ({
+      professorId: raro.id,
+      name: raro.name,
+      themes: raro.types,
+      // O gate REAL: alunos que destravaram TODOS os temas dele, não os
+      // parciais. É o número que se compara com `capturaram`.
+      destravaram: [...destravadosPorAluno.values()].filter((temas) =>
+        raro.types.every((t) => temas.has(t)),
+      ).length,
+      capturaram: capturadoresPorRaro.get(raro.id)?.size ?? 0,
+      estoqueVivo: raro.variants.reduce(
+        (total, v) => total + (vivasPorVariante.get(v.id) ?? 0),
+        0,
+      ),
+    }));
+
+    // "A um acerto": exatamente 4 acertos num tema que tem raro. É a mitigação
+    // da decisão 15 — o aluno nunca vê progresso, então é por aqui que o
+    // administrador avisa a mesa que alguém está perto.
+    const aUmAcerto = acertosPorTema
+      .filter((linha) => linha._count._all === RARE_UNLOCK_CORRECT_ANSWERS - 1)
+      .map((linha) => ({ userId: linha.userId, theme: linha.theme }));
+
+    const alunos = aUmAcerto.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: aUmAcerto.map((a) => a.userId) } },
+          select: { id: true, name: true, matricula: true },
+        })
+      : [];
+    const porId = new Map(alunos.map((a) => [a.id, a]));
+
+    return {
+      capturas: capturasRaras.map((c) => ({
+        matricula: c.user.matricula,
+        name: c.user.name,
+        professor: c.professor.name,
+        capturedAt: c.capturedAt,
+      })),
+      porRaro,
+      aUmAcerto: aUmAcerto
+        .map((a) => ({
+          name: porId.get(a.userId)?.name ?? '—',
+          matricula: porId.get(a.userId)?.matricula ?? '—',
+          theme: a.theme,
+        }))
+        .sort((a, b) => a.theme.localeCompare(b.theme)),
     };
   }
 

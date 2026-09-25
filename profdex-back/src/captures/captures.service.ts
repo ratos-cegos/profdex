@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -40,6 +41,18 @@ type CaptureRow = Prisma.CaptureGetPayload<{ select: typeof CAPTURE_SELECT }>;
  */
 export const TIPO_SEM_PROFESSOR = 'TIPO_SEM_PROFESSOR';
 
+/**
+ * Recusas da ficha RARA (tarefa 15). Nas três a ficha **continua valendo**: o
+ * `throw` acontece dentro da transação e desfaz a baixa do papel.
+ *
+ * O servidor é o porteiro, e não a mesa: com gate humano, uma ficha rara
+ * fotografada e mandada no grupo do WhatsApp entregaria o raro para quem nunca
+ * respondeu nada (decisão 9).
+ */
+export const RARO_INDISPONIVEL = 'RARO_INDISPONIVEL';
+export const RARO_BLOQUEADO = 'RARO_BLOQUEADO';
+export const RARO_JA_CAPTURADO = 'RARO_JA_CAPTURADO';
+
 @Injectable()
 export class CapturesService {
   constructor(
@@ -66,7 +79,7 @@ export class CapturesService {
   async captureByToken(userId: string, token: string) {
     const tokenHash = hashCaptureToken(token);
 
-    const { capture, novaDescoberta } = await this.prisma.$transaction(
+    const { capture, novaDescoberta, raro } = await this.prisma.$transaction(
       async (transaction) => {
         const { count } = await transaction.captureToken.updateMany({
           where: { tokenHash, redeemedAt: null },
@@ -89,7 +102,16 @@ export class CapturesService {
             id: true,
             type: true,
             variant: {
-              select: { id: true, types: true, professorId: true },
+              select: {
+                id: true,
+                types: true,
+                professorId: true,
+                // A raridade é DERIVADA do professor, não uma flag na ficha:
+                // denormalizada aqui, ela poderia divergir do cadastro.
+                professor: {
+                  select: { rare: true, active: true, name: true, types: true },
+                },
+              },
             },
           },
         });
@@ -97,6 +119,15 @@ export class CapturesService {
         const variant = ficha.variant
           ? ficha.variant
           : await this.sortearPorTipo(transaction, userId, ficha.type);
+
+        // Porteiro da ficha rara. Depois da baixa e ANTES de criar a captura:
+        // qualquer `throw` aqui desfaz o `updateMany` e o papel volta a valer.
+        if (ficha.variant?.professor.rare) {
+          await this.assertPodeLevarRaro(transaction, userId, {
+            professorId: ficha.variant.professorId,
+            ...ficha.variant.professor,
+          });
+        }
 
         // O upsert não diz se criou ou apenas encontrou, e a diferença importa:
         // descobrir o professor pela segunda ficha não pode pontuar de novo.
@@ -121,13 +152,19 @@ export class CapturesService {
             professorId: variant.professorId,
             variantId: variant.id,
             tokenId: ficha.id,
-            moves: buildMoveset(variant.types, 4, this.random).map((move) => move.id),
+            moves: buildMoveset(variant.types, 4, this.random).map(
+              (move) => move.id,
+            ),
             ...rollCaptureIvs(this.random),
           },
           select: CAPTURE_SELECT,
         });
 
-        return { capture: criada, novaDescoberta: !descobertaExistente };
+        return {
+          capture: criada,
+          novaDescoberta: !descobertaExistente,
+          raro: ficha.variant?.professor.rare ?? false,
+        };
       },
     );
 
@@ -135,9 +172,69 @@ export class CapturesService {
     // front não é fonte confiável para isso.
     void this.registrarMetricas(userId, capture.professor.id, {
       novaDescoberta,
+      raro,
     });
 
     return this.toView(capture);
+  }
+
+  /**
+   * As três recusas da ficha rara, em ordem, **dentro da transação da captura**.
+   *
+   * Fora dela, o pior desfecho possível acontece em silêncio: o aluno perde o
+   * papel E não recebe nada, no meio do evento, sem jeito de reverter.
+   *
+   * O gate é lido de `rare_unlocks`, NUNCA recalculado de `quiz_attempts`: uma
+   * errata que anule uma tentativa depois não pode tirar o raro de quem já
+   * destravou (decisão 5).
+   */
+  private async assertPodeLevarRaro(
+    transaction: Prisma.TransactionClient,
+    userId: string,
+    raro: {
+      professorId: string;
+      active: boolean;
+      name: string;
+      types: string[];
+    },
+  ): Promise<void> {
+    if (!raro.active) {
+      throw new NotFoundException({
+        code: RARO_INDISPONIVEL,
+        message: 'Este professor raro saiu de circulação — procure a bancada',
+      });
+    }
+
+    const [unlocks, jaTem] = await Promise.all([
+      transaction.rareUnlock.findMany({
+        where: { userId, theme: { in: raro.types } },
+        select: { theme: true },
+      }),
+      transaction.capture.findFirst({
+        where: { userId, professorId: raro.professorId },
+        select: { id: true },
+      }),
+    ]);
+
+    const destravados = new Set(unlocks.map((u) => u.theme));
+    if (!raro.types.every((t) => destravados.has(t))) {
+      // A mensagem NÃO diz qual tema falta: é a mesma regra de vazamento que
+      // tira o raro da lista de professores da bancada. Quem pegou uma ficha
+      // emprestada não pode descobrir por aqui onde estudar.
+      throw new ForbiddenException({
+        code: RARO_BLOQUEADO,
+        message:
+          'Esta ficha é de um professor raro e ainda não está liberada para ' +
+          'você — procure a bancada',
+      });
+    }
+
+    if (jaTem) {
+      throw new ConflictException({
+        code: RARO_JA_CAPTURADO,
+        message: `Você já tem ${raro.name}. Cada raro vale uma captura por conta`,
+      });
+    }
   }
 
   /**
@@ -171,7 +268,14 @@ export class CapturesService {
     // que o pico da bancada vai pagar.
     const [candidatas, jaTem] = await Promise.all([
       transaction.professorVariant.findMany({
-        where: { types: { has: type }, professor: { active: true } },
+        // `rare: false` é o que sustenta a decisão 10. Sem ele o raro cairia na
+        // Faixa 1 do sorteio (professor inédito), que é a PREFERENCIAL — o raro
+        // seria o resultado mais provável de uma ficha comum, e a via do quiz
+        // deixaria de existir na prática.
+        where: {
+          types: { has: type },
+          professor: { active: true, rare: false },
+        },
         select: { id: true, professorId: true, types: true },
       }),
       transaction.capture.findMany({
@@ -208,7 +312,7 @@ export class CapturesService {
   private async registrarMetricas(
     userId: string,
     professorId: string,
-    { novaDescoberta }: { novaDescoberta: boolean },
+    { novaDescoberta, raro }: { novaDescoberta: boolean; raro: boolean },
   ): Promise<void> {
     try {
       const occurredAt = new Date();
@@ -227,15 +331,29 @@ export class CapturesService {
         metadata: { professorId },
       });
 
+      // Somado aos dois de cima: 20 + 50 + 140 = 210, exatamente 3× uma captura
+      // comum inédita. O raro custou ~50 min de bancada por tema.
+      if (raro) {
+        eventos.push({
+          type: 'rare_captured',
+          occurredAt,
+          metadata: { professorId },
+        });
+      }
+
       // Professores DISTINTOS: com vários exemplares do mesmo professor, contar
       // linhas de `captures` completaria a coleção sem ela estar completa.
+      //
+      // Os RAROS ficam fora dos dois lados da conta: eles não contam para
+      // completar a Profdex (decisão 14), e sem o filtro no total ninguém
+      // fecharia a coleção sem antes passar 100 min na bancada.
       const [capturados, total] = await Promise.all([
         this.prisma.capture.findMany({
-          where: { userId },
+          where: { userId, professor: { rare: false } },
           select: { professorId: true },
           distinct: ['professorId'],
         }),
-        this.prisma.professor.count(),
+        this.prisma.professor.count({ where: { rare: false } }),
       ]);
       if (total > 0 && capturados.length >= total) {
         eventos.push({ type: 'collection_completed', occurredAt });

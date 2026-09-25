@@ -252,6 +252,68 @@ ANTHROPIC_API_KEY=... npm run gen:quiz-treino -- --tema=redes --quantidade=20
 O script (`scripts/gerar-questoes-treino.ts`) valida formato, recusa duplicatas
 e escreve `prisma/training-questions.ts`. Revise por amostragem antes de semear.
 
+## Professor raro
+
+Um professor **raro** não sai em ficha comum e não conta para completar a
+Profdex. A única via para capturá-lo é a bancada: **5 acertos em cada tema
+dele**.
+
+Os temas exigidos **são os tipos do professor** — não há coluna separada. Um
+raro de dois tipos exige os 5 em **cada** um (10 acertos, e com o cooldown de
+10 min isso dá ~100 minutos de bancada). É "E", não "OU": se fosse OU, marcar
+dois tipos *facilitaria* o raro em vez de dificultá-lo, e o número de temas
+deixaria de ser o dial de dificuldade.
+
+A contagem é **crua e retroativa** — `quiz_attempts` com `correct: true` e
+`annulled: false`, repetidas incluídas. "Seu acerto de manhã não vale" e "essa
+questão já tinha caído" são regras que o operador teria de explicar de pé, na
+fila, para quem acabou de acertar.
+
+Fechados os 5, grava-se uma linha em `rare_unlocks (user_id, theme)`, que vale
+**para sempre**. O destravamento é **do tema**, não do professor: retirar um
+raro e cadastrar outro no mesmo tema durante o evento mantém válido o que os
+alunos já conquistaram.
+
+### Por que não existe progresso na tela
+
+**A bancada fica virada para o aluno.** Um "4/5 rumo ao raro" na tela revelaria
+para a fila inteira em que tema existe raro — e quem está atrás na fila não
+precisou acertar nada para saber disso. Por isso:
+
+- antes do gate fechado, a tela de acerto é **exatamente** a de sempre;
+- com raro de dois temas, fechar o **primeiro** não mostra absolutamente nada;
+- `GET /admin/quiz/themes` e `POST /admin/quiz/answer` **nunca** listam um raro
+  na lista "vá capturar X", nem na tela de escolha de tema.
+
+O único aviso é a **cena dourada** no acerto que fecha o gate: fundo inteiro,
+nome do raro e a ordem em imperativo para o operador — `ENTREGUE A FICHA ✦
+<NOME>`. Ela não some sozinha; fica até alguém tocar em "próximo aluno".
+
+Consequência aceita: **o operador não tem aviso prévio**, ele descobre junto com
+o aluno. A mitigação não é a bancada, é o painel — `/admin/metrics` → `Raros ✦`
+mostra quem está **a um acerto** de destravar, e quem administra avisa a mesa.
+
+Enquanto a ficha não vira captura, uma tarja `✦ ficha rara pendente — <nome>`
+aparece no resultado **e no cartão do aluno**, logo depois da matrícula: quem
+destravou às 10h e voltou às 15h não pode depender da memória do operador.
+
+### O gate do resgate é do servidor
+
+A ficha rara é **pilha própria por raro**, rotulada com o nome dele. No scan, o
+servidor confere — dentro da transação da captura — se o raro está ativo, se o
+aluno destravou **todos** os temas e se ele já não tem um exemplar. Nas três
+recusas (`RARO_INDISPONIVEL` 404, `RARO_BLOQUEADO` 403, `RARO_JA_CAPTURADO`
+409) **a ficha não é consumida** e volta a valer.
+
+Com gate humano, uma ficha rara fotografada e mandada no grupo do WhatsApp
+entregaria o raro para quem nunca respondeu nada. A recusa também **não diz
+qual tema falta**: é a mesma regra de vazamento.
+
+O gate é lido de `rare_unlocks` e **nunca recalculado** de `quiz_attempts` — uma
+errata que anule uma tentativa depois não tira o raro de quem já destravou.
+
+O **quiz de treino não conta**: ele não grava `quiz_attempts`, por construção.
+
 ## Operação
 
 ```bash
@@ -287,4 +349,6 @@ fica nela o dia inteiro, e quem administra continua com o painel do outro lado.
   mais de uma instância exige tirá-la da memória.
 - O acerto não libera tecnicamente a captura — o gate é humano, o administrador
   manda o aluno escanear. Amarrar uma coisa na outra é uma decisão de produto
-  que ainda não foi tomada.
+  que ainda não foi tomada. **Continua valendo para a captura comum**; no
+  professor **raro** o gate passou a ser do servidor (ver a seção acima), que
+  confere `rare_unlocks` antes de dar baixa na ficha.

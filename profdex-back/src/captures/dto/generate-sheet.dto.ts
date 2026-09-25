@@ -6,6 +6,7 @@ import {
   IsIn,
   IsInt,
   IsOptional,
+  IsUUID,
   Max,
   Min,
 } from 'class-validator';
@@ -47,4 +48,27 @@ export class GenerateSheetDto {
   @Type(() => Boolean)
   @IsBoolean()
   allowEmpty?: boolean;
+}
+
+/**
+ * Tiragem da pilha de UM professor raro.
+ *
+ * DTO próprio, e não um campo opcional em `GenerateSheetDto`: as duas tiragens
+ * não compartilham parâmetro nenhum (a rara não tem `types` nem `allowEmpty`),
+ * e um DTO que aceita os dois formatos aceitaria também a combinação sem
+ * sentido — tiragem rara com lista de tipos.
+ */
+export class GenerateRareSheetDto {
+  /**
+   * O professor raro. Só o id: se ele é raro e está ativo é o servidor que
+   * confere, porque só ele pode.
+   */
+  @IsUUID()
+  professorId: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_COPIES_PANEL)
+  copies: number;
 }

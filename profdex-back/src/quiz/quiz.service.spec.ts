@@ -36,9 +36,19 @@ interface SubjectOptions {
   questions?: ReturnType<typeof questao>[];
   /** RNG fixo: sem ele o sorteio não é observável em teste. */
   rng?: () => number;
+  /** O raro ATIVO do tema, quando o cenário tem um. */
+  raro?: { id: string; name: string; types: string[] } | null;
+  /** Acertos que o aluno já tem no tema, ANTES da resposta em teste. */
+  acertosNoTema?: number;
+  /** Temas que ele já destravou. */
+  destravados?: string[];
+  /** Ele já capturou o raro? */
+  jaCapturou?: boolean;
 }
 
 function createSubject(options: SubjectOptions = {}) {
+  const raro = options.raro ?? null;
+  const destravados = new Set(options.destravados ?? []);
   const prisma = {
     user: {
       findUnique: jest.fn().mockResolvedValue({
@@ -60,18 +70,51 @@ function createSubject(options: SubjectOptions = {}) {
     quizAttempt: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({}),
-      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn().mockResolvedValue({ id: 'tentativa-1' }),
+      // A contagem do gate do raro inclui a tentativa recém-gravada, porque no
+      // serviço ela roda DEPOIS do create.
+      count: jest.fn().mockResolvedValue(options.acertosNoTema ?? 0),
       groupBy: jest.fn().mockResolvedValue([]),
     },
     professor: {
+      findMany: jest.fn().mockResolvedValue([
+        // Os tipos vêm do BANCO desde a tarefa 13 — não há mais tabela por
+        // slug no código para o serviço consultar.
+        { id: 'p-1', name: 'Marcos', slug: 'marcos', types: ['banco'] },
+      ]),
+      findFirst: jest.fn().mockResolvedValue(raro),
+    },
+    rareUnlock: {
+      // Grava no `destravados` como o banco gravaria: o `findMany` logo abaixo
+      // (a conferência do gate) precisa enxergar o tema que acabou de entrar.
+      // `count: 0` é o que o `skipDuplicates` devolve quando a linha já existia.
+      createMany: jest
+        .fn()
+        .mockImplementation(({ data }: { data: { theme: string } }) => {
+          if (destravados.has(data.theme)) return Promise.resolve({ count: 0 });
+          destravados.add(data.theme);
+          return Promise.resolve({ count: 1 });
+        }),
       findMany: jest
         .fn()
-        .mockResolvedValue([
-          // Os tipos vêm do BANCO desde a tarefa 13 — não há mais tabela por
-          // slug no código para o serviço consultar.
-          { id: 'p-1', name: 'Marcos', slug: 'marcos', types: ['banco'] },
-        ]),
+        .mockImplementation(
+          ({ where }: { where: { theme?: { in: string[] } } }) =>
+            Promise.resolve(
+              (where.theme?.in ?? [...destravados])
+                .filter((t) => destravados.has(t))
+                .map((theme) => ({ theme })),
+            ),
+        ),
+    },
+    capture: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(options.jaCapturou ? { id: 'cap-1' } : null),
+      findMany: jest
+        .fn()
+        .mockResolvedValue(
+          options.jaCapturou && raro ? [{ professorId: raro.id }] : [],
+        ),
     },
   };
   const metrics = { record: jest.fn() };
@@ -309,5 +352,224 @@ describe('QuizService', () => {
 
     // O Marcos é de Banco de Dados na linha dele — é para ele que o aluno vai.
     expect(resultado.professores).toEqual([{ name: 'Marcos', slug: 'marcos' }]);
+  });
+});
+
+/**
+ * Professor raro (tarefa 15).
+ *
+ * O segredo desta suíte é **em que tema existe raro**. O aluno só pode
+ * descobrir isso no instante em que destrava, ganhando — a bancada fica virada
+ * para ele, e a fila inteira lê a tela junto.
+ */
+describe('QuizService — professor raro', () => {
+  const ERON = { id: 'raro-1', name: 'Eron', types: ['banco'] };
+  const ERON_DUPLO = { id: 'raro-2', name: 'Eron', types: ['banco', 'ia'] };
+
+  /** Abre uma questão e acerta. `acertosNoTema` já conta esta resposta. */
+  async function acertar(service: QuizService) {
+    const aberta = await service.start('202312345', 'banco');
+    const correta = aberta.question.options.indexOf('SELECT');
+    return service.answer('admin-1', aberta.sessionId, correta);
+  }
+
+  async function errar(service: QuizService) {
+    const aberta = await service.start('202312345', 'banco');
+    const errada = aberta.question.options.indexOf('INSERT');
+    return service.answer('admin-1', aberta.sessionId, errada);
+  }
+
+  it('4 acertos não destravam nada e a resposta não menciona raro', async () => {
+    const { prisma, service } = createSubject({ raro: ERON, acertosNoTema: 4 });
+
+    const resultado = await acertar(service);
+
+    expect(prisma.rareUnlock.createMany).not.toHaveBeenCalled();
+    expect(resultado.raro).toBeNull();
+    expect(JSON.stringify(resultado)).not.toContain('Eron');
+  });
+
+  it('o 5º acerto destrava o tema e libera o raro mono-tema', async () => {
+    const { metrics, prisma, service } = createSubject({
+      raro: ERON,
+      acertosNoTema: 5,
+    });
+
+    const resultado = await acertar(service);
+
+    expect(prisma.rareUnlock.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: 'aluno-1', theme: 'banco' }),
+        skipDuplicates: true,
+      }),
+    );
+    expect(resultado.raro).toEqual({
+      liberado: { name: 'Eron', temas: ['banco'] },
+    });
+    expect(metrics.record).toHaveBeenCalledWith(
+      'aluno-1',
+      null,
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'rare_unlocked' }),
+      ]),
+    );
+  });
+
+  /**
+   * O destravamento é do TEMA, não do raro: um tema sem raro cadastrado grava a
+   * linha do mesmo jeito. É o que permite trocar o raro de um tema durante o
+   * evento sem invalidar quem já fez os 5 acertos.
+   */
+  it('tema sem raro cadastrado grava o unlock e não devolve nada', async () => {
+    const { prisma, service } = createSubject({ raro: null, acertosNoTema: 5 });
+
+    const resultado = await acertar(service);
+
+    expect(prisma.rareUnlock.createMany).toHaveBeenCalled();
+    expect(resultado.raro).toBeNull();
+  });
+
+  /**
+   * Decisão 15, o teste mais importante desta suíte: com raro de dois temas, o
+   * 5º acerto do PRIMEIRO tema não pode dizer absolutamente nada. Se dissesse,
+   * a fila descobriria que Banco tem raro — e quem está atrás não precisou
+   * acertar nada para saber disso.
+   */
+  it('raro de 2 temas: fechar o primeiro tema não menciona raro nenhum', async () => {
+    const { prisma, service } = createSubject({
+      raro: ERON_DUPLO,
+      acertosNoTema: 5,
+      destravados: [],
+    });
+
+    const resultado = await acertar(service);
+
+    // O unlock de "banco" é gravado…
+    expect(prisma.rareUnlock.createMany).toHaveBeenCalled();
+    // …mas a tela não sabe de nada: falta "ia".
+    expect(resultado.raro).toBeNull();
+    expect(JSON.stringify(resultado)).not.toContain('Eron');
+  });
+
+  it('raro de 2 temas: só o 5º acerto do SEGUNDO tema libera', async () => {
+    const { service } = createSubject({
+      raro: ERON_DUPLO,
+      acertosNoTema: 5,
+      destravados: ['ia'],
+    });
+
+    const resultado = await acertar(service);
+
+    expect(resultado.raro).toEqual({
+      liberado: { name: 'Eron', temas: ['banco', 'ia'] },
+    });
+  });
+
+  /**
+   * Do 6º acerto em diante a ficha continua devendo, e a tarja é o que impede
+   * que quem destravou às 10h e voltou às 15h dependa da memória do operador.
+   */
+  it('do 6º acerto em diante vira pendência, não cena nova', async () => {
+    const { service } = createSubject({
+      raro: ERON,
+      acertosNoTema: 6,
+      destravados: ['banco'],
+    });
+
+    const resultado = await acertar(service);
+
+    expect(resultado.raro).toEqual({
+      pendente: { name: 'Eron', temas: ['banco'] },
+    });
+  });
+
+  it('depois de capturar, a bancada não menciona mais o raro', async () => {
+    const { service } = createSubject({
+      raro: ERON,
+      acertosNoTema: 9,
+      destravados: ['banco'],
+      jaCapturou: true,
+    });
+
+    expect((await acertar(service)).raro).toBeNull();
+  });
+
+  /** Errar não destrava — mas a ficha que já é devida continua sendo devida. */
+  it('errar não conta para o gate e mantém a pendência visível', async () => {
+    const { prisma, service } = createSubject({
+      raro: ERON,
+      acertosNoTema: 5,
+      destravados: ['banco'],
+    });
+
+    const resultado = await errar(service);
+
+    expect(prisma.quizAttempt.count).not.toHaveBeenCalled();
+    expect(prisma.rareUnlock.createMany).not.toHaveBeenCalled();
+    expect(resultado.raro).toEqual({
+      pendente: { name: 'Eron', temas: ['banco'] },
+    });
+  });
+
+  /**
+   * Antivazamento. `PROFESSOR_DO_TEMA_SELECT` alimenta as DUAS telas viradas
+   * para o aluno; sem o filtro, o nome do raro sairia na lista "vá capturar X"
+   * e na escolha de tema, entregando o tema do raro de graça.
+   */
+  it('themes() e answer() nunca listam professor raro', async () => {
+    const { prisma, service } = createSubject({ raro: ERON });
+
+    await service.themes();
+    await errar(service);
+
+    expect(prisma.professor.findMany).toHaveBeenCalled();
+    for (const [arg] of prisma.professor.findMany.mock.calls) {
+      expect(arg.where).toMatchObject({ active: true, rare: false });
+    }
+  });
+
+  /**
+   * O treino não grava `quiz_attempts`, então não pode aproximar ninguém do
+   * raro. É a primeira coisa que alguém vai tentar.
+   */
+  it('o quiz de TREINO não conta para o gate', async () => {
+    const { prisma, service } = createSubject({ raro: ERON, acertosNoTema: 5 });
+
+    await acertar(service);
+
+    // A contagem do gate lê quiz_attempts, e só ela.
+    expect(prisma.quizAttempt.count).toHaveBeenCalledWith({
+      where: {
+        userId: 'aluno-1',
+        theme: 'banco',
+        correct: true,
+        annulled: false,
+      },
+    });
+    expect(prisma.trainingQuestion.findMany).not.toHaveBeenCalled();
+  });
+
+  it('o cartão do aluno mostra a ficha rara pendente antes da rodada', async () => {
+    const { prisma, service } = createSubject({
+      raro: ERON,
+      destravados: ['banco'],
+    });
+    prisma.professor.findMany.mockResolvedValue([ERON]);
+
+    const cartao = await service.aluno('202312345');
+
+    expect(cartao.raroPendentes).toEqual([{ name: 'Eron', temas: ['banco'] }]);
+  });
+
+  it('sem o gate fechado, o cartão do aluno não cita raro', async () => {
+    const { prisma, service } = createSubject({
+      raro: ERON_DUPLO,
+      destravados: ['banco'], // falta "ia"
+    });
+    prisma.professor.findMany.mockResolvedValue([ERON_DUPLO]);
+
+    const cartao = await service.aluno('202312345');
+
+    expect(cartao.raroPendentes).toEqual([]);
   });
 });

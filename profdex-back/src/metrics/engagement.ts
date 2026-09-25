@@ -23,6 +23,8 @@ export const EVENT_TYPES = [
   'quiz_answered',
   'quiz_correct',
   'quiz_practice_answered',
+  'rare_unlocked',
+  'rare_captured',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -57,6 +59,11 @@ const SERVER_ONLY_EVENTS: ReadonlySet<EventType> = new Set([
   'collection_completed',
   'quiz_answered',
   'quiz_correct',
+  // Os dois do raro: um nasce do 5º acerto conferido na bancada, o outro da
+  // captura validada. Ambos são fatos que só o servidor conhece — e o segundo
+  // vale 140 pontos, o que faria dele o alvo óbvio de quem abrir o DevTools.
+  'rare_unlocked',
+  'rare_captured',
 ]);
 
 /** O app pode declarar este evento? */
@@ -83,6 +90,18 @@ export const ENGAGEMENT_POINTS: Record<EventType, number> = {
   // Treinar não pontua: é ilimitado e sem supervisão, então qualquer valor
   // acima de zero faria o placar medir quem deixou o dedo no botão.
   quiz_practice_answered: 0,
+  // Destravar não pontua: os 5 acertos já pagaram 5 × (quiz_answered +
+  // quiz_correct). O evento existe para o painel contar quem chegou lá.
+  rare_unlocked: 0,
+  /**
+   * 140, somados aos 70 da captura comum inédita (`professor_discovered` 20 +
+   * `professor_captured` 50) = 210, exatamente **3×**.
+   *
+   * O raro custa ~50 min de bancada por tema, o que é objetivamente mais
+   * engajamento do que atravessar o campus até um QR. Diferente da batalha,
+   * premiar aqui não desequilibra nada: o Elo não passa por este número.
+   */
+  rare_captured: 140,
 };
 
 /** Bônus por iniciar a primeira sessão do dia. */
@@ -133,6 +152,10 @@ export const INTERACTION_WEIGHTS: Record<EventType, number> = {
   quiz_answered: 10,
   quiz_correct: 0, // já contado no quiz_answered
   quiz_practice_answered: 0, // treino é volume livre, não atividade do evento
+  // Zero nos dois: o gesto já foi contado. Os 5 acertos vieram como 5
+  // `quiz_answered`, e a captura do raro como um `professor_captured`.
+  rare_unlocked: 0,
+  rare_captured: 0,
 };
 
 /** Tamanho do bloco de tempo de uso convertido em interações. */
@@ -167,4 +190,6 @@ export const INTERACTION_SOURCE_LABELS: Record<EventType, string> = {
   quiz_answered: 'Quiz respondido na bancada',
   quiz_correct: 'Quiz acertado',
   quiz_practice_answered: 'Quiz de treino respondido',
+  rare_unlocked: 'Temas destravados',
+  rare_captured: 'Professores raros capturados',
 };

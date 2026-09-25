@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { TYPE_CYCLE } from '../battle/engine/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminCaptureTokensService } from './admin-capture-tokens.service';
@@ -28,6 +28,8 @@ describe('AdminCaptureTokensService', () => {
       tokens = [] as any[],
       batches = [] as any[],
       professorVariants = variantes,
+      /** Professores RAROS ativos, com as variantes de cada um. */
+      raros = [] as any[],
     } = {},
     onWrite?: (kind: string, payload: any) => void,
   ) {
@@ -61,12 +63,41 @@ describe('AdminCaptureTokensService', () => {
             return Promise.resolve(professorVariants);
           }),
         },
+        professor: {
+          findMany: jest.fn(() => Promise.resolve(raros)),
+          findFirst: jest.fn(({ where }: any) =>
+            Promise.resolve(raros.find((r) => r.id === where.id) ?? null),
+          ),
+        },
         captureToken: {
           // Espelha o `groupBy` do Prisma sobre os tokens de mentira: a
           // contagem é feita no banco justamente para não trazer a tabela
           // inteira, então o mock precisa contar do mesmo jeito.
-          groupBy: jest.fn(({ where }: any) =>
-            Promise.resolve(
+          groupBy: jest.fn(({ by, where }: any) => {
+            // O estoque de raros agrupa por variante, não por tipo — a ficha
+            // rara tem `type: null` e nunca apareceria no agrupamento por tipo.
+            if (by?.[0] === 'variantId') {
+              return Promise.resolve(
+                Object.entries(
+                  tokens
+                    .filter((t) => {
+                      if (!t.variantId) return false;
+                      if (where.redeemedAt === null) return !t.redeemedAt;
+                      if (where.redeemedAt?.not === null)
+                        return Boolean(t.redeemedAt);
+                      return true;
+                    })
+                    .reduce<Record<string, number>>((acc, t) => {
+                      acc[t.variantId] = (acc[t.variantId] ?? 0) + 1;
+                      return acc;
+                    }, {}),
+                ).map(([variantId, n]) => ({
+                  variantId,
+                  _count: { _all: n },
+                })),
+              );
+            }
+            return Promise.resolve(
               Object.entries(
                 tokens
                   .filter((t) => {
@@ -82,8 +113,8 @@ describe('AdminCaptureTokensService', () => {
                     return acc;
                   }, {}),
               ).map(([type, n]) => ({ type, _count: { _all: n } })),
-            ),
-          ),
+            );
+          }),
         },
         qrBatch: {
           findFirst: jest.fn(() => Promise.resolve(batches.at(-1) ?? null)),
@@ -122,7 +153,11 @@ describe('AdminCaptureTokensService', () => {
       const { db } = fakeDb();
       const service = new AdminCaptureTokensService(db);
 
-      const { lines } = await service.preview(1, ['ia', 'arquitetura', 'redes']);
+      const { lines } = await service.preview(1, [
+        'ia',
+        'arquitetura',
+        'redes',
+      ]);
 
       // Eron é de arquitetura E de ia: um professor, não um por variante.
       expect(lines.find((l) => l.type === 'ia')!.professors).toBe(1);
@@ -134,7 +169,10 @@ describe('AdminCaptureTokensService', () => {
 
   describe('generate', () => {
     const comTodosOsTipos = () =>
-      TYPE_CYCLE.map((type) => ({ professorId: `prof-${type}`, types: [type] }));
+      TYPE_CYCLE.map((type) => ({
+        professorId: `prof-${type}`,
+        types: [type],
+      }));
 
     it('grava uma ficha por cópia e uma linha de tiragem', async () => {
       const { db, tokens, batches } = fakeDb({
@@ -333,6 +371,108 @@ describe('AdminCaptureTokensService', () => {
       const vazios = rows.filter((r) => r.professors === 0).map((r) => r.type);
       expect(vazios).toContain('redes');
       expect(vazios).toContain('humanas');
+    });
+  });
+
+  /**
+   * Fichas de professor raro (tarefa 15). Pilha própria por raro, nunca no
+   * mesmo papel da tiragem por tipo: misturar as duas acaba com o raro nos
+   * primeiros 10 minutos de evento.
+   */
+  describe('tiragem rara', () => {
+    const ERON = {
+      id: 'raro-1',
+      name: 'Eron',
+      types: ['matematica', 'ia'],
+      variants: [{ id: 'var-rara', typeKey: 'ia+matematica' }],
+    };
+
+    it('grava tokens com variantId, type nulo e a tiragem com rareProfessorId', async () => {
+      const { db, tokens, batches } = fakeDb({ raros: [ERON] });
+      const service = new AdminCaptureTokensService(db);
+
+      const folha = await service.generateRare('admin-1', 'raro-1', 5);
+
+      expect(tokens).toHaveLength(5);
+      expect(tokens.every((t) => t.variantId === 'var-rara')).toBe(true);
+      // `type` não é enviado: a ficha rara é do caminho da variante.
+      expect(tokens.every((t) => t.type === undefined)).toBe(true);
+      expect(batches).toHaveLength(1);
+      expect(batches[0]).toMatchObject({
+        rareProfessorId: 'raro-1',
+        types: [],
+        copies: 5,
+        total: 5,
+      });
+      expect(folha.total).toBe(5);
+    });
+
+    it('a folha identifica o raro pelo nome e lista os temas exigidos', async () => {
+      const { db } = fakeDb({ raros: [ERON] });
+      const service = new AdminCaptureTokensService(db);
+
+      const { html } = await service.generateRare('admin-1', 'raro-1', 1);
+
+      expect(html).toContain('✦ RARO — ERON');
+      // Com gate de dois temas, "✦ RARO — MATEMÁTICA" seria ambíguo: a folha
+      // precisa do nome E da lista de temas.
+      expect(html).toContain('Matemática + IA');
+    });
+
+    it('recusa professor que não é raro ou está inativo', async () => {
+      const { db, tokens } = fakeDb({ raros: [] });
+      const service = new AdminCaptureTokensService(db);
+
+      await expect(
+        service.generateRare('admin-1', 'nao-existe', 3),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(tokens).toHaveLength(0);
+    });
+
+    it('o estoque por raro conta vivas e resgatadas pela variante', async () => {
+      const { db } = fakeDb({
+        raros: [ERON],
+        tokens: [
+          { variantId: 'var-rara', redeemedAt: null },
+          { variantId: 'var-rara', redeemedAt: null },
+          { variantId: 'var-rara', redeemedAt: new Date() },
+        ],
+      });
+      const service = new AdminCaptureTokensService(db);
+
+      const { rares } = await service.inventory();
+
+      expect(rares).toHaveLength(1);
+      expect(rares[0]).toMatchObject({
+        professorId: 'raro-1',
+        name: 'Eron',
+        themes: ['matematica', 'ia'],
+        alive: 2,
+        redeemedTotal: 1,
+      });
+    });
+
+    /**
+     * O estoque por TIPO não pode mudar ao cadastrar um raro daquele tipo: o
+     * número ali responde "quantos professores podem sair numa ficha comum
+     * deste tipo", e o raro nunca sai numa.
+     */
+    it('o estoque por tipo ignora o raro na contagem de professores', async () => {
+      const { db, filtrosDeVariante } = fakeDb({ raros: [ERON] });
+      const service = new AdminCaptureTokensService(db);
+
+      await service.inventory();
+
+      expect(filtrosDeVariante[0]).toEqual({
+        professor: { active: true, rare: false },
+      });
+    });
+
+    it('sem raro cadastrado, o estoque de raros é uma lista vazia', async () => {
+      const { db } = fakeDb({ raros: [] });
+      const service = new AdminCaptureTokensService(db);
+
+      await expect(service.inventory()).resolves.toMatchObject({ rares: [] });
     });
   });
 });

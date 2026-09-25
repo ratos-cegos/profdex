@@ -31,6 +31,18 @@ export const ANSWER_GRACE_MS = 3_000;
 export const THEME_COOLDOWN_MS = 10 * 60_000;
 
 /**
+ * Acertos no MESMO tema que destravam a ficha de um professor raro.
+ *
+ * Constante de código, não campo do cadastro (tarefa 15, decisão 3): um raro
+ * que exige 7 e outro que exige 5 é regra que ninguém explica de pé, na fila.
+ *
+ * A contagem é crua e retroativa — vale o que o aluno já acertou no tema hoje,
+ * repetidas incluídas —, e um raro de dois tipos exige os 5 em CADA um deles,
+ * o que com o cooldown de 10 min dá cerca de 100 min de bancada.
+ */
+export const RARE_UNLOCK_CORRECT_ANSWERS = 5;
+
+/**
  * Proporção alvo de dificuldade, a mesma do seed (4 fáceis / 3 médias / 3
  * difíceis por tema).
  *
