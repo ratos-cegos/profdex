@@ -109,6 +109,48 @@ describe('RankingsService — ladders de coleção', () => {
     expect(ladder.dexTotal).toBe(8);
   });
 
+  /**
+   * Professor raro (tarefa 15). Ele fica fora dos DOIS lados da fração: só no
+   * numerador, o ladder passaria de 100% para quem pegou um; só no
+   * denominador, os 100% ficariam inalcançáveis sem 100 min de bancada.
+   */
+  it('o ladder de dex ignora os raros dos dois lados da conta', async () => {
+    const { prisma, service } = createSubject();
+    prisma.capture.groupBy.mockResolvedValue([
+      par('ana', 'prof-1', '2026-09-04T10:00:00Z'),
+      par('ana', 'prof-2', '2026-09-04T12:00:00Z'),
+    ]);
+    // 14 comuns + 1 raro no banco; o count já vem filtrado.
+    prisma.professor.count.mockResolvedValue(14);
+
+    const ladder = await service.dexLeaderboard('ana', 1);
+
+    expect(prisma.capture.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { professor: { rare: false } } }),
+    );
+    expect(prisma.professor.count).toHaveBeenCalledWith({
+      where: { rare: false },
+    });
+    expect(ladder.dexTotal).toBe(14);
+  });
+
+  /** O invariante que a decisão 14 protege: a dex nunca passa de 100%. */
+  it('a dex não passa de 100% com raro no banco', async () => {
+    const { prisma, service } = createSubject();
+    // Cenário do bug: o aluno tem os 2 comuns E o raro, mas o groupBy filtrado
+    // devolve só os comuns — então o numerador não pode estourar o total.
+    prisma.capture.groupBy.mockResolvedValue([
+      par('ana', 'prof-1', '2026-09-04T10:00:00Z'),
+      par('ana', 'prof-2', '2026-09-04T12:00:00Z'),
+    ]);
+    prisma.professor.count.mockResolvedValue(2);
+
+    const ladder = await service.dexLeaderboard('ana', 1);
+
+    expect(ladder.entries[0].percent).toBe(100);
+    expect(ladder.entries[0].percent).toBeLessThanOrEqual(100);
+  });
+
   it('não expõe percentual no ladder de capturas — ele não tem teto', async () => {
     const { prisma, service } = createSubject();
     prisma.capture.groupBy.mockResolvedValue([

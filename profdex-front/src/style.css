@@ -11,6 +11,11 @@
   --success-bg: #234a18;
   --success-text: #82d16b;
 
+  /* Professor raro (tarefa 15). Um token só para o selo ✦, a tarja de ficha
+     pendente e a cena dourada da bancada não divergirem entre telas. */
+  --raro: #f5c451;
+  --raro-deep: #6b4a04;
+
   /* DS navigation controls */
   --ds-orange: #cba034;
   --ds-orange-glow: #ffdf6d;

@@ -13,7 +13,10 @@ import type { Request } from 'express';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminCaptureTokensService } from './admin-capture-tokens.service';
-import { GenerateSheetDto } from './dto/generate-sheet.dto';
+import {
+  GenerateRareSheetDto,
+  GenerateSheetDto,
+} from './dto/generate-sheet.dto';
 
 interface AuthedRequest extends Request {
   user: { id: string; matricula: string; name: string };
@@ -68,6 +71,30 @@ export class AdminCaptureTokensController {
       body.copies,
       body.types,
       { allowEmpty: body.allowEmpty ?? false },
+    );
+    return html;
+  }
+
+  /**
+   * A pilha de um professor raro. Rota separada da tiragem por tipo de
+   * propósito: misturar as duas no mesmo papel acaba com o raro nos primeiros
+   * 10 minutos de evento.
+   *
+   * Vale a mesma regra do `batch`: o banco só guarda o hash, então esta
+   * resposta é a ÚNICA oportunidade de ver estes QRs. Ficha rara também não se
+   * reimprime.
+   */
+  @Post('rare-batch')
+  @HttpCode(HttpStatus.CREATED)
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async rareBatch(
+    @Req() request: AuthedRequest,
+    @Body() body: GenerateRareSheetDto,
+  ): Promise<string> {
+    const { html } = await this.fichas.generateRare(
+      request.user.id,
+      body.professorId,
+      body.copies,
     );
     return html;
   }

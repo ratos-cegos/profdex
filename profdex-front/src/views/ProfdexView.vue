@@ -28,8 +28,39 @@ async function load() {
 
 onMounted(load)
 
+// O `X/Y` conta só os COMUNS. O raro fica fora dos dois números (tarefa 15,
+// decisão 14) — e nem chega nesta lista: o servidor filtra `rare: false` em
+// `GET /professors`, então não há como esquecer o filtro aqui.
 const captured = computed(() => store.professors.filter((p) => p.captured).length)
 const total = computed(() => store.professors.length)
+
+// ── Raros ───────────────────────────────────────────────────────────────────
+// Contador PRÓPRIO, ao lado do da dex e nunca somado a ele.
+//
+// A rota devolve o professor cru; as flags de progresso são constantes aqui e
+// não vêm do servidor: estar nesta lista JÁ significa ter capturado, e o limite
+// é de um exemplar por conta, para sempre (decisão 7).
+const raros = computed(() =>
+  store.rares.owned.map((p) => ({
+    ...p,
+    discovered: true,
+    captured: true,
+    capturedCount: 1,
+  })),
+)
+const rarosTotal = computed(() => store.rares.total)
+
+/**
+ * Quantos cards bloqueados desenhar. Eles são silhuetas genéricas: o servidor
+ * não manda nome, tipo nem arte de raro não capturado, então não existe nada
+ * para vazar — nem no DevTools.
+ *
+ * "Existe raro" muda o comportamento do aluno (ele volta para a bancada);
+ * "existe um número desconhecido de raros" não muda nada.
+ */
+const rarosBloqueados = computed(() =>
+  Math.max(0, rarosTotal.value - raros.value.length),
+)
 
 function goDetails(prof) {
   router.push({
@@ -81,15 +112,56 @@ function goDetails(prof) {
 
       <EstadoErro v-else-if="loadError && !store.professors.length" message="Não foi possível carregar os professores. Verifique se o servidor está no ar." @retry="load" />
 
-      <div v-else class="grid">
-        <ProfCard
-          v-for="(prof, i) in store.professors"
-          :key="prof.id"
-          :professor="prof"
-          :index="i"
-          @details="goDetails"
-        />
-      </div>
+      <template v-else>
+        <div class="grid">
+          <ProfCard
+            v-for="(prof, i) in store.professors"
+            :key="prof.id"
+            :professor="prof"
+            :index="i"
+            @details="goDetails"
+          />
+        </div>
+
+        <!-- ✦ Raros. Seção separada e abaixo da coleção: eles não contam para
+             completar a Profdex, então não podem dividir a grade com ela. -->
+        <section v-if="rarosTotal" class="raros">
+          <header class="raros__head">
+            <h2 class="pixel raros__titulo">✦ RAROS</h2>
+            <span class="pixel raros__contador">
+              {{ raros.length }}<span>/{{ rarosTotal }}</span>
+            </span>
+          </header>
+
+          <p class="raros__nota">
+            Professores raros existem. Eles não contam para completar a Profdex
+            e não saem em ficha comum.
+          </p>
+
+          <div class="grid">
+            <ProfCard
+              v-for="(prof, i) in raros"
+              :key="prof.id"
+              :professor="prof"
+              :index="i"
+              rare
+              @details="goDetails"
+            />
+
+            <!-- Silhuetas. Sem nome, sem tipo, sem arte — é tudo o que o app
+                 recebeu sobre eles, e por isso tudo o que ele pode mostrar. -->
+            <div
+              v-for="n in rarosBloqueados"
+              :key="`bloqueado-${n}`"
+              class="raro-bloqueado"
+              aria-label="Professor raro ainda não capturado"
+            >
+              <span class="raro-bloqueado__marca" aria-hidden="true">✦</span>
+              <span class="raro-bloqueado__texto">???</span>
+            </div>
+          </div>
+        </section>
+      </template>
     </main>
 
     <BottomNav />
@@ -237,6 +309,72 @@ function goDetails(prof) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 12px;
+}
+
+/* ── Raros ──────────────────────────────────────────────────────────────── */
+.raros {
+  margin-top: 28px;
+  padding-top: 20px;
+  /* Separador explícito: a seção é outra coleção, com outro contador. */
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.raros__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.raros__titulo {
+  margin: 0;
+  font-size: 10px;
+  color: var(--raro);
+  letter-spacing: 0.08em;
+}
+
+.raros__contador {
+  font-size: 9px;
+  color: var(--raro);
+}
+
+.raros__contador span {
+  color: var(--text-muted);
+}
+
+.raros__nota {
+  margin: 0 0 4px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+/* Silhueta do raro não capturado. Não há nome, tipo nem arte para mostrar —
+   o servidor nunca os enviou. */
+.raro-bloqueado {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 132px;
+  border: 2px dashed color-mix(in srgb, var(--raro) 45%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--raro) 6%, var(--bg-card));
+}
+
+.raro-bloqueado__marca {
+  font-size: 22px;
+  color: color-mix(in srgb, var(--raro) 55%, transparent);
+}
+
+.raro-bloqueado__texto {
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  color: var(--text-muted);
 }
 
 .error-state {

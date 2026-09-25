@@ -167,11 +167,16 @@ export class RankingsService {
     const [pares, professores] = await Promise.all([
       // `groupBy` por (aluno, professor): o Prisma não faz COUNT(DISTINCT), e
       // dobrar o número de linhas é barato — no máximo alunos × professores.
+      // Os RAROS ficam fora dos dois lados da fração. Eles não contam para
+      // completar a Profdex (tarefa 15, decisão 14), e contá-los só no
+      // numerador faria o ladder passar de 100% para quem pegou um; só no
+      // denominador, tornaria os 100% inalcançáveis sem 100 min de bancada.
       this.prisma.capture.groupBy({
         by: ['userId', 'professorId'],
+        where: { professor: { rare: false } },
         _max: { capturedAt: true },
       }),
-      this.prisma.professor.count(),
+      this.prisma.professor.count({ where: { rare: false } }),
     ]);
 
     const porAluno = new Map<string, CollectionRow>();

@@ -19,6 +19,7 @@ import {
   QUIZ_DIFFICULTY_MIX,
   QUIZ_RNG,
   QUIZ_THEMES,
+  RARE_UNLOCK_CORRECT_ANSWERS,
   REPEAT_OLDEST_FRACTION,
   THEME_COOLDOWN_MS,
   type QuizDifficulty,
@@ -54,11 +55,25 @@ interface ProfessorRow {
 /**
  * Só professor ATIVO é sugerido ao aluno que acerta: mandar alguém atrás de um
  * professor fora de circulação é mandá-lo para uma ficha que não captura nada.
+ *
+ * **E nunca um RARO.** Este select alimenta `themes()` E `answer()`, que são as
+ * duas telas viradas para o aluno. Sem o `rare: false`, o nome do raro
+ * apareceria na lista "vá capturar X ou Y" e na escolha de tema — entregando de
+ * graça qual tema tem raro, para a fila inteira, o dia inteiro. O aluno tem de
+ * descobrir isso no instante em que destrava, ganhando (tarefa 15, decisão 15).
  */
 const PROFESSOR_DO_TEMA_SELECT = {
-  where: { active: true },
+  where: { active: true, rare: false },
   select: { id: true, name: true, slug: true, types: true },
 } as const;
+
+/** O raro que o acerto acabou de liberar, ou o que segue pendente de entrega. */
+export interface RaroNaResposta {
+  /** Gate fechado NESTE acerto: é a cena dourada da bancada. */
+  liberado?: { name: string; temas: string[] };
+  /** Gate já estava fechado e a ficha ainda não virou captura: é a tarja. */
+  pendente?: { name: string; temas: string[] };
+}
 
 /**
  * Quiz de bancada do evento.
@@ -190,6 +205,11 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
       tentativas: acertos + erros,
       acertos,
       cooldowns,
+      // Fichas raras que este aluno já conquistou e ainda não recebeu. Aparece
+      // ANTES da rodada começar, porque é aqui que o operador consegue entregar
+      // o papel de quem destravou horas atrás. Não vaza nada: o aluno só chega
+      // a esta lista depois de já ter visto a cena dourada.
+      raroPendentes: await this.raroPendenteDoAluno(user.id),
     };
   }
 
@@ -276,7 +296,7 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
 
     const acertou = escolha !== null && escolha === session.correctIndex;
 
-    await this.prisma.quizAttempt.create({
+    const tentativa = await this.prisma.quizAttempt.create({
       data: {
         userId: session.userId,
         questionId: session.questionId,
@@ -289,15 +309,26 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
         elapsedMs: Math.min(agora - session.startedAt, ANSWER_WINDOW_MS),
         operatorId,
       },
+      select: { id: true },
     });
 
     this.registrarMetricas(session.userId, acertou);
+
+    // DEPOIS da tentativa e com o id dela: um destravamento sem a tentativa que
+    // o justifica é impossível de auditar (ver RareUnlock.attemptId).
+    const raro = await this.resolverRaro(
+      session.userId,
+      session.theme,
+      tentativa.id,
+      acertou,
+    );
 
     const professores = await this.prisma.professor.findMany(
       PROFESSOR_DO_TEMA_SELECT,
     );
 
     return {
+      raro,
       correct: acertou,
       expired: esgotou,
       // Repetido no resultado para o aluno conseguir contestar depois de ver o
@@ -313,6 +344,139 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
       professores: this.professoresDoTema(professores, session.theme),
       liberadoAte: new Date(agora + THEME_COOLDOWN_MS).toISOString(),
     };
+  }
+
+  // ── Professor raro ────────────────────────────────────────────────────────
+
+  /**
+   * Destrava o tema quando o aluno fecha os 5 acertos e diz o que a bancada
+   * mostra: a cena dourada, a tarja de pendência, ou nada.
+   *
+   * **Nada é o caso comum e é o caso importante.** O aluno não pode descobrir em
+   * que tema existe raro antes de destravá-lo, então não há barra de progresso,
+   * não há "falta 1", e o gate parcial de um raro de dois temas é silencioso: o
+   * 5º acerto do PRIMEIRO tema devolve exatamente o mesmo que um acerto
+   * qualquer (decisão 15). A bancada fica virada para o aluno, e um "4/5 rumo ao
+   * raro" revelaria o tema para a fila inteira.
+   */
+  private async resolverRaro(
+    userId: string,
+    theme: string,
+    attemptId: string,
+    acertou: boolean,
+  ): Promise<RaroNaResposta | null> {
+    const destravouAgora = acertou
+      ? await this.destravarTema(userId, theme, attemptId)
+      : false;
+
+    // No máximo um raro ativo por tema (decisão 8), então `findFirst` basta.
+    const raro = await this.prisma.professor.findFirst({
+      where: { rare: true, active: true, types: { has: theme } },
+      select: { id: true, name: true, types: true },
+    });
+    if (!raro) return null;
+
+    // Já capturou: a ficha dele já virou exemplar, não há o que entregar.
+    const jaCapturou = await this.prisma.capture.findFirst({
+      where: { userId, professorId: raro.id },
+      select: { id: true },
+    });
+    if (jaCapturou) return null;
+
+    // O gate são TODOS os tipos do raro — E, não OU (decisão 4).
+    const unlocks = await this.prisma.rareUnlock.findMany({
+      where: { userId, theme: { in: raro.types } },
+      select: { theme: true },
+    });
+    const destravados = new Set(unlocks.map((u) => u.theme));
+    if (!raro.types.every((t) => destravados.has(t))) return null;
+
+    const dados = { name: raro.name, temas: raro.types };
+    // `destravouAgora` é o que separa a cena cheia da tarja: só quem virou a
+    // chave neste acerto vê a tela dourada.
+    return destravouAgora ? { liberado: dados } : { pendente: dados };
+  }
+
+  /**
+   * Grava o destravamento do tema se os 5 acertos fecharam, e devolve se foi
+   * ESTE acerto que o criou.
+   *
+   * A contagem é crua (`count`, não `groupBy`): retroativa e com repetidas, como
+   * manda a decisão 5. "Seu acerto de manhã não vale" e "essa questão já tinha
+   * caído" são regras que o operador teria de explicar de pé, na fila, para
+   * quem acabou de acertar.
+   *
+   * `createMany` com `skipDuplicates` no lugar de um `upsert`: além de
+   * idempotente, ele responde em UMA consulta atômica se a linha nasceu agora —
+   * o `upsert` exigiria uma leitura extra antes, e entre as duas caberia um
+   * segundo acerto do mesmo aluno.
+   */
+  private async destravarTema(
+    userId: string,
+    theme: string,
+    attemptId: string,
+  ): Promise<boolean> {
+    const acertos = await this.prisma.quizAttempt.count({
+      where: { userId, theme, correct: true, annulled: false },
+    });
+    if (acertos < RARE_UNLOCK_CORRECT_ANSWERS) return false;
+
+    const { count } = await this.prisma.rareUnlock.createMany({
+      data: { userId, theme, attemptId },
+      skipDuplicates: true,
+    });
+    if (count === 0) return false;
+
+    // 0 ponto: o esforço já foi pago pelos 5 `quiz_correct`. O evento existe
+    // para o painel saber quantos chegaram lá (ver docs/METRICAS.md).
+    try {
+      this.metrics.record(userId, null, [
+        { type: 'rare_unlocked', occurredAt: new Date(), metadata: { theme } },
+      ]);
+    } catch {
+      // silencioso de propósito: métrica não pode derrubar o destravamento
+    }
+    return true;
+  }
+
+  /**
+   * Raros com o gate fechado e sem captura, para o cartão do aluno.
+   *
+   * Quem destravou às 10h e voltou às 15h não pode depender da memória do
+   * operador — nem da dele próprio.
+   */
+  private async raroPendenteDoAluno(
+    userId: string,
+  ): Promise<{ name: string; temas: string[] }[]> {
+    const raros = await this.prisma.professor.findMany({
+      where: { rare: true, active: true },
+      select: { id: true, name: true, types: true },
+    });
+    if (!raros.length) return [];
+
+    const [unlocks, capturas] = await Promise.all([
+      this.prisma.rareUnlock.findMany({
+        where: { userId },
+        select: { theme: true },
+      }),
+      this.prisma.capture.findMany({
+        where: { userId, professor: { rare: true } },
+        select: { professorId: true },
+        distinct: ['professorId'],
+      }),
+    ]);
+
+    const destravados = new Set(unlocks.map((u) => u.theme));
+    const capturados = new Set(capturas.map((c) => c.professorId));
+
+    return raros
+      .filter(
+        (r) =>
+          !capturados.has(r.id) &&
+          r.types.length > 0 &&
+          r.types.every((t) => destravados.has(t)),
+      )
+      .map((r) => ({ name: r.name, temas: r.types }));
   }
 
   // ── Relatório ─────────────────────────────────────────────────────────────

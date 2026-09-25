@@ -1,4 +1,8 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { getMoveById } from '../battle/engine/moves';
 import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -39,16 +43,34 @@ describe('CapturesService', () => {
     /** Ficha NOVA, que vale por tipo. Sem isto a ficha é a legada, com variante. */
     type = null as string | null,
     /** As variantes que o sorteio enxerga — já filtradas por tipo e por ativo. */
-    candidatas = [variant] as typeof variant[],
+    candidatas = [variant] as (typeof variant)[],
     /** O que o aluno já tem, para escolher a faixa do sorteio. */
     possuidas = [] as { professorId: string; variantId: string | null }[],
+    /** A ficha é de um professor RARO (aponta para a variante única dele). */
+    raro = false,
+    /** Raro desativado: sai de circulação sem tirar o exemplar de quem tem. */
+    raroAtivo = true,
+    /** Temas que o aluno já destravou na bancada (`rare_unlocks`). */
+    destravados = [] as string[],
+    /** Ele já capturou este raro? A trava de "1 por conta". */
+    jaTemRaro = false,
   } = {}) {
     const ficha = {
       id: 'token-1',
       tokenHash,
       redeemedAt: redeemed ? new Date() : (null as Date | null),
       type,
-      variant: type ? null : variant,
+      variant: type
+        ? null
+        : {
+            ...variant,
+            professor: {
+              rare: raro,
+              active: raroAtivo,
+              name: professor.name,
+              types: variant.types,
+            },
+          },
     };
     const criadas: any[] = [];
     const filtros: any[] = [];
@@ -85,8 +107,20 @@ describe('CapturesService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         upsert: jest.fn().mockResolvedValue({ id: 'discovery-1' }),
       },
+      rareUnlock: {
+        findMany: jest.fn(({ where }: any) =>
+          Promise.resolve(
+            (where.theme?.in ?? [])
+              .filter((t: string) => destravados.includes(t))
+              .map((theme: string) => ({ theme })),
+          ),
+        ),
+      },
       capture: {
         findMany: jest.fn(() => Promise.resolve(possuidas)),
+        findFirst: jest.fn(() =>
+          Promise.resolve(jaTemRaro ? { id: 'capture-antiga' } : null),
+        ),
         create: jest.fn(({ data }: any) => {
           const sorteada =
             candidatas.find((v) => v.id === data.variantId) ?? variant;
@@ -119,15 +153,17 @@ describe('CapturesService', () => {
       // Transação de mentira que também DESFAZ: sem o rollback, o teste de
       // "tipo vazio não consome a ficha" passaria mesmo com o throw fora da
       // transação — que é exatamente o bug que ele existe para impedir.
-      $transaction: jest.fn(async (callback: (c: typeof transaction) => any) => {
-        const antes = ficha.redeemedAt;
-        try {
-          return await callback(transaction);
-        } catch (erro) {
-          ficha.redeemedAt = antes;
-          throw erro;
-        }
-      }),
+      $transaction: jest.fn(
+        async (callback: (c: typeof transaction) => any) => {
+          const antes = ficha.redeemedAt;
+          try {
+            return await callback(transaction);
+          } catch (erro) {
+            ficha.redeemedAt = antes;
+            throw erro;
+          }
+        },
+      ),
     };
 
     return { prisma, transaction, ficha, criadas, filtros };
@@ -184,9 +220,14 @@ describe('CapturesService', () => {
       }),
     );
     expect(criadas[0].data.moves).toHaveLength(4);
-    expect(criadas[0].data).toEqual(expect.objectContaining({
-      ivHp: 8, ivRigor: 8, ivDidatica: 8, ivRaciocinio: 8,
-    }));
+    expect(criadas[0].data).toEqual(
+      expect.objectContaining({
+        ivHp: 8,
+        ivRigor: 8,
+        ivDidatica: 8,
+        ivRaciocinio: 8,
+      }),
+    );
     expect(result.stars).toBe(2.5);
 
     // Golpes hidratados e pertencentes aos tipos da variante.
@@ -234,7 +275,9 @@ describe('CapturesService', () => {
       const result = await build(prisma).captureByToken('user-1', token);
 
       expect(ficha.redeemedAt).toBeInstanceOf(Date);
-      expect(variantesDeIa.map((v) => v.id)).toContain(criadas[0].data.variantId);
+      expect(variantesDeIa.map((v) => v.id)).toContain(
+        criadas[0].data.variantId,
+      );
       expect(variantesDeIa.map((v) => v.professorId)).toContain(
         criadas[0].data.professorId,
       );
@@ -252,9 +295,10 @@ describe('CapturesService', () => {
       await build(prisma).captureByToken('user-1', token);
 
       // Professor desativado não pode sair numa ficha que já está impressa.
+      // Raro tampouco: ele só sai pela ficha própria (tarefa 15, decisão 10).
       expect(filtros[0]).toEqual({
         types: { has: 'ia' },
-        professor: { active: true },
+        professor: { active: true, rare: false },
       });
     });
 
@@ -273,7 +317,10 @@ describe('CapturesService', () => {
     });
 
     it('NÃO consome a ficha quando o tipo não tem professor', async () => {
-      const { prisma, ficha, criadas } = fakeDb({ type: 'humanas', candidatas: [] });
+      const { prisma, ficha, criadas } = fakeDb({
+        type: 'humanas',
+        candidatas: [],
+      });
 
       await expect(
         build(prisma).captureByToken('user-1', token),
@@ -357,5 +404,136 @@ describe('CapturesService', () => {
 
   it('only ever selects public professor fields', () => {
     expect(Object.keys(PUBLIC_PROFESSOR_SELECT)).not.toContain('captureToken');
+  });
+
+  /**
+   * Ficha de professor raro (tarefa 15). O servidor é o porteiro — não a mesa.
+   *
+   * O invariante que estes testes existem para proteger é um só: **recusa não
+   * consome papel**. A checagem roda DENTRO da transação, e o `throw` desfaz a
+   * baixa. Fora dela, o pior desfecho possível aconteceria em silêncio — o
+   * aluno perde a ficha E não recebe nada, no meio do evento, sem reverter.
+   */
+  describe('ficha rara', () => {
+    it('quem não destravou os temas leva 403 e a ficha CONTINUA valendo', async () => {
+      const { prisma, ficha, criadas } = fakeDb({
+        raro: true,
+        destravados: [], // não destravou nada
+      });
+
+      const erro = await build(prisma)
+        .captureByToken('user-1', token)
+        .catch((e: unknown) => e);
+
+      expect(erro).toBeInstanceOf(ForbiddenException);
+      expect((erro as ForbiddenException).getResponse()).toMatchObject({
+        code: 'RARO_BLOQUEADO',
+      });
+      // O invariante: o papel volta para a pilha.
+      expect(ficha.redeemedAt).toBeNull();
+      expect(criadas).toHaveLength(0);
+    });
+
+    it('destravar só UM dos dois temas ainda é 403 — o gate é E, não OU', async () => {
+      const { prisma, ficha } = fakeDb({
+        raro: true,
+        destravados: ['arquitetura'], // falta "ia"
+      });
+
+      await expect(
+        build(prisma).captureByToken('user-1', token),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(ficha.redeemedAt).toBeNull();
+    });
+
+    it('a mensagem do bloqueio não diz qual tema falta', async () => {
+      const { prisma } = fakeDb({ raro: true, destravados: ['arquitetura'] });
+
+      const erro = (await build(prisma)
+        .captureByToken('user-1', token)
+        .catch((e: unknown) => e)) as ForbiddenException;
+
+      // Dizer "falta IA" entregaria o tema do raro para quem pegou a ficha
+      // emprestada — a mesma regra que tira o raro da lista da bancada.
+      const corpo = JSON.stringify(erro.getResponse());
+      expect(corpo).not.toContain('ia');
+      expect(corpo).not.toContain('arquitetura');
+    });
+
+    it('quem destravou TODOS os temas captura normalmente', async () => {
+      const { prisma, ficha, criadas } = fakeDb({
+        raro: true,
+        destravados: ['arquitetura', 'ia'],
+      });
+
+      const resultado = await build(prisma).captureByToken('user-1', token);
+
+      expect(ficha.redeemedAt).toBeInstanceOf(Date);
+      expect(criadas).toHaveLength(1);
+      // Exemplar igual a qualquer outro: variante, deck e IVs do sorteio normal.
+      expect(resultado.moves.length).toBeGreaterThan(0);
+      expect(resultado.types).toEqual(['arquitetura', 'ia']);
+      expect(resultado).toHaveProperty('stars');
+    });
+
+    it('a segunda ficha do mesmo raro dá 409 sem consumir o papel', async () => {
+      const { prisma, ficha, criadas } = fakeDb({
+        raro: true,
+        destravados: ['arquitetura', 'ia'],
+        jaTemRaro: true,
+      });
+
+      const erro = await build(prisma)
+        .captureByToken('user-1', token)
+        .catch((e: unknown) => e);
+
+      expect(erro).toBeInstanceOf(ConflictException);
+      expect((erro as ConflictException).getResponse()).toMatchObject({
+        code: 'RARO_JA_CAPTURADO',
+      });
+      expect(ficha.redeemedAt).toBeNull();
+      expect(criadas).toHaveLength(0);
+    });
+
+    /** Decisão residual 2: quem já capturou mantém o exemplar; a ficha, não. */
+    it('raro desativado dá 404 sem consumir o papel', async () => {
+      const { prisma, ficha } = fakeDb({
+        raro: true,
+        raroAtivo: false,
+        destravados: ['arquitetura', 'ia'],
+      });
+
+      const erro = await build(prisma)
+        .captureByToken('user-1', token)
+        .catch((e: unknown) => e);
+
+      expect(erro).toBeInstanceOf(NotFoundException);
+      expect((erro as NotFoundException).getResponse()).toMatchObject({
+        code: 'RARO_INDISPONIVEL',
+      });
+      expect(ficha.redeemedAt).toBeNull();
+    });
+
+    /**
+     * Decisão 10. Sem o filtro, o raro cairia na Faixa 1 do sorteio (professor
+     * inédito), que é a preferencial — ele seria o resultado *mais provável* de
+     * uma ficha comum, e a via do quiz deixaria de existir na prática.
+     */
+    it('ficha COMUM nunca pode entregar raro: o sorteio filtra na consulta', async () => {
+      const { prisma, filtros } = fakeDb({ type: 'ia' });
+
+      await build(prisma).captureByToken('user-1', token);
+
+      expect(filtros).toHaveLength(1);
+      expect(filtros[0].professor).toEqual({ active: true, rare: false });
+    });
+
+    it('a ficha comum não passa pelo porteiro do raro', async () => {
+      const { prisma, transaction } = fakeDb({ type: 'ia' });
+
+      await build(prisma).captureByToken('user-1', token);
+
+      expect(transaction.rareUnlock.findMany).not.toHaveBeenCalled();
+    });
   });
 });

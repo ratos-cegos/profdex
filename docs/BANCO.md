@@ -94,6 +94,7 @@ escreve SQL, é o da coluna da direita que vale:
 | `MetricHourly` | `metrics_hourly` | Agregado horário que o painel lê |
 | `QuizQuestion` | `quiz_questions` | Banco de questões do quiz |
 | `QuizAttempt` | `quiz_attempts` | Tentativas na bancada |
+| `RareUnlock` | `rare_unlocks` | Temas que um aluno destravou (5 acertos), para professor raro |
 | `PasswordResetToken` | `password_reset_tokens` | Hashes de link de redefinição |
 | `Battle` | `battles` | Histórico de batalhas PvP |
 | `Professor` | `professors` | Os professores: nome, tipos, arte, ativo |
@@ -118,6 +119,7 @@ Desde a tarefa 13, `professors` guarda tudo que o app sabe sobre um professor:
 | `model_url` | `.glb` da tela de AR |
 | `pixel_art` | A arte é pixel art de verdade? (liga `image-rendering: pixelated`) |
 | `active` | Desativado sai da Profdex e do sorteio, sem perder exemplares |
+| `rare` | Professor raro: fora da ficha comum e da contagem da dex (ver abaixo) |
 
 Antes disso, tipos e arte viviam em **quatro arquivos hardcoded por slug** (dois
 no backend, dois no frontend) e cadastrar um professor exigia commit e deploy.
@@ -132,6 +134,63 @@ nenhuma tela as lê.
 `discoveries`, `battle_slots`, `professor_variants` e, por tabela, as fichas):
 o delete cascatearia na coleção dos alunos e no histórico de ranking. O
 "remover" do painel é `active = false`.
+
+### `professors.rare` e `rare_unlocks`
+
+`rare` é definido na **criação e é imutável**. Virar raro um professor que já
+tem exemplares em circulação o tiraria da contagem da dex de todo mundo e
+deixaria as variantes dele órfãs — o raro tem **uma** variante (a combinação
+completa), o comum tem uma por combinação. Para corrigir: desative e cadastre de
+novo.
+
+Um raro é capturável só por quem acertou **5 questões em cada tipo dele** na
+bancada. Cada tema fechado vira uma linha:
+
+| Coluna de `rare_unlocks` | O quê |
+|---|---|
+| `user_id` + `theme` | O par único: um destravamento por aluno e tema |
+| `attempt_id` | A tentativa que fechou os 5 — responde "quando e com o quê?" |
+| `unlocked_at` | Quando |
+
+A linha é gravada no momento do 5º acerto e **nunca recalculada** no resgate:
+uma errata que anule uma tentativa depois não tira o raro de quem já destravou,
+pelo mesmo princípio de "corrigir gabarito não reprocessa tentativa antiga".
+
+O destravamento é **do tema**, não do professor — trocar o raro de um tema
+durante o evento mantém válido o que os alunos já conquistaram.
+
+`capture_tokens` **não tem coluna de raridade**: a ficha rara reusa `variant_id`
+(o caminho que entrega exatamente aquela variante, sem sorteio) e a raridade é
+derivada de `variant.professor.rare`. Uma flag denormalizada ali poderia
+divergir do cadastro; derivada, não existe estado inconsistente possível.
+
+`qr_batches.rare_professor_id` marca a tiragem de uma pilha rara — nulo
+significa tiragem comum, e nela `types` fica vazio.
+
+As consultas úteis:
+
+```sql
+-- Quem destravou o quê
+SELECT u.matricula, u.name, r.theme, r.unlocked_at
+FROM rare_unlocks r JOIN users u ON u.id = r.user_id
+ORDER BY r.unlocked_at DESC;
+
+-- Quem já fechou o gate COMPLETO de um raro de dois temas
+SELECT u.matricula, u.name
+FROM rare_unlocks r JOIN users u ON u.id = r.user_id
+WHERE r.theme IN ('matematica', 'ia')
+GROUP BY u.id, u.matricula, u.name
+HAVING COUNT(DISTINCT r.theme) = 2;
+
+-- Estoque vivo das fichas raras, por professor
+SELECT p.name, COUNT(*) FILTER (WHERE t.redeemed_at IS NULL) AS vivas,
+       COUNT(*) FILTER (WHERE t.redeemed_at IS NOT NULL) AS resgatadas
+FROM capture_tokens t
+JOIN professor_variants v ON v.id = t.variant_id
+JOIN professors p ON p.id = v.professor_id
+WHERE p.rare
+GROUP BY p.name;
+```
 
 ## Por que não dá para simplesmente apagar `users`
 

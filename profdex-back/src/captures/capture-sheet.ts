@@ -81,18 +81,43 @@ export const MAX_COPIES_CLI = 200;
 /** Teto da tiragem pelo painel: a geração é síncrona dentro do request. */
 export const MAX_COPIES_PANEL = 20;
 
-export interface SheetEntry {
-  /** O tipo da roda que a ficha vale. Quem sai é sorteado no scan. */
-  type: string;
+/** O que toda ficha tem, comum ou rara. */
+interface SheetEntryBase {
   copy: number;
   /** Nome base do arquivo — usado só pela tiragem em disco (CLI). */
   file: string;
   /** SEGREDO. Só vai para o QR e para o `tokens.txt` da CLI. */
   token: string;
   tokenHash: string;
-  /** O conteúdo codificado no QR. */
+  /**
+   * O conteúdo codificado no QR. **Idêntico nas duas** (`capture:<token>`): o
+   * scanner do app não precisa saber o que vai receber, e a ficha não anuncia
+   * nada a quem a acha no chão.
+   */
   payload: string;
 }
+
+/** Ficha comum: vale por TIPO, e quem sai é sorteado no scan. */
+export interface TypeSheetEntry extends SheetEntryBase {
+  kind: 'type';
+  type: string;
+}
+
+/**
+ * Ficha rara: aponta para a variante ÚNICA de um raro, sem sorteio.
+ *
+ * `professorName` e `themes` existem só para o papel — a mesa fica com uma
+ * pilha por raro, e "✦ RARO — MATEMÁTICA" seria ambíguo num raro de dois temas.
+ * A folha diz o nome, e a mesa não precisa decidir nada.
+ */
+export interface RareSheetEntry extends SheetEntryBase {
+  kind: 'rare';
+  variantId: string;
+  professorName: string;
+  themes: string[];
+}
+
+export type SheetEntry = TypeSheetEntry | RareSheetEntry;
 
 /**
  * 32 bytes em base64url = 43 caracteres [A-Za-z0-9_-], dentro das regras de
@@ -106,12 +131,13 @@ export function generateCaptureToken(): string {
 export function buildSheetEntries(
   types: string[],
   copies: number,
-): SheetEntry[] {
-  const entries: SheetEntry[] = [];
+): TypeSheetEntry[] {
+  const entries: TypeSheetEntry[] = [];
   for (const type of types) {
     for (let copy = 1; copy <= copies; copy++) {
       const token = generateCaptureToken();
       entries.push({
+        kind: 'type',
         type,
         copy,
         file: `${type}--${copy}`,
@@ -120,6 +146,35 @@ export function buildSheetEntries(
         payload: `capture:${token}`,
       });
     }
+  }
+  return entries;
+}
+
+/**
+ * A pilha de um professor raro: `copies` fichas apontando para a variante
+ * única dele.
+ *
+ * Pilha PRÓPRIA, nunca misturada com a tiragem por tipo: as duas no mesmo papel
+ * acabam com o raro nos primeiros 10 minutos de evento.
+ */
+export function buildRareSheetEntries(
+  variant: { id: string; professorName: string; themes: string[] },
+  copies: number,
+): RareSheetEntry[] {
+  const entries: RareSheetEntry[] = [];
+  for (let copy = 1; copy <= copies; copy++) {
+    const token = generateCaptureToken();
+    entries.push({
+      kind: 'rare',
+      variantId: variant.id,
+      professorName: variant.professorName,
+      themes: variant.themes,
+      copy,
+      file: `raro-${variant.id}--${copy}`,
+      token,
+      tokenHash: hashCaptureToken(token),
+      payload: `capture:${token}`,
+    });
   }
   return entries;
 }
@@ -173,6 +228,22 @@ export function renderSheet(
 ): string {
   const cards = entries
     .map((e) => {
+      // A ficha rara tem moldura e rótulo próprios: quem está na mesa com duas
+      // pilhas na mão precisa distinguir de longe, sem ler a legenda.
+      if (e.kind === 'rare') {
+        const nome = escapeHtml(e.professorName.toUpperCase());
+        const temas = escapeHtml(labelFor(e.themes));
+        return `    <figure class="card card--rare">
+      <img src="${srcFor(e)}" alt="QR Code de captura do professor raro ${nome}" />
+      <figcaption>
+        <strong class="type type--rare">✦ RARO — ${nome}</strong>
+        <span class="hint">exige: ${temas}</span>
+        <span class="hint">Só captura quem destravou os temas na bancada</span>
+        <span class="hint">Ficha ${e.copy}/${copies}</span>
+      </figcaption>
+    </figure>`;
+      }
+
       const tipo = escapeHtml(labelFor([e.type]));
       // Cor desconhecida (tipo fora da roda) cai no preto do texto: a ficha sai
       // legível de qualquer jeito em vez de sair com borda invisível.
@@ -187,6 +258,11 @@ export function renderSheet(
     </figure>`;
     })
     .join('\n');
+
+  // Uma tiragem é só de raro ou só de tipo — nunca das duas (ver
+  // buildRareSheetEntries). O cabeçalho segue o que veio.
+  const primeira = entries[0];
+  const daRara = primeira?.kind === 'rare' ? primeira : null;
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -206,12 +282,24 @@ export function renderSheet(
     /* O tipo é a única informação que a bancada precisa ler de longe. */
     .type { font-size: 22px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
     .hint { font-size: 12px; color: #555; }
+    /* Ficha rara: moldura dupla e dourada. A mesa fica com uma pilha por raro,
+       e a distinção tem de sobreviver a uma impressão em preto e branco — daí
+       a borda mais grossa, além da cor. */
+    .card--rare { border: 6px double #a67c00; background: #fffaf0; }
+    .type--rare { color: #8a6500; font-size: 20px; }
     @media print { body { padding: 0; } p.sub, h1 { display: none; } }
   </style>
 </head>
 <body>
-  <h1>ProfDex — fichas de captura</h1>
-  <p class="sub">Tiragem ${escapeHtml(batch)} — ${entries.length} fichas, ${copies} por tipo. Cada ficha vale uma única captura, e o professor é sorteado no scan.</p>
+  <h1>ProfDex — fichas de captura${daRara ? ` ✦ RARO — ${escapeHtml(daRara.professorName.toUpperCase())}` : ''}</h1>
+  <p class="sub">${
+    daRara
+      ? `Tiragem ${escapeHtml(batch)} — ${entries.length} fichas do professor raro ` +
+        `${escapeHtml(daRara.professorName)} (exige: ${escapeHtml(labelFor(daRara.themes))}). ` +
+        'Pilha PRÓPRIA: não misture com as fichas por tipo. O servidor recusa ' +
+        'quem não destravou os temas, e a ficha recusada continua valendo.'
+      : `Tiragem ${escapeHtml(batch)} — ${entries.length} fichas, ${copies} por tipo. Cada ficha vale uma única captura, e o professor é sorteado no scan.`
+  }</p>
   <div class="grid">
 ${cards}
   </div>

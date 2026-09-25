@@ -71,12 +71,29 @@ export class ProfessorFormDto {
   @Transform(({ value }) => parseBooleano(value))
   @IsBoolean()
   pixelArt?: boolean;
+
+  /**
+   * Professor raro (tarefa 15): não sai em ficha comum, não conta para
+   * completar a Profdex, e só é capturável por quem acertou 5 questões em CADA
+   * um dos `types` acima — que no raro são também os temas exigidos no quiz.
+   *
+   * Só existe na CRIAÇÃO. `UpdateProfessorDto` não tem o campo de propósito:
+   * virar raro um professor que já tem exemplares em circulação o tiraria da
+   * contagem da dex de todo mundo e deixaria as variantes dele órfãs (o raro
+   * tem uma só). Para corrigir, o caminho é desativar e cadastrar de novo.
+   */
+  @IsOptional()
+  @Transform(({ value }) => parseBooleano(value))
+  @IsBoolean()
+  rare?: boolean;
 }
 
 /**
  * Edição: os mesmos campos, todos opcionais. Quem não vem, não muda — editar só
  * o nome não pode zerar os tipos de um professor que já tem exemplares em
  * circulação.
+ *
+ * Sem `rare`: ele é imutável depois do cadastro (ver a nota no DTO de criação).
  */
 export class UpdateProfessorDto {
   @IsOptional()

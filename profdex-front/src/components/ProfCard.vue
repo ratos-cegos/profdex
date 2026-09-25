@@ -11,6 +11,16 @@ const props = defineProps({
     type: Number,
     required: true,
   },
+  /**
+   * Professor raro (tarefa 15). Puramente cosmético — selo ✦ e moldura
+   * dourada. O raro NÃO é mecanicamente mais forte: variante, deck e IVs saem
+   * do mesmo sorteio, porque o PvP é ranqueado por Elo e um raro superior faria
+   * o ranking medir quem respondeu quiz, não quem joga melhor (decisão 13).
+   */
+  rare: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['details'])
@@ -28,11 +38,13 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
       'prof-card--captured': professor.captured,
       'prof-card--discovered': professor.discovered && !professor.captured,
       'prof-card--unknown': !professor.discovered,
+      'prof-card--rare': rare,
     }"
   >
     <div class="prof-card__inner">
       <div class="prof-card__num pixel">
-        #{{ String(index + 1).padStart(3, '0') }}
+        <span v-if="rare" class="prof-card__selo" title="Professor raro">✦</span>
+        <template v-else>#{{ String(index + 1).padStart(3, '0') }}</template>
       </div>
 
       <component
@@ -103,6 +115,18 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
 
 .prof-card--captured {
   border-color: var(--success-text);
+}
+
+/* Raro: moldura dourada que vence a verde de "capturado". A diferença é só
+   cosmética — em batalha ele é um exemplar como qualquer outro. */
+.prof-card--rare {
+  border-color: var(--raro);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--raro) 35%, transparent);
+}
+
+.prof-card__selo {
+  color: var(--raro);
+  font-size: 11px;
 }
 
 .prof-card__inner {
