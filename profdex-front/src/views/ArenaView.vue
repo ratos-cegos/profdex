@@ -159,15 +159,19 @@ function goBack() {
     <div class="arena__stage" :class="{ 'arena__stage--ar': arEnabled }">
       <!-- Fundo do combate: câmera (AR) ou o ginásio da UNIFIL -->
       <video v-show="arEnabled" ref="camVideo" class="arena__camera" autoplay playsinline muted />
-      <img
-        v-if="!arEnabled"
-        class="arena__scenario"
-        src="/cenarios/ginasio-unifil.jpg"
-        alt=""
-        aria-hidden="true"
-        decoding="async"
-        fetchpriority="high"
-      />
+      <!-- Tela deitada (desktop): a versão panorâmica do ginásio. A retrato,
+           esticada em tela larga, virava um borrão ampliado. -->
+      <picture v-if="!arEnabled">
+        <source media="(min-aspect-ratio: 1/1)" srcset="/cenarios/ginasio-unifil-desktop.jpg" />
+        <img
+          class="arena__scenario"
+          src="/cenarios/ginasio-unifil.jpg"
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+          fetchpriority="high"
+        />
+      </picture>
       <img class="arena__brand" src="/marca/logotipo-branco.png" alt="UNIFIL" />
 
       <div class="arena__fighter arena__fighter--enemy">
@@ -368,6 +372,15 @@ function goBack() {
   z-index: 0;
   object-fit: cover;
   object-position: center bottom;
+}
+
+/* Na foto panorâmica a linha de fundo da quadra fica na metade da imagem; com
+   125% de altura ancorada embaixo ela sobe para ~37% da tela, perto dos pés do
+   oponente, e o placar e a arquibancada continuam à vista. */
+@media (min-aspect-ratio: 1/1) {
+  .arena__scenario {
+    height: 125%;
+  }
 }
 
 /* Sprites 2D dos combatentes. Ocupam o mesmo lugar dos antigos <model-viewer>;
