@@ -103,7 +103,9 @@ describe('BattleGateway', () => {
       { verify: jwtVerify } as unknown as JwtService,
       presence,
       invites,
-      new CooldownService(prisma),
+      new CooldownService(prisma, {
+        battlePairCooldownMs: () => Promise.resolve(12 * 60 * 60 * 1000),
+      } as never),
       rooms,
       prisma,
     );

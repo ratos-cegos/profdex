@@ -12,12 +12,16 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ProfessorsModule } from './professors/professors.module';
 import { QuizModule } from './quiz/quiz.module';
 import { SeedModule } from './seed/seed.module';
+import { SettingsModule } from './settings/settings.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    // Global: o quiz e a batalha leem os cooldowns daqui. Antes do BattleModule
+    // e do QuizModule, que dependem dele.
+    SettingsModule,
     UsersModule,
     AuthModule,
     BattleModule,

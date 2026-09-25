@@ -95,6 +95,7 @@ escreve SQL, é o da coluna da direita que vale:
 | `QuizQuestion` | `quiz_questions` | Banco de questões do quiz |
 | `QuizAttempt` | `quiz_attempts` | Tentativas na bancada |
 | `RareUnlock` | `rare_unlocks` | Temas que um aluno destravou (5 acertos), para professor raro |
+| `AppSetting` | `app_settings` | Ajustes de operação editáveis no painel (cooldowns) |
 | `PasswordResetToken` | `password_reset_tokens` | Hashes de link de redefinição |
 | `Battle` | `battles` | Histórico de batalhas PvP |
 | `Professor` | `professors` | Os professores: nome, tipos, arte, ativo |

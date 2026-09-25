@@ -10,6 +10,40 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 
 ### Adicionado
 
+- **Cooldowns ajustáveis pelo painel**, em `/admin/configuracoes`: o do **tema**
+  na bancada (1 a 120 min, padrão 10) e o da **dupla** no PvP ranqueado (1 a 72
+  h, padrão 12). Os dois eram constantes de código, e o número certo depende do
+  tamanho da fila — que ninguém sabe antes de abrir o estande.
+
+  Valem **na hora**, sem deploy nem restart: o servidor lê o valor a cada
+  tentativa de quiz e a cada convite de batalha, com cache de 10 s. Encurtar o
+  cooldown libera na mesma hora quem já estava esperando, porque a conta é
+  sempre "agora − última tentativa", nunca um prazo congelado.
+
+  A tabela `app_settings` nasce **vazia**: chave ausente significa "usa o
+  padrão", então uma instalação que nunca abriu a tela se comporta como antes.
+  O mínimo é 1 nos dois — zerar o cooldown de dupla liberaria exatamente o
+  win-trading que ele existe para impedir. Faixa, unidade e texto de apoio vêm
+  do servidor, para o formulário não poder discordar da validação.
+
+### Alterado
+
+- **A bancada não anuncia mais qual professor o aluno vai capturar.** A tela de
+  acerto passa a dizer só "escaneie o QR Code para capturar seu professor", e a
+  lista `professores` saiu das duas rotas (`GET /admin/quiz/themes` e
+  `POST /admin/quiz/answer`).
+
+  Era promessa que a captura não tinha como cumprir: quem o aluno leva é
+  sorteado no servidor, no instante do scan, a partir do que ele **já tem**
+  (`capture-lottery.ts`) — ele podia ouvir "vá capturar o Eron" e receber outro.
+  Resolve a divergência que estava registrada em `docs/QUIZ.md` desde a tarefa
+  12.
+
+  De quebra, some a superfície que obrigava a filtrar `rare: false` em duas
+  telas viradas para o aluno: sem lista de professor, não há por onde o nome de
+  um raro escapar — nem por um filtro que alguém esqueça de repetir numa
+  consulta nova.
+
 - **Professor raro** (tarefa 15). Uma segunda via de aquisição, paralela e
   independente da captura comum: um professor marcado como raro **não sai em
   ficha comum, não conta para completar a Profdex**, e só é capturável por quem

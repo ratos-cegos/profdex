@@ -274,6 +274,26 @@ model QuizAttempt {
   @@map("quiz_attempts")
 }
 
+/// Ajuste de operação que o painel muda durante o evento, sem deploy.
+///
+/// Chave-valor de propósito, como `MetricHourly`: um ajuste novo não exige
+/// migração. O valor é TEXTO e a interpretação (número, faixa, unidade) mora no
+/// `SettingsService` — o banco não sabe o que é "minuto", e um `Int` aqui
+/// travaria o primeiro ajuste que não for numérico.
+///
+/// Só entram valores que a mesa precisa mexer **com o evento no ar**: os dois
+/// cooldowns nasceram de constantes de código e viraram linha aqui porque a
+/// resposta certa depende do tamanho da fila, que ninguém sabe antes de abrir.
+/// Regra de jogo que muda o significado do dado (os 5 acertos do raro, por
+/// exemplo) continua sendo constante de código.
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}
+
 /// Um tema destravado por um aluno: 5 acertos, e vale para sempre.
 ///
 /// Gravado no momento do 5º acerto e NUNCA recalculado na hora do resgate. Uma

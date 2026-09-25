@@ -470,16 +470,16 @@ function formatarEspera(s) {
            que ele precisa do número para contestar com o operador. -->
       <p class="codigo-questao">Questão #{{ resultado.code }}</p>
 
-      <p v-if="resultado.correct && resultado.professores.length" class="instrucao">
-        Agora escaneie o QR Code para capturar
-        <strong>{{ resultado.professores.map((p) => p.name).join(' ou ') }}</strong
-        >.
-      </p>
-      <p v-else-if="resultado.correct" class="instrucao">
-        Procure o QR Code do professor deste tema para capturar.
+      <!-- Sem NOME de professor. Quem o aluno leva é sorteado no servidor, no
+           instante do scan, e depende do que ele já tem — anunciar um nome aqui
+           seria promessa que a captura não tem como cumprir. -->
+      <p v-if="resultado.correct" class="instrucao">
+        Agora escaneie o QR Code para capturar seu professor.
       </p>
       <p v-else class="instrucao">
-        Este tema libera de novo em 10 minutos. Enquanto isso dá para tentar outro tema.
+        Este tema libera de novo em {{ resultado.cooldownMinutos }}
+        {{ resultado.cooldownMinutos === 1 ? 'minuto' : 'minutos' }}. Enquanto
+        isso dá para tentar outro tema.
       </p>
 
       <div class="botoes">
