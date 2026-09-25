@@ -1,13 +1,11 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import ArenaPalco from '../components/ArenaPalco.vue'
 import BancoDeReservas from '../components/BancoDeReservas.vue'
-import BattleHpBar from '../components/BattleHpBar.vue'
-import DamagePopup from '../components/DamagePopup.vue'
 import MoveButton from '../components/MoveButton.vue'
 import ProfessorFace from '../components/ProfessorFace.vue'
 import { useBattleStore } from '../stores/battle'
-import { spriteFrenteDe } from '../data/professorArte'
 
 // Arena PvP: o servidor resolve tudo; esta tela só envia a intenção de golpe
 // e ANIMA a fila de eventos de cada rodada (mesma linguagem do useBattle.js).
@@ -129,11 +127,53 @@ async function entrarCom(membro) {
   if (ack.ok) message.value = `${membro.professor.name} entra em campo!`
 }
 
+// ── Os dois lados do palco ─────────────────────────────────────────────────
 // Sprites 2D, não .glb: dois modelos de dezenas de MB por partida faziam o
 // Safari do iPhone descartar a aba no meio da batalha.
 // Ver docs/BUG-BATALHA-TRAVANDO.md.
-const youSprite = computed(() => spriteFrenteDe(pvp.value?.you?.professor))
-const foeSprite = computed(() => spriteFrenteDe(pvp.value?.foe?.professor))
+//
+// O palco é o MESMO componente do treino (ArenaPalco.vue). Antes esta tela
+// tinha o seu, com cada lado numa coluna flex e o sprite em `flex: 1` — o
+// tamanho do personagem era o espaço que sobrava, e o banco de reservas do
+// rival, empilhado acima do sprite dele, era o que mais espremia.
+// Quem resolve costas/frente também é o palco.
+const ladoRival = computed(() => ({
+  professor: pvp.value?.foe?.professor,
+  name: pvp.value?.foe?.professor?.name ?? pvp.value?.opponent?.name ?? '',
+  types: pvp.value?.foe?.types ?? [],
+  hp: foeHp.value,
+  maxHp: pvp.value?.foe?.maxHp ?? 0,
+  hit: foeHit.value,
+  fainted: foeFainted.value,
+  feedback: foeFeedback.value,
+}))
+
+const ladoSeu = computed(() => ({
+  professor: pvp.value?.you?.professor,
+  name: pvp.value?.you?.professor?.name ?? 'Você',
+  types: pvp.value?.you?.types ?? [],
+  hp: youHp.value,
+  maxHp: pvp.value?.you?.maxHp ?? 0,
+  hit: youHit.value,
+  fainted: youFainted.value,
+  feedback: youFeedback.value,
+}))
+
+/**
+ * A mensagem de turno como a faixa mostra.
+ *
+ * A espera pelo rival era um `<p>` extra no fim da faixa, que aparecia no
+ * instante em que você usava um golpe — ou seja, a tela se mexia exatamente no
+ * toque que ela devia responder. Aqui ela entra na moldura de mensagem, que tem
+ * altura reservada, e continua reagindo ao rival mover no meio da espera.
+ */
+const mensagemExibida = computed(() => {
+  const p = pvp.value
+  if (p?.phase === 'active' && p.youMoved && !animating.value) {
+    return p.foeMoved ? 'Resolvendo a rodada…' : `Aguardando ${p.opponent.name}…`
+  }
+  return message.value
+})
 
 const resultText = computed(() => {
   const r = pvp.value?.result
@@ -327,148 +367,117 @@ onUnmounted(() => clock && clearInterval(clock))
       'pvp-arena--victory': foeFainted || resultKind === 'win',
     }"
   >
-    <div class="pvp-arena__bg">
-      <!-- Tela deitada (desktop): a versão panorâmica do ginásio. A retrato,
-           esticada em tela larga, virava um borrão ampliado. -->
-      <picture>
-        <source media="(min-aspect-ratio: 1/1)" srcset="/cenarios/ginasio-unifil-desktop.jpg" />
-        <img
-          class="pvp-arena__cenario"
-          src="/cenarios/ginasio-unifil.jpg"
-          alt=""
-          aria-hidden="true"
-          decoding="async"
-          fetchpriority="high"
+    <!-- O mesmo palco do treino: só os dois lutadores, o fundo e as barras de
+         HP sobrepostas. Sem colunas flex, sem banco de reservas aqui dentro. -->
+    <ArenaPalco :foe="ladoRival" :you="ladoSeu" />
+
+    <!-- Faixa de comandos, de ALTURA TRAVADA (ver `--faixa-altura` no estilo):
+         os três blocos que se alternam aqui ocupam sempre o mesmo espaço. -->
+    <div class="faixa">
+      <!-- Os dois times, numa linha fina. Antes ficavam empilhados na coluna do
+           sprite, entre a barra de HP e o personagem — e era o do rival que
+           mais espremia. As reservas do rival são PÚBLICAS de propósito: o time
+           dele já foi revelado no preview e o HP de cada um foi visto em campo;
+           esconder não criaria segredo, só obrigaria a decorar. -->
+      <div class="faixa__times">
+        <BancoDeReservas :team="timeExibido.foe" foe rotulo="RIVAL" />
+        <BancoDeReservas
+          :team="timeExibido.you"
+          :active-capture-id="pvp.you.activeCaptureId"
+          rotulo="VOCÊ"
         />
-      </picture>
-    </div>
-    <img class="pvp-arena__brand" src="/marca/logotipo-branco.png" alt="UNIFIL" />
+      </div>
 
-    <!-- Rival (topo) -->
-    <div class="pvp-arena__foe">
-      <BattleHpBar
-        :name="pvp.foe.professor?.name ?? pvp.opponent.name"
-        :hp="foeHp"
-        :max-hp="pvp.foe.maxHp"
-      />
-      <!-- Reservas do rival. O time dele já foi revelado no preview e o HP de
-           cada um foi visto em campo — esconder aqui não criaria segredo, só
-           obrigaria a decorar. -->
-      <BancoDeReservas :team="timeExibido.foe" foe />
-      <img
-        class="pvp-arena__model pvp-arena__model--foe"
-        :class="{ 'pvp-arena__model--hit': foeHit, 'pvp-arena__model--fainted': foeFainted }"
-        :src="foeSprite"
-        :alt="`Prof. ${pvp.foe.professor?.name ?? pvp.opponent.name}`"
-        decoding="async"
-      />
-      <DamagePopup v-for="item in foeFeedback" :key="item.id" v-bind="item" />
-    </div>
-
-    <!-- Você (base) -->
-    <div class="pvp-arena__you">
-      <img
-        class="pvp-arena__model"
-        :class="{ 'pvp-arena__model--hit': youHit, 'pvp-arena__model--fainted': youFainted }"
-        :src="youSprite"
-        :alt="pvp.you.professor?.name ?? 'Seu professor'"
-        decoding="async"
-      />
-      <DamagePopup v-for="item in youFeedback" :key="item.id" v-bind="item" />
-      <BattleHpBar :name="pvp.you.professor?.name ?? 'Você'" :hp="youHp" :max-hp="pvp.you.maxHp" />
-      <BancoDeReservas
-        :team="timeExibido.you"
-        :active-capture-id="pvp.you.activeCaptureId"
-      />
-    </div>
-
-    <!-- HUD -->
-    <div class="pvp-arena__hud">
-      <div class="pvp-arena__msgrow">
-        <p class="pvp-arena__message">{{ message }}</p>
+      <!-- Mesma moldura do treino, com o timer na própria linha. -->
+      <div class="faixa__mensagem pixel" aria-live="polite">
+        <span class="faixa__texto">{{ mensagemExibida }}</span>
         <span
           v-if="emJogo"
-          class="pixel pvp-arena__timer"
-          :class="{ 'pvp-arena__timer--low': secondsLeft <= 10 }"
+          class="pixel faixa__timer"
+          :class="{ 'faixa__timer--baixo': secondsLeft <= 10 }"
         >
           {{ secondsLeft }}s
         </span>
       </div>
 
-      <!-- Escolher quem entra não é opcional: enquanto está pendente, ela toma
-           o lugar dos comandos em vez de dividir espaço com eles. -->
-      <div v-if="pvp.phase === 'switching'" class="entrada">
-        <template v-if="precisaEntrar">
-          <p class="entrada__titulo">Quem entra agora?</p>
-          <div class="entrada__opcoes">
-            <button
-              v-for="m in reservas"
-              :key="m.captureId"
-              class="entrada__opcao"
-              type="button"
-              @click="entrarCom(m)"
-            >
-              <ProfessorFace class="entrada__face" :professor="m.professor" />
-              <span class="entrada__nome">{{ m.professor.name }}</span>
-              <span class="entrada__hp">{{ m.hp }}/{{ m.maxHp }}</span>
-            </button>
-          </div>
-        </template>
-        <p v-else class="pvp-arena__waiting">
-          {{ pvp.opponent.name }} está escolhendo quem entra…
-        </p>
-      </div>
-
-      <template v-else>
-        <!-- Painel de troca, sobreposto aos golpes: a ação do turno é uma só. -->
-        <div v-if="trocaAberta" class="entrada">
-          <p class="entrada__titulo">Trocar por quem?</p>
-          <div class="entrada__opcoes">
-            <button
-              v-for="m in reservas"
-              :key="m.captureId"
-              class="entrada__opcao"
-              type="button"
-              :disabled="!canAct"
-              @click="trocarPara(m)"
-            >
-              <ProfessorFace class="entrada__face" :professor="m.professor" />
-              <span class="entrada__nome">{{ m.professor.name }}</span>
-              <span class="entrada__hp">{{ m.hp }}/{{ m.maxHp }}</span>
-            </button>
-          </div>
-          <button class="entrada__cancelar" type="button" @click="trocaAberta = false">
-            Voltar aos golpes
-          </button>
+      <!-- Os três blocos mutuamente exclusivos, num espaço de altura reservada.
+           Sem isto a tela pulava a cada golpe usado e os golpes desapareciam
+           quando o professor caía — os dois sintomas eram o mesmo defeito. -->
+      <div class="faixa__blocos">
+        <!-- Escolher quem entra não é opcional: enquanto está pendente, ela toma
+             o lugar dos comandos em vez de dividir espaço com eles. -->
+        <div v-if="pvp.phase === 'switching'" class="entrada">
+          <template v-if="precisaEntrar">
+            <p class="entrada__titulo">Quem entra agora?</p>
+            <div class="entrada__opcoes">
+              <button
+                v-for="m in reservas"
+                :key="m.captureId"
+                class="entrada__opcao"
+                type="button"
+                @click="entrarCom(m)"
+              >
+                <ProfessorFace class="entrada__face" :professor="m.professor" />
+                <span class="entrada__nome">{{ m.professor.name }}</span>
+                <span class="entrada__hp">{{ m.hp }}/{{ m.maxHp }}</span>
+              </button>
+            </div>
+          </template>
+          <p v-else class="entrada__titulo entrada__titulo--espera">
+            {{ pvp.opponent.name }} está escolhendo quem entra…
+          </p>
         </div>
 
         <template v-else>
-          <div class="pvp-arena__moves">
-            <MoveButton
-              v-for="move in pvp.you.moves"
-              :key="move.id"
-              :move="move"
-              :opponent-types="pvp.foe.types"
-              :disabled="!canAct"
-              @select="useMove"
-            />
+          <!-- Painel de troca, sobreposto aos golpes: a ação do turno é uma só. -->
+          <div v-if="trocaAberta" class="entrada">
+            <p class="entrada__titulo">Trocar por quem?</p>
+            <div class="entrada__opcoes">
+              <button
+                v-for="m in reservas"
+                :key="m.captureId"
+                class="entrada__opcao"
+                type="button"
+                :disabled="!canAct"
+                @click="trocarPara(m)"
+              >
+                <ProfessorFace class="entrada__face" :professor="m.professor" />
+                <span class="entrada__nome">{{ m.professor.name }}</span>
+                <span class="entrada__hp">{{ m.hp }}/{{ m.maxHp }}</span>
+              </button>
+            </div>
+            <button class="entrada__cancelar" type="button" @click="trocaAberta = false">
+              Voltar aos golpes
+            </button>
           </div>
 
-          <button
-            v-if="reservas.length"
-            class="pvp-arena__trocar"
-            type="button"
-            :disabled="!canAct"
-            @click="trocaAberta = true"
-          >
-            ⇄ Trocar ({{ reservas.length }})
-          </button>
-        </template>
-      </template>
+          <!-- Durante a resolução do turno os golpes ficam VISÍVEIS e
+               desabilitados: dizem "é sua vez daqui a pouco" e mantêm a leitura
+               do time. Sumir com eles é o que dava a sensação de tela quebrada. -->
+          <template v-else>
+            <div class="faixa__golpes">
+              <MoveButton
+                v-for="move in pvp.you.moves"
+                :key="move.id"
+                :move="move"
+                :opponent-types="pvp.foe.types"
+                :disabled="!canAct"
+                @select="useMove"
+              />
+            </div>
 
-      <p v-if="pvp.youMoved && pvp.phase === 'active' && !animating" class="pvp-arena__waiting">
-        {{ pvp.foeMoved ? 'Resolvendo a rodada…' : `Aguardando ${pvp.opponent.name}…` }}
-      </p>
+            <button
+              v-if="reservas.length"
+              class="faixa__trocar"
+              type="button"
+              :disabled="!canAct"
+              @click="trocaAberta = true"
+            >
+              ⇄ Trocar ({{ reservas.length }})
+            </button>
+          </template>
+        </template>
+      </div>
     </div>
 
     <!-- Resultado -->
@@ -499,13 +508,58 @@ onUnmounted(() => clock && clearInterval(clock))
 </template>
 
 <style scoped>
+/*
+ * ── A altura da faixa de comandos ───────────────────────────────────────────
+ *
+ * Os três blocos que se alternam na faixa (grade de golpes + troca, painel de
+ * entrada, painel de troca) não tinham altura reservada. Daí os dois sintomas
+ * relatados no celular, que eram O MESMO defeito: a tela pulava quando um golpe
+ * era usado, e os golpes sumiam quando o professor caía.
+ *
+ * Agora a altura vem de UMA conta, aqui: as medidas dos pedaços somam a altura
+ * da faixa, e `--faixa-blocos` reserva o MAIOR dos três (a grade 2×2 mais o
+ * botão de troca). Nenhum valor se repete em seletor nenhum.
+ */
 .pvp-arena {
+  --faixa-gap: 8px;
+  --faixa-pad-topo: 10px;
+  --faixa-pad-base: calc(12px + env(safe-area-inset-bottom));
+  --faixa-times: 44px;
+  /* Moldura do treino (44px) mais a folga da segunda linha: a mensagem é a
+     única coisa aqui cujo texto o servidor escolhe, e "Aguardando Fulano…"
+     pode quebrar. Com altura fixa ela quebra DENTRO da caixa. */
+  --faixa-mensagem: 56px;
+  /* Altura de uma linha de golpes. Tem de ser >= o `min-height` do MoveButton
+     (82px) e >= o que o nome mais longo ocupa em duas linhas (~86px medidos no
+     celular); a folga é o que impede a grade de estourar a reserva. */
+  --faixa-golpe: 88px;
+  --faixa-trocar: 40px;
+
+  /* O maior dos três blocos: 2 linhas de golpe + o botão de troca. */
+  --faixa-blocos: calc(var(--faixa-golpe) * 2 + var(--faixa-gap) * 2 + var(--faixa-trocar));
+
+  --faixa-altura: calc(
+    var(--faixa-pad-topo) + var(--faixa-times) + var(--faixa-gap) + var(--faixa-mensagem) +
+      var(--faixa-gap) + var(--faixa-blocos) + var(--faixa-pad-base)
+  );
+
+  /*
+   * O palco já reserva `--palco-faixa` de rodapé para comandos — a faixa do
+   * treino, com a qual o enquadramento dos lutadores foi fechado. A faixa daqui
+   * é mais alta (tem o banco e o botão de troca), então o palco sobe só a
+   * DIFERENÇA. Recuar a faixa inteira encolheria os dois personagens, que é
+   * exatamente a queixa que esta tela existe para resolver.
+   */
+  --palco-recuo: max(0px, calc(var(--faixa-altura) - var(--palco-faixa)));
+
   position: fixed;
   inset: 0;
   overflow: hidden;
   background: #08000f;
   display: flex;
   flex-direction: column;
+  /* A faixa é o único filho em fluxo; o palco é absoluto. */
+  justify-content: flex-end;
 }
 
 .pvp-arena::after {
@@ -514,17 +568,6 @@ onUnmounted(() => clock && clearInterval(clock))
   inset: 0;
   z-index: 1;
   pointer-events: none;
-}
-
-.pvp-arena__brand {
-  position: absolute;
-  top: calc(12px + env(safe-area-inset-top));
-  right: 16px;
-  z-index: 1;
-  width: clamp(64px, 19vw, 112px);
-  height: auto;
-  opacity: 0.64;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
 }
 
 .pvp-arena--defeat::after {
@@ -545,155 +588,71 @@ onUnmounted(() => clock && clearInterval(clock))
   }
 }
 
-/* O ginásio da UNIFIL, o mesmo fundo da arena de treino — as duas telas são a
-   mesma batalha para quem joga, e cenários diferentes fariam a ranqueada
-   parecer outro jogo. Enquadramento explicado em ArenaView.vue. */
-.pvp-arena__bg {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  background: var(--bg-deep);
-}
+/* O fundo (ginásio da UNIFIL), os dois lutadores e as barras de HP são o
+   ArenaPalco.vue — o mesmo componente do treino. As duas telas são a mesma
+   batalha para quem joga, e palcos separados já divergiram uma vez. */
 
-.pvp-arena__cenario {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 120%;
-  object-fit: cover;
-  object-position: center bottom;
-}
-
-/* Na foto panorâmica a linha de fundo da quadra fica na metade da imagem; com
-   125% de altura ancorada embaixo ela sobe para ~37% da tela, perto dos pés do
-   oponente, e o placar e a arquibancada continuam à vista. */
-@media (min-aspect-ratio: 1/1) {
-  .pvp-arena__cenario {
-    height: 125%;
-  }
-}
-
-/* Escurecimento: a quadra é clara e alaranjada, e aqui o HUD tem DUAS barras de
-   HP mais o banco de reservas de cada lado. */
-.pvp-arena__bg::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(10, 12, 16, 0.62) 0%,
-    rgba(10, 12, 16, 0.22) 26%,
-    rgba(10, 12, 16, 0.12) 52%,
-    rgba(10, 12, 16, 0.55) 100%
-  );
-}
-
-.pvp-arena__foe,
-.pvp-arena__you {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 14px 0;
-  min-height: 0;
-}
-
-.pvp-arena__foe {
-  align-items: flex-end;
-}
-
-.pvp-arena__you {
-  align-items: flex-start;
-  justify-content: flex-end;
-}
-
-.pvp-arena__model {
-  width: 46vw;
-  max-width: 240px;
-  flex: 1;
-  min-height: 0;
-  /* `contain` mantém o sprite inteiro no quadro que antes era do model-viewer,
-     sem esticar a arte quando a tela é estreita. */
-  object-fit: contain;
-  object-position: bottom center;
-  background: transparent;
-  /* Sombra no lugar da que o model-viewer projetava. */
-  filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.45));
-  transition:
-    filter 0.6s ease,
-    opacity 0.6s ease,
-    transform 0.6s ease;
-}
-
-.pvp-arena__model--foe {
-  /* À direita, como a barra e o banco do rival — o `flex-start` de antes puxava
-     só o sprite para a esquerda, contra o `align-items: flex-end` do bloco, e
-     os dois combatentes acabavam empilhados na mesma coluna com metade da tela
-     vazia ao lado. Rival em cima à direita, você embaixo à esquerda: a diagonal
-     que qualquer arena de turnos usa, e que funciona igual no celular. */
-  align-self: flex-end;
-  object-position: top center;
-}
-
-.pvp-arena__model--hit {
-  animation: pvp-hit 0.45s steps(3);
-}
-
-.pvp-arena__model--fainted,
-.pvp-arena__model--fainted.pvp-arena__model--hit {
-  animation: none;
-  filter: grayscale(1) brightness(0.6);
-  opacity: 0.75;
-  transform: translateY(8%) rotate(12deg);
-}
-
-@keyframes pvp-hit {
-  50% {
-    opacity: 0.2;
-    filter: brightness(3);
-  }
-}
-
-.pvp-arena__hud {
+/* ── A faixa de comandos ─────────────────────────────────────────────────── */
+.faixa {
   position: relative;
   z-index: 2;
   flex-shrink: 0;
+  /* A conta está no topo deste arquivo. `min-height` e não `height`: uma
+     mensagem que quebre em duas linhas cresce para cima em vez de ser cortada. */
+  min-height: var(--faixa-altura);
   background: var(--bg-card);
   border-top: 2px solid var(--border);
-  padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
+  padding: var(--faixa-pad-topo) 14px var(--faixa-pad-base);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--faixa-gap);
 }
 
-.pvp-arena__msgrow {
+/* Os dois times, o do rival à esquerda e o seu à direita — a mesma diagonal do
+   palco, onde o rival está no alto à esquerda e você embaixo à direita. */
+.faixa__times {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--faixa-gap);
+  /* Reservado mesmo quando alguém joga com um exemplar só (aí não há banco). */
+  min-height: var(--faixa-times);
+}
+
+/* A moldura de mensagem do treino, com o timer na mesma linha (à direita).
+   `height` e não `min-height`: uma mensagem de duas linhas empurraria a faixa
+   inteira, que é justamente o que esta tarefa acaba com. */
+.faixa__mensagem {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 38px;
-}
-
-.pvp-arena__message {
-  margin: 0;
-  font-size: 14px;
+  height: var(--faixa-mensagem);
+  padding: 10px 14px;
+  border: 2px solid var(--yellow);
+  border-radius: var(--radius);
+  background: var(--bg-card);
   color: var(--text);
+  font-size: 9px;
+  line-height: 1.6;
 }
 
-.pvp-arena__timer {
+.faixa__texto {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.faixa__timer {
   flex-shrink: 0;
-  font-size: 14px;
+  font-size: 9px;
   color: var(--text);
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 6px 10px;
+  padding: 6px 8px;
 }
 
-.pvp-arena__timer--low {
+.faixa__timer--baixo {
   color: var(--red-light);
   animation: pvp-blink 1s steps(2) infinite;
 }
@@ -704,57 +663,54 @@ onUnmounted(() => clock && clearInterval(clock))
   }
 }
 
-.pvp-arena__moves {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.pvp-move {
+/* O espaço dos três blocos. `height` e não `min-height`: com mínimo, o bloco
+   mais alto (a grade) ainda podia passar da reserva e a faixa pulava de novo —
+   a altura travada precisa ser a MESMA, não apenas um piso.
+   `justify-content: flex-end` encosta a grade embaixo: o que sobra fica em
+   cima, e os botões não mudam de lugar debaixo do dedo. */
+.faixa__blocos {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  background: var(--bg-surface);
+  justify-content: flex-end;
+  gap: var(--faixa-gap);
+  height: var(--faixa-blocos);
+}
+
+/* Linhas `1fr`, não automáticas: a grade divide exatamente o que sobrou do
+   bloco, então nome de golpe comprido usa a folga em vez de esticar a faixa. */
+.faixa__golpes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: var(--faixa-gap);
+}
+
+.faixa__trocar {
+  min-height: var(--faixa-trocar);
   border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text);
+  font-size: 13px;
   cursor: pointer;
-  text-align: left;
 }
 
-.pvp-move:disabled {
+.faixa__trocar:disabled {
   opacity: 0.45;
-  cursor: default;
-}
-
-.pvp-move__name {
-  font-size: 8px;
-}
-
-.pvp-move__meta {
-  /* O icone virou elemento e precisa alinhar com o numero ao lado. */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.pvp-arena__waiting {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-muted);
-  text-align: center;
+  cursor: not-allowed;
 }
 
 /* ── Troca e entrada após nocaute ────────────────────────────────────────── */
 .entrada {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 8px;
+  /* Ocupa o bloco inteiro: o painel de entrada e o estado "o rival está
+     escolhendo…" precisam do MESMO espaço que a grade de golpes. */
+  flex: 1;
 }
 
 .entrada__titulo {
@@ -763,6 +719,13 @@ onUnmounted(() => clock && clearInterval(clock))
   font-weight: 700;
   color: var(--yellow, #ffcb05);
   text-align: center;
+}
+
+/* Esperar o rival escolher não é um comando: o texto é o mesmo tamanho, mas
+   apagado, e o bloco continua com a altura reservada. */
+.entrada__titulo--espera {
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 .entrada__opcoes {
@@ -815,21 +778,6 @@ onUnmounted(() => clock && clearInterval(clock))
   font-size: 12px;
   text-decoration: underline;
   cursor: pointer;
-}
-
-.pvp-arena__trocar {
-  min-height: 40px;
-  border: 2px solid var(--border, #2a2f3a);
-  border-radius: var(--radius, 8px);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text, #fff);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.pvp-arena__trocar:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .pvp-result {
@@ -903,12 +851,18 @@ onUnmounted(() => clock && clearInterval(clock))
   cursor: pointer;
 }
 
+/* O MoveButton fica mais alto em tela estreita (88px) e o nome quebra em mais
+   linhas; a reserva acompanha, senão a grade estouraria o bloco travado. */
+@media (max-width: 340px) {
+  .pvp-arena {
+    --faixa-golpe: 96px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pvp-arena--defeat::after,
   .pvp-arena--victory::after,
-  .pvp-arena__model,
-  .pvp-arena__model--hit,
-  .pvp-arena__timer--low {
+  .faixa__timer--baixo {
     animation: none;
     transition: none;
   }

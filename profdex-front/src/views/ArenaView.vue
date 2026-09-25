@@ -1,18 +1,11 @@
 <script setup>
-import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import BattleHpBar from '../components/BattleHpBar.vue'
-import DamagePopup from '../components/DamagePopup.vue'
+import ArenaPalco from '../components/ArenaPalco.vue'
 import MoveButton from '../components/MoveButton.vue'
 import { useBattle } from '../composables/useBattle.js'
-import { openBackCamera } from '../composables/useBackCamera.js'
 import { useProfessorsStore } from '../stores/professors'
 import { buildMoveset } from '../data/moves.js'
-import {
-  ehPixelArt,
-  spriteCostasDe,
-  spriteFrenteDe,
-} from '../data/professorArte.js'
 import {
   PLAYER_FALLBACK,
   PLAYER_KEY,
@@ -54,41 +47,15 @@ const playerProfessor = store.findByKey(PLAYER_KEY) || {
 // ── Realidade aumentada: DESATIVADA por enquanto. O combate acontece sempre
 // dentro do cenário do túnel binário (câmera/AR desligada). Para reativar,
 // volte `arEnabled` para `true` e restaure o botão de alternar no template.
+// A câmera em si é do ArenaPalco, que avisa aqui quando ela não abre.
 const arEnabled = ref(false)
 const arError = ref(null)
-const camVideo = useTemplateRef('camVideo')
-let camStream = null
 
-async function startCamera() {
-  arError.value = null
-  try {
-    camStream = await openBackCamera()
-    const v = camVideo.value
-    if (v) {
-      v.srcObject = camStream
-      v.setAttribute('playsinline', '')
-      v.muted = true
-      await v.play()
-    }
-  } catch (e) {
-    // Sem câmera/permissão: cai para o cenário 3D em vez de travar o combate.
-    arError.value = e?.message ?? 'Câmera indisponível'
-    arEnabled.value = false
-  }
+function onArIndisponivel(motivo) {
+  // Sem câmera/permissão: cai para o cenário 3D em vez de travar o combate.
+  arError.value = motivo
+  arEnabled.value = false
 }
-
-function stopCamera() {
-  if (camStream) {
-    camStream.getTracks().forEach((t) => t.stop())
-    camStream = null
-  }
-  if (camVideo.value) camVideo.value.srcObject = null
-}
-
-onMounted(() => {
-  if (arEnabled.value) startCamera()
-})
-onUnmounted(stopCamera)
 
 // ── Tipos dos combatentes ───────────────────────────────────────────────────
 // Os dois lados trazem os tipos (1–2) gravados na própria linha do banco.
@@ -135,14 +102,33 @@ const {
 
 onMounted(start)
 
-// Cada lado usa a arte do seu dono: o inimigo é o professor vindo da rota
-// (Eron, Mário, ...) e o jogador é sempre o Gustavo.
+// Os dois lados do palco. Cada um usa a arte do seu dono: o inimigo é o
+// professor vindo da rota (Eron, Mário, ...) e o jogador é sempre o Gustavo.
 //
 // Sprite 2D e não .glb — os modelos passam de 25 MB cada (o do Gustavo, 74 MB)
 // e dois deles na mesma tela estouravam a memória da aba no celular.
-// Ver docs/BUG-BATALHA-TRAVANDO.md.
-const enemySpriteSrc = spriteFrenteDe(enemyProfessor)
-const playerSpriteSrc = spriteCostasDe(playerProfessor)
+// Ver docs/BUG-BATALHA-TRAVANDO.md. Quem resolve frente/costas é o palco.
+const ladoInimigo = computed(() => ({
+  professor: enemyProfessor,
+  name: enemy.name,
+  types: enemyTypes,
+  hp: enemyHp.value,
+  maxHp: enemy.maxHp,
+  hit: enemyHit.value,
+  fainted: enemyFainted.value,
+  feedback: enemyFeedback.value,
+}))
+
+const ladoJogador = computed(() => ({
+  professor: playerProfessor,
+  name: player.name,
+  types: playerTypes,
+  hp: playerHp.value,
+  maxHp: player.maxHp,
+  hit: playerHit.value,
+  fainted: playerFainted.value,
+  feedback: playerFeedback.value,
+}))
 
 // AR ancorado (WebXR) e AR Quick Look (iOS) DESATIVADOS por enquanto — a arena
 // roda só no cenário 3D. O código foi removido; ver histórico do git para
@@ -155,60 +141,19 @@ function goBack() {
 
 <template>
   <main class="arena" :class="{ 'arena--defeat': playerFainted, 'arena--victory': enemyFainted }">
-    <!-- Palco: inimigo ao fundo (de frente) e jogador em primeiro plano (de costas) -->
-    <div class="arena__stage" :class="{ 'arena__stage--ar': arEnabled }">
-      <!-- Fundo do combate: câmera (AR) ou o ginásio da UNIFIL -->
-      <video v-show="arEnabled" ref="camVideo" class="arena__camera" autoplay playsinline muted />
-      <!-- Tela deitada (desktop): a versão panorâmica do ginásio. A retrato,
-           esticada em tela larga, virava um borrão ampliado. -->
-      <picture v-if="!arEnabled">
-        <source media="(min-aspect-ratio: 1/1)" srcset="/cenarios/ginasio-unifil-desktop.jpg" />
-        <img
-          class="arena__scenario"
-          src="/cenarios/ginasio-unifil.jpg"
-          alt=""
-          aria-hidden="true"
-          decoding="async"
-          fetchpriority="high"
-        />
-      </picture>
-      <img class="arena__brand" src="/marca/logotipo-branco.png" alt="UNIFIL" />
-
-      <div class="arena__fighter arena__fighter--enemy">
-        <img
-          class="arena__model"
-          :class="{
-            'arena__model--hit': enemyHit,
-            'arena__model--fainted': enemyFainted,
-            'arena__model--pixel': ehPixelArt(enemyProfessor),
-          }"
-          :src="enemySpriteSrc"
-          :alt="`Prof. ${enemyProfessor.name} em batalha`"
-          decoding="async"
-        />
-        <DamagePopup v-for="item in enemyFeedback" :key="item.id" v-bind="item" />
-      </div>
-      <div class="arena__fighter arena__fighter--player">
-        <img
-          class="arena__model"
-          :class="{
-            'arena__model--hit': playerHit,
-            'arena__model--fainted': playerFainted,
-            'arena__model--pixel': ehPixelArt(playerProfessor),
-          }"
-          :src="playerSpriteSrc"
-          alt="Seu personagem"
-          decoding="async"
-        />
-        <DamagePopup v-for="item in playerFeedback" :key="item.id" v-bind="item" />
-      </div>
-    </div>
+    <!-- Palco compartilhado com o PvP: inimigo ao fundo (de frente), jogador em
+         primeiro plano (de costas) e as barras de HP sobrepostas. -->
+    <ArenaPalco
+      :foe="ladoInimigo"
+      :you="ladoJogador"
+      :ar="arEnabled"
+      @ar-indisponivel="onArIndisponivel"
+    />
 
     <!-- HUD sobreposto ao palco -->
     <div
       class="arena__hud"
       :class="{
-        'arena__hud--player-hit': playerHit,
         'arena__hud--defeat': playerFainted,
         'arena__hud--victory': enemyFainted,
       }"
@@ -219,27 +164,9 @@ function goBack() {
            tela é idêntica à do PvP e nada dizia que não valia nada. -->
       <p class="arena__selo pixel">TREINO — NÃO VALE RANKING</p>
 
-      <!-- Barra do inimigo (topo esquerdo, como no esboço) -->
-      <BattleHpBar
-        class="arena__enemy-bar"
-        :name="`Prof. ${enemy.name}`"
-        :types="enemyTypes"
-        :hp="enemyHp"
-        :max-hp="enemy.maxHp"
-        :avatar-src="enemySpriteSrc"
-      />
       <span v-if="enemyStatus" class="arena__status arena__status--enemy">
         {{ enemyStatus }}
       </span>
-
-      <!-- Barra do jogador (acima do painel de comandos) -->
-      <BattleHpBar
-        class="arena__player-bar"
-        :name="player.name"
-        :types="playerTypes"
-        :hp="playerHp"
-        :max-hp="player.maxHp"
-      />
       <span v-if="playerStatus" class="arena__status arena__status--player">
         {{ playerStatus }}
       </span>
@@ -306,163 +233,8 @@ function goBack() {
   background: var(--bg-deep);
 }
 
-.arena__stage {
-  position: absolute;
-  inset: 0;
-  /* z-index explícito -> a etapa vira um contexto de empilhamento próprio,
-    prendendo os modelos (z-index:1) abaixo do HUD (z-index:2). Assim os
-    bonecos nunca cobrem os botões/textos. */
-  z-index: 0;
-  /* Cor de espera enquanto a foto do ginásio não carrega. Escura de propósito:
-     o palco pisca do escuro para a quadra, e não do claro para o escuro. */
-  background: var(--bg-deep);
-}
-
-/* Escurecimento por cima da quadra. A foto é clara e alaranjada; sem isto, o
-   texto branco do HUD e a silhueta dos bonecos brigam com o piso. Mais forte
-   nas pontas (onde ficam as barras de HP e o painel de comandos) e quase
-   transparente no miolo, que é onde a quadra precisa aparecer. */
-.arena__stage::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    rgba(10, 12, 16, 0.62) 0%,
-    rgba(10, 12, 16, 0.22) 26%,
-    rgba(10, 12, 16, 0.12) 52%,
-    rgba(10, 12, 16, 0.55) 100%
-  );
-}
-
-/* No modo AR o gradiente some para a câmera aparecer limpa */
-.arena__stage--ar {
-  background: #000;
-}
-
-/* Camada de fundo: feed da câmera (AR) */
-.arena__camera {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  z-index: 0;
-}
-
-/* Camada de fundo: o ginásio da UNIFIL (AR desligada).
- *
- * `height: 120%` ancorado embaixo, e não `inset: 0`, para ENQUADRAR a foto: ela
- * é um retrato de corpo inteiro do ginásio (arquibancada em cima, quadra
- * embaixo) e, mostrada inteira, deixaria a linha da quadra por volta de 43% da
- * tela — com o oponente (que ocupa 10%–34%) flutuando na arquibancada.
- *
- * Cortando ~17% do topo, a quadra começa por volta de 32%: o oponente fica com
- * os pés na linha de fundo e o jogador, no meio da quadra. Sobra arquibancada e
- * placar o bastante para o lugar continuar reconhecível.
- */
-.arena__scenario {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 120%;
-  z-index: 0;
-  object-fit: cover;
-  object-position: center bottom;
-}
-
-/* Na foto panorâmica a linha de fundo da quadra fica na metade da imagem; com
-   125% de altura ancorada embaixo ela sobe para ~37% da tela, perto dos pés do
-   oponente, e o placar e a arquibancada continuam à vista. */
-@media (min-aspect-ratio: 1/1) {
-  .arena__scenario {
-    height: 125%;
-  }
-}
-
-/* Sprites 2D dos combatentes. Ocupam o mesmo lugar dos antigos <model-viewer>;
-   `contain` preserva a proporção da arte dentro daquela caixa. */
-.arena__model {
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  object-fit: contain;
-  transition:
-    filter 0.6s ease,
-    opacity 0.6s ease,
-    transform 0.6s ease;
-}
-.arena__fighter {
-  position: absolute;
-  z-index: 1;
-}
-
-.arena__brand {
-  position: absolute;
-  top: 3%;
-  right: 4%;
-  z-index: 1;
-  width: clamp(64px, 19vw, 112px);
-  height: auto;
-  opacity: 0.64;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
-}
-
-/* Pixel art ampliada sem suavização; `object-fit: contain` acima já preserva a
-   proporção do sprite dentro da caixa do palco. */
-.arena__model--pixel {
-  image-rendering: pixelated;
-}
-
-/* Inimigo: mais ao centro e menor -> parece mais fundo no túnel (perspectiva) */
-/* Enquadramento no estilo das batalhas por turnos clássicas: oponente ao fundo,
-   à esquerda e menor (parece mais distante no túnel); jogador em primeiro plano,
-   à direita e maior.
-   As caixas foram refeitas para os sprites em pixel art, que são bem mais altos
-   que largos (proporção ~0.55) — com as medidas antigas, pensadas para os
-   cartoons quase quadrados, os dois bonecos se sobrepunham e o do jogador
-   avançava por trás do painel de comandos, aparecendo nos vãos entre os botões.
-   As faixas verticais agora não se cruzam: oponente 10%–34%, jogador 35%–71%,
-   e o painel começa por volta de 72%. */
-.arena__fighter--enemy {
-  top: 10%;
-  left: 6%;
-  width: 38%;
-  height: 24%;
-  /* Contorno vermelho discreto: drop-shadow segue a silhueta do sprite
-     (o PNG é transparente), diferente de um border/outline retangular.
-     --error é o vermelho real da paleta (--red do tema é marrom). */
-  filter: drop-shadow(0 0 1px var(--error)) drop-shadow(0 0 2px var(--error));
-}
-
-/* Jogador: em primeiro plano, à direita, de costas — abaixado (mais para baixo) */
-/* Jogador à direita: a barra de HP dele é ancorada à esquerda (máx. 58% de
-   largura), então o boneco ocupa a faixa livre da direita sem cobri-la. */
-.arena__fighter--player {
-  right: 3%;
-  bottom: 29%;
-  width: 42%;
-  height: 36%;
-  /* Mesmo contorno, em azul */
-  filter: drop-shadow(0 0 1px var(--ds-blue-glow)) drop-shadow(0 0 2px var(--ds-blue-glow));
-}
-
-/* Flash + tremida no modelo que tomou dano */
-.arena__model--hit {
-  animation: shake 0.4s ease;
-  filter: brightness(1.6) saturate(0.4);
-}
-
-.arena__model--fainted,
-.arena__model--fainted.arena__model--hit {
-  animation: none;
-  filter: grayscale(1) brightness(0.6);
-  opacity: 0.75;
-  transform: translateY(8%) rotate(12deg);
-}
+/* O palco (fundo, os dois lutadores e as barras de HP) é o ArenaPalco.vue —
+   compartilhado com a arena do PvP. O que sobra aqui é o HUD do treino. */
 
 .arena__hud {
   position: absolute;
@@ -476,15 +248,6 @@ function goBack() {
 
 .arena__hud > * {
   pointer-events: auto;
-}
-
-/* Flash vermelho na tela quando o jogador toma dano */
-.arena__hud--player-hit::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(255, 107, 107, 0.25);
-  pointer-events: none;
 }
 
 .arena__hud--defeat::after,
@@ -655,20 +418,6 @@ function goBack() {
   pointer-events: auto;
 }
 
-.arena__enemy-bar {
-  position: absolute;
-  top: calc(12px + env(safe-area-inset-top));
-  left: 12px;
-  max-width: 62%;
-}
-
-.arena__player-bar {
-  position: absolute;
-  left: 12px;
-  bottom: 256px;
-  max-width: 58%;
-}
-
 /* Chip de status (Travado/Confuso/Queimando) junto de cada barra */
 .arena__status {
   position: absolute;
@@ -688,9 +437,10 @@ function goBack() {
   left: 12px;
 }
 
+/* Logo abaixo da barra do jogador, que o palco ancora no mesmo token. */
 .arena__status--player {
   left: 12px;
-  bottom: 232px;
+  bottom: calc(var(--palco-barra-jogador) - 24px);
 }
 
 /* Painel inferior: mensagem + grid 2x2 + fugir */
@@ -723,38 +473,6 @@ function goBack() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-}
-
-.move-btn {
-  min-height: 56px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 4px;
-  padding: 8px 12px;
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  border: 2px solid var(--border);
-  color: var(--text);
-  transition:
-    transform 0.1s,
-    border-color 0.15s;
-}
-
-.move-btn:active {
-  transform: scale(0.97);
-  border-color: var(--yellow);
-}
-
-.move-btn__name {
-  font-size: 8px;
-  text-align: left;
-}
-
-.move-btn__meta {
-  font-size: 6px;
-  color: var(--text-muted);
 }
 
 .flee-btn {
@@ -804,8 +522,6 @@ function goBack() {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .arena__model,
-  .arena__model--hit,
   .arena__hud--defeat::after,
   .arena__hud--victory::after {
     animation: none;

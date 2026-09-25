@@ -35,7 +35,8 @@ inteiro como prompt para um agente de código.
 | 12 | [12-captura-por-tipo.md](12-captura-por-tipo.md) | O QR passa a valer por tipo, não por professor; sorteio em três faixas; painel de fichas por tipo | Concluída (19/09/2026, branch `feat/roda-de-tipos-nova`) — `Professor.active` saiu daqui, a 13 herda |
 | 13 | [13-admin-de-professores.md](13-admin-de-professores.md) | Cadastro de professores pelo painel: nome, tipos, sprites e modelo 3D, com upload | Alta 🔗 depende da 11 |
 | 14 | [14-antitravamento-batalha.md](14-antitravamento-batalha.md) | Seis softlocks do fluxo de convite e batalha, incluindo P1/P2/P4 do BUG-BATALHA-TRAVANDO | Alta — independente |
-| 15 | [15-professores-raros.md](15-professores-raros.md) | Professor raro: 5 acertos por tema no quiz destravam uma ficha rara própria; fora da contagem da Profdex, com métrica de quem pega | Concluída (24/09/2026, branch `feat/professores-raros`) — falta só imprimir o papel |
+| 15 | [15-professores-raros.md](15-professores-raros.md) | Professor raro: 5 acertos por tema no quiz destravam uma ficha rara própria; fora da contagem da Profdex, com métrica de quem pega | Concluída (24/09/2026, branch `feat/professores-raros`) — falta só imprimir o papel. ⚠️ **A decisão 13 dela foi revertida pela tarefa 16** |
+| 16 | [16-arena-no-celular.md](16-arena-no-celular.md) | A arena do PvP no celular: palco compartilhado com o treino, sprite de costas, faixa de comandos que não pula. Mais o raro nascendo com 5 estrelas | Concluída (25/09/2026, branch `feat/arena-no-celular`) — checklist manual em celular real ainda não passado |
 
 ## Ordem sugerida de execução
 
@@ -118,6 +119,14 @@ inteiro como prompt para um agente de código.
   bancada fica virada para ele, e o único aviso é a tela dourada no acerto que
   fecha o gate. A Profdex anuncia só que raros existem (entradas bloqueadas,
   contador próprio). Detalhes na tarefa 15.
+
+- **Raro passa a ser mais forte (25/09/2026):** o professor raro nasce com
+  **IVs 15 nos quatro atributos** — 5 estrelas de verdade, não decorativas.
+  Isso **reverte a decisão 13 da tarefa 15**, que mandava sortear os IVs do
+  raro normalmente para o Elo não medir quem respondeu quiz. A reversão é
+  consciente: o que a mitiga é o time de até 3 somado ao limite de 1 raro por
+  conta, então ele é no máximo 1/3 de um time. **Sem retroatividade** — quem
+  capturou antes fica com o sorteado. Detalhes na tarefa 16.
 
 ## Achados em aberto
 
