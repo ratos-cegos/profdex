@@ -126,6 +126,9 @@ function alternar(exemplar, professor) {
   }
   if (timeCheio.value) return
   time.value = [...time.value, { ...exemplar, professor }]
+  // Escolhido o exemplar, volta sozinho à lista de professores para o próximo
+  // slot — antes era preciso tocar em "Trocar" a cada escolha.
+  aberto.value = null
 }
 
 function removerSlot(index) {
@@ -418,10 +421,18 @@ async function escolherLead(membro) {
   border-color: var(--yellow, #ffcb05);
 }
 
+/* Recorte do rosto: a sprite é de corpo inteiro e, solta no slot, vazava por
+   cima do resto da tela. Presa ao slot, cortada e ancorada no topo, fica só a
+   cabeça — e por baixo do ✕ de remover. Sem `overflow: hidden` no slot, que
+   cortaria o ✕ (ele fica meio para fora). */
 .slot__face {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: top;
   border-radius: 8px;
 }
 
@@ -438,6 +449,7 @@ async function escolherLead(membro) {
   color: white;
   font-size: 11px;
   line-height: 1;
+  z-index: 1;
 }
 
 .slot__vazio {
@@ -516,10 +528,16 @@ async function escolherLead(membro) {
   cursor: not-allowed;
 }
 
+/* Só o rosto, como no avatar da lista: a sprite de corpo inteiro reduzida a
+   64px virava um boneco minúsculo. */
 .lead-card__face {
   width: 64px;
   height: 64px;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: top;
+  border-radius: 50%;
+  border: 2px solid var(--yellow, #ffcb05);
+  background: var(--bg-surface);
 }
 
 .lead-card__nome {
