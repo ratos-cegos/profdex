@@ -34,7 +34,16 @@ const ADMIN_PROFESSOR_SELECT = {
   modelUrl: true,
   pixelArt: true,
   active: true,
+  rare: true,
 } satisfies Prisma.ProfessorSelect;
+
+/**
+ * Erro de domínio estável: já existe um raro ATIVO usando um dos temas pedidos.
+ *
+ * Um raro por tema é o que mantém a pilha de papel e a instrução da mesa sem
+ * ambiguidade (tarefa 15, decisão 8). Código e não texto — ver CODE_STYLE.
+ */
+export const TEMA_JA_TEM_RARO = 'TEMA_JA_TEM_RARO';
 
 /**
  * Cadastro de professores pelo painel.
@@ -92,6 +101,10 @@ export class AdminProfessorsService {
    */
   async create(dto: ProfessorFormDto, files: UploadedAssets) {
     const slug = this.slugOuErro(dto.name);
+    const rare = dto.rare ?? false;
+    // ANTES da arte e da transação: um 409 aqui não pode ter escrito arquivo
+    // nenhum no volume de uploads nem consumido um slug.
+    if (rare) await this.assertTemasLivres(dto.types);
     const arte = this.validarArte(files, { exigirTodos: true });
 
     const versao = Date.now();
@@ -103,6 +116,7 @@ export class AdminProfessorsService {
             slug,
             types: dto.types,
             pixelArt: dto.pixelArt ?? false,
+            rare,
             spriteFrontUrl: assetUrl(slug, 'spriteFront', versao),
             spriteBackUrl: assetUrl(slug, 'spriteBack', versao),
             modelUrl: assetUrl(slug, 'model', versao),
@@ -110,8 +124,16 @@ export class AdminProfessorsService {
           select: ADMIN_PROFESSOR_SELECT,
         });
 
+        // De novo, agora DENTRO da transação: a checagem de fora protege os
+        // arquivos de arte, esta protege o invariante. Sem ela, dois admins
+        // cadastrando raros do mesmo tema ao mesmo tempo passariam os dois.
+        if (rare) await this.assertTemasLivres(dto.types, tx);
+
         // Mesma transação: professor sem variante é professor fora do sorteio.
-        await ensureVariantsForProfessor(tx, criado.id, criado.types);
+        // O raro ganha UMA variante, a dupla — ver professor-variants.ts.
+        await ensureVariantsForProfessor(tx, criado.id, criado.types, {
+          rare: criado.rare,
+        });
         return criado;
       })
       .catch((error: unknown) => {
@@ -176,7 +198,12 @@ export class AdminProfessorsService {
       // não apaga a variante dupla: pode haver ficha impressa ou exemplar no
       // bolso de aluno apontando para ela. Ela apenas deixa de ser sorteada,
       // porque o sorteio filtra pelos tipos atuais do professor.
-      await ensureVariantsForProfessor(tx, salvo.id, salvo.types);
+      //
+      // `salvo.rare` vem do banco, não do corpo: `rare` é imutável, e é ele que
+      // mantém o raro com UMA variante mesmo depois de uma troca de tipos.
+      await ensureVariantsForProfessor(tx, salvo.id, salvo.types, {
+        rare: salvo.rare,
+      });
       return salvo;
     });
 
@@ -224,6 +251,39 @@ export class AdminProfessorsService {
       );
     }
     return slug;
+  }
+
+  /**
+   * No máximo UM raro ativo por tema (decisão 8).
+   *
+   * Validado contra os raros **ativos**, não contra o histórico: isso permite
+   * retirar um raro e cadastrar outro no mesmo tema durante o evento. Os
+   * `rare_unlocks` daquele tema continuam valendo e passam a habilitar o novo —
+   * o destravamento é do TEMA, não do professor (decisão residual 3).
+   */
+  private async assertTemasLivres(
+    types: string[],
+    db: Pick<PrismaService, 'professor'> = this.prisma,
+  ): Promise<void> {
+    const ocupados = await db.professor.findMany({
+      where: { rare: true, active: true, types: { hasSome: types } },
+      select: { name: true, types: true },
+    });
+    if (!ocupados.length) return;
+
+    const conflitos = [
+      ...new Set(
+        ocupados.flatMap((p) => p.types.filter((t) => types.includes(t))),
+      ),
+    ];
+    throw new ConflictException({
+      code: TEMA_JA_TEM_RARO,
+      message:
+        `Já existe professor raro ativo nestes temas: ${conflitos.join(', ')} ` +
+        `(${ocupados.map((p) => p.name).join(', ')}). ` +
+        'Cada tema comporta um raro — desative o atual ou escolha outro tema.',
+      temas: conflitos,
+    });
   }
 
   private async acharOuErro(id: string) {

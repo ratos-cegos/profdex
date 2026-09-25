@@ -13,10 +13,24 @@ type Db = Pick<PrismaClient, 'professor' | 'professorVariant' | 'capture'>;
  * um mapa por slug no código, e professor cadastrado pelo painel nasceria sem
  * variante nenhuma — ou seja, fora do sorteio de captura, sem nada indicando o
  * motivo.
+ *
+ * **Raro é exceção: UMA variante, a combinação completa.** O raro tem arte
+ * própria e pilha de papel própria, e cada variante a mais seria outra ficha a
+ * imprimir e outra entrada a explicar na mesa. Ele também não passa pelo
+ * sorteio (a ficha aponta direto para a variante), então as combinações
+ * parciais não teriam onde ser usadas — ver tarefa 15, decisão 1.
  */
 export function variantsForProfessor(professor: {
   types: string[];
+  rare?: boolean;
 }): { typeKey: string; types: string[] }[] {
+  if (professor.rare) {
+    // Sem tipo não há combinação completa para materializar. Não acontece pelo
+    // painel (o DTO exige ao menos um), mas o bootstrap varre o banco inteiro.
+    if (!professor.types.length) return [];
+    return [{ typeKey: typeKeyOf(professor.types), types: professor.types }];
+  }
+
   return typeCombinations(professor.types).map((types) => ({
     typeKey: typeKeyOf(types),
     types,
@@ -38,9 +52,10 @@ export async function ensureVariantsForProfessor(
   db: Pick<Db, 'professorVariant'>,
   professorId: string,
   types: string[],
+  { rare = false }: { rare?: boolean } = {},
 ): Promise<number> {
   let criadas = 0;
-  for (const variant of variantsForProfessor({ types })) {
+  for (const variant of variantsForProfessor({ types, rare })) {
     const { count } = await db.professorVariant.createMany({
       data: { professorId, ...variant },
       skipDuplicates: true,
@@ -50,10 +65,16 @@ export async function ensureVariantsForProfessor(
   return criadas;
 }
 
-/** O mesmo, para o elenco inteiro. É o que o seed e o bootstrap chamam. */
+/**
+ * O mesmo, para o elenco inteiro. É o que o seed e o bootstrap chamam.
+ *
+ * O `rare` entra no `select` de propósito: sem ele, a primeira execução do
+ * bootstrap daria três variantes ao raro de dois tipos — e como este módulo só
+ * cria, nunca apaga, as duas extras ficariam lá para sempre.
+ */
 export async function ensureProfessorVariants(db: Db): Promise<number> {
   const professors = await db.professor.findMany({
-    select: { id: true, types: true },
+    select: { id: true, types: true, rare: true },
   });
 
   let criadas = 0;
@@ -62,6 +83,7 @@ export async function ensureProfessorVariants(db: Db): Promise<number> {
       db,
       professor.id,
       professor.types,
+      { rare: professor.rare },
     );
   }
 

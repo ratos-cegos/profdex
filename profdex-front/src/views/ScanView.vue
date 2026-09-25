@@ -30,6 +30,32 @@ let lastScannedData = null
 let lastScannedAt = 0
 let avisoTimer = null
 
+/**
+ * Recusas com código de domínio estável. Texto do servidor muda; código, não —
+ * por isso o app não lê `message` (ver .codex/CODE_STYLE.md).
+ *
+ * Nas quatro a ficha **continua valendo**, e é isso que cada mensagem precisa
+ * deixar claro: sem a frase, o aluno joga fora um papel que ainda captura, e
+ * não há como devolvê-lo depois.
+ */
+const AVISOS_POR_CODIGO = {
+  TIPO_SEM_PROFESSOR:
+    'Ainda não há professor deste tipo. Sua ficha continua valendo — ' +
+    'procure a bancada.',
+  // NÃO diz qual tema falta: é a mesma regra de vazamento que tira o raro da
+  // lista da bancada. Quem pegou uma ficha emprestada não descobre por aqui
+  // onde estudar para merecê-la.
+  RARO_BLOQUEADO:
+    'Esta ficha é de um professor raro e ainda não está liberada para você — ' +
+    'procure a bancada.',
+  RARO_INDISPONIVEL:
+    'Este professor raro saiu de circulação. Sua ficha não foi gasta — ' +
+    'procure a bancada.',
+  RARO_JA_CAPTURADO:
+    'Você já tem este professor raro. Cada raro vale uma captura por conta — ' +
+    'esta ficha continua valendo para outra pessoa.',
+}
+
 // Aviso passageiro sobre a câmera: some sozinho para o scanner seguir usável.
 function mostrarAviso(mensagem) {
   aviso.value = mensagem
@@ -87,18 +113,16 @@ async function onQRDetected(data) {
       foundProfessor.value = result.professor
       captured.value = true
     } catch (e) {
-      // Ficha já resgatada precisa de resposta na tela: sem isso o aluno fica
-      // insistindo num papel que o app nunca vai aceitar de novo.
-      if (e?.response?.status === 409) {
+      // O CÓDIGO é conferido antes do status, e a ordem importa: as recusas de
+      // ficha rara reusam 404 e 409, e cair no texto genérico de "QR já
+      // utilizado" mandaria embora um aluno cuja ficha continua valendo.
+      const codigo = e?.response?.data?.code
+      if (codigo && AVISOS_POR_CODIGO[codigo]) {
+        mostrarAviso(AVISOS_POR_CODIGO[codigo])
+      } else if (e?.response?.status === 409) {
+        // Ficha já resgatada precisa de resposta na tela: sem isso o aluno fica
+        // insistindo num papel que o app nunca vai aceitar de novo.
         mostrarAviso('Este QR já foi utilizado. Cada ficha vale uma captura.')
-      } else if (e?.response?.data?.code === 'TIPO_SEM_PROFESSOR') {
-        // A ficha NÃO foi gasta — o servidor desfaz a baixa neste caso. Dizer
-        // isso é o ponto do aviso: sem a segunda frase o aluno joga fora um
-        // papel que ainda vale, e não há como devolvê-lo depois.
-        mostrarAviso(
-          'Ainda não há professor deste tipo. Sua ficha continua valendo — ' +
-            'procure a bancada.',
-        )
       }
       // token inválido — ignora silenciosamente, não trava o scanner
       lastScannedData = null

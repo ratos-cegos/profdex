@@ -35,10 +35,23 @@ inteiro como prompt para um agente de código.
 | 12 | [12-captura-por-tipo.md](12-captura-por-tipo.md) | O QR passa a valer por tipo, não por professor; sorteio em três faixas; painel de fichas por tipo | Concluída (19/09/2026, branch `feat/roda-de-tipos-nova`) — `Professor.active` saiu daqui, a 13 herda |
 | 13 | [13-admin-de-professores.md](13-admin-de-professores.md) | Cadastro de professores pelo painel: nome, tipos, sprites e modelo 3D, com upload | Alta 🔗 depende da 11 |
 | 14 | [14-antitravamento-batalha.md](14-antitravamento-batalha.md) | Seis softlocks do fluxo de convite e batalha, incluindo P1/P2/P4 do BUG-BATALHA-TRAVANDO | Alta — independente |
+| 15 | [15-professores-raros.md](15-professores-raros.md) | Professor raro: 5 acertos por tema no quiz destravam uma ficha rara própria; fora da contagem da Profdex, com métrica de quem pega | Concluída (24/09/2026, branch `feat/professores-raros`) — falta só imprimir o papel |
 
 ## Ordem sugerida de execução
 
-### Rodada atual (19/09/2026) — tarefas 11 a 14
+### Rodada atual (24/09/2026) — tarefa 15
+
+1. **Tarefa 15** (professores raros) — **concluída**. Entrou inteira na branch
+   `feat/professores-raros`: schema + migração `20260924000000_add_professores_raros`
+   (validada num Postgres 16 descartável, `migrate diff` sem divergência),
+   cadastro no painel, destravamento, bancada, tiragem de ficha rara, gate do
+   resgate, Profdex e métricas.
+
+   **O que falta é fora do código:** cadastrar os raros no painel e **imprimir
+   as pilhas** (`/admin/fichas` → `Raros ✦`), uma por raro. Papel tem prazo de
+   gráfica.
+
+### Rodada 19/09/2026 — tarefas 11 a 14
 
 1. **Tarefa 14** (antitravamento) — não depende de nada e conserta o que já
    quebra em jogo hoje. Pode andar em paralelo com todo o resto.
@@ -95,3 +108,27 @@ inteiro como prompt para um agente de código.
   pelo nginx. Detalhes na tarefa 13.
 - **Banco de produção:** está vazio e **pode ser limpo**. As tarefas 11–13 não
   escrevem migração de preservação de dados.
+- **Professor raro (24/09/2026):** professor com `rare: true` **não sai em ficha
+  comum e não conta para completar a Profdex**. Para capturá-lo o aluno precisa
+  de **5 acertos em cada tipo dele** na bancada (os tipos **são** os temas do
+  gate; dois tipos = os dois temas, não um deles). Destravar é **por tema e
+  permanente**; capturar é **uma vez por conta**, e há **no máximo 1 raro por
+  tema**. A ficha rara é **pilha própria por raro** e o **servidor** recusa quem
+  não destravou — sem consumir o papel. O aluno **nunca** vê progresso: a
+  bancada fica virada para ele, e o único aviso é a tela dourada no acerto que
+  fecha o gate. A Profdex anuncia só que raros existem (entradas bloqueadas,
+  contador próprio). Detalhes na tarefa 15.
+
+## Achados em aberto
+
+Defeitos encontrados de passagem, que **não** foram corrigidos junto com a
+tarefa que os revelou — misturá-los ao mesmo commit confunde a revisão.
+
+- **`collection_completed` não filtra `active`** (achado na tarefa 15.6).
+  O `professor.count()` de `CapturesService.registrarMetricas` passou a excluir
+  os raros, mas continua contando os professores **desativados**. Como
+  desativado sai da Profdex do aluno e do sorteio, ele nunca poderá ser
+  capturado — e a coleção fica incompletável para todo mundo a partir do
+  primeiro "remover" no painel. É **pré-existente** e independente do raro.
+  A correção é acrescentar `active: true` ao mesmo `where`, mas ela merece
+  commit e teste próprios: muda quando um evento de 200 pontos dispara.

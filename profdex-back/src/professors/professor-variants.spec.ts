@@ -1,4 +1,5 @@
 import {
+  ensureProfessorVariants,
   ensureVariantsForProfessor,
   variantsForProfessor,
 } from './professor-variants';
@@ -83,5 +84,77 @@ describe('variantes de um professor', () => {
 
     expect(deleteMany).not.toHaveBeenCalled();
     expect(createMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * O raro tem UMA variante, a combinação completa (tarefa 15, decisão 1).
+ *
+ * Ele não passa pelo sorteio — a ficha rara aponta direto para a variante — e
+ * cada variante a mais seria outra pilha de papel a imprimir e outra entrada a
+ * explicar na mesa.
+ */
+describe('variantes de um professor RARO', () => {
+  it('dois tipos rendem UMA variante, a dupla — não três', () => {
+    expect(
+      variantsForProfessor({ types: ['matematica', 'ia'], rare: true }),
+    ).toEqual([{ typeKey: 'ia+matematica', types: ['matematica', 'ia'] }]);
+  });
+
+  it('um tipo rende a mesma variante única do professor comum', () => {
+    expect(variantsForProfessor({ types: ['redes'], rare: true })).toEqual([
+      { typeKey: 'redes', types: ['redes'] },
+    ]);
+  });
+
+  it('raro sem tipo não gera variante nenhuma', () => {
+    expect(variantsForProfessor({ types: [], rare: true })).toEqual([]);
+  });
+
+  it('cadastrar um raro de dois tipos cria uma variante só', async () => {
+    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const db = { professorVariant: { createMany } };
+
+    const criadas = await ensureVariantsForProfessor(
+      db as never,
+      'raro-1',
+      ['matematica', 'ia'],
+      { rare: true },
+    );
+
+    expect(criadas).toBe(1);
+    expect(createMany).toHaveBeenCalledTimes(1);
+    expect(createMany.mock.calls[0][0].data.typeKey).toBe('ia+matematica');
+  });
+
+  /**
+   * O bootstrap varre o elenco INTEIRO a cada subida. Sem ler `rare` no
+   * `select`, a primeira execução daria três variantes ao raro — e como este
+   * módulo só cria e nunca apaga, as duas extras ficariam lá para sempre.
+   */
+  it('o bootstrap repetido não cria variante extra para o raro', async () => {
+    const createMany = jest
+      .fn()
+      .mockResolvedValueOnce({ count: 1 }) // 1ª passada: cria a dupla
+      .mockResolvedValue({ count: 0 }); // 2ª em diante: já existe
+    const db = {
+      professor: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'raro-1', types: ['matematica', 'ia'], rare: true },
+          ]),
+      },
+      professorVariant: { createMany },
+    };
+
+    expect(await ensureProfessorVariants(db as never)).toBe(1);
+    expect(await ensureProfessorVariants(db as never)).toBe(0);
+    expect(createMany).toHaveBeenCalledTimes(2);
+    expect(
+      createMany.mock.calls.every(
+        ([arg]) => arg.data.typeKey === 'ia+matematica',
+      ),
+    ).toBe(true);
   });
 });

@@ -8,6 +8,15 @@ export const useProfessorsStore = defineStore('professors', () => {
   const professors = ref([])
   const loading = ref(false)
 
+  // Professores raros: quantos existem e quais este aluno já capturou.
+  //
+  // Lista SEPARADA de propósito. O raro não entra em `professors` porque não
+  // conta para completar a Profdex, e o servidor nunca manda os não
+  // capturados — de um raro que o aluno não tem só atravessa a fronteira o
+  // fato de que ele existe. O front desenha `total - owned.length` cards
+  // bloqueados a partir daqui e não tem como revelar o que não recebeu.
+  const rares = ref({ total: 0, owned: [] })
+
   // Uma única requisição em voo por vez: o guard da rota e o onMounted das
   // telas podem pedir a lista ao mesmo tempo.
   let inflight = null
@@ -15,8 +24,12 @@ export const useProfessorsStore = defineStore('professors', () => {
   async function fetch() {
     loading.value = true
     try {
-      const { data } = await api.get('/professors')
-      professors.value = data
+      const [dex, raros] = await Promise.all([
+        api.get('/professors'),
+        api.get('/professors/rares'),
+      ])
+      professors.value = dex.data
+      rares.value = raros.data
     } finally {
       loading.value = false
     }
@@ -41,8 +54,11 @@ export const useProfessorsStore = defineStore('professors', () => {
     if (key == null || key === '') return null
     const raw = String(key)
     const wanted = normalizeKey(raw.replace(/^prof(essor)?-/, ''))
+    // Os raros POSSUÍDOS entram na busca: fora da contagem da dex eles são
+    // exemplares como qualquer outro, e a arena e a ficha os resolvem por aqui.
+    // Os não possuídos nem estão na memória do app — não há o que achar.
     return (
-      professors.value.find(
+      [...professors.value, ...rares.value.owned].find(
         (p) =>
           String(p.id) === raw ||
           normalizeKey(p.slug) === wanted ||
@@ -61,6 +77,7 @@ export const useProfessorsStore = defineStore('professors', () => {
 
   return {
     professors,
+    rares,
     loading,
     fetch,
     ensureLoaded,

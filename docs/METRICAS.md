@@ -77,6 +77,8 @@ em que o fato acontece:
 | `professor_discovered`, `professor_captured`, `collection_completed` | `captures.service.ts` |
 | `battle_invite_sent`, `battle_started`, `battle_finished`, `battle_won` | `battle-room.service.ts` |
 | `quiz_answered`, `quiz_correct` | `quiz.service.ts` |
+| `rare_unlocked` | `quiz.service.ts` (o 5º acerto no tema) |
+| `rare_captured` | `captures.service.ts` (a ficha rara validada) |
 
 O que o app ainda declara: `screen_view`, `scan_open`, `ranking_viewed`,
 `guide_opened`, `quiz_practice_answered` — volume de navegação e treino, que não
@@ -107,6 +109,37 @@ nunca lê `app_events`.
 (`rollup.service.ts`). Um aluno que só treina conta como ativo, mesmo somando 0
 ponto e 0 interação. Isso já valia para `screen_view`, disparado em toda
 navegação — o treino não muda o comportamento, só amplia quem cai nele.
+
+### `rare_unlocked` e `rare_captured` — o professor raro
+
+Os dois são **server-only**, e o segundo é o evento mais valioso do catálogo:
+
+| Evento | Pontos | Interações | Rótulo |
+|---|---|---|---|
+| `rare_unlocked` | **0** | 0 | Temas destravados |
+| `rare_captured` | **140** | 0 | Professores raros capturados |
+
+**A aritmética do 140.** Uma captura comum inédita vale 70
+(`professor_discovered` 20 + `professor_captured` 50). O raro grava os mesmos
+dois **mais** `rare_captured`, totalizando **210 = 3×**. Cinquenta minutos de
+bancada por tema é objetivamente mais engajamento do que atravessar o campus
+até um QR; e, diferente da batalha, premiar aqui não desequilibra nada — o Elo
+não passa por este número.
+
+**Por que 0 no destravamento.** Os 5 acertos já foram pagos: cada um rendeu
+`quiz_answered` (10) + `quiz_correct` (25). O evento existe para o painel contar
+quantos chegaram lá, não para pontuar de novo.
+
+**Por que 0 interação nos dois.** O gesto já foi contado — os 5 acertos como 5
+`quiz_answered`, e a captura do raro como um `professor_captured`. É a mesma
+lógica de `battle_won` e `quiz_correct`.
+
+`rare_captured` é o alvo óbvio de quem abre o DevTools, e por isso nasce só
+dentro da transação da captura, depois de o servidor conferir `rare_unlocks`.
+A seção `Raros ✦` de `/admin/metrics` mostra quem capturou, `destravaram` vs
+`capturaram` por raro, e quem está **a um acerto** — este último é a única
+exibição de progresso de raro no sistema, e ela só existe porque o painel nunca
+fica virado para aluno (ver `docs/QUIZ.md`).
 
 ## Total de interações
 

@@ -48,6 +48,7 @@ function criarPrisma(over: Record<string, unknown> = {}) {
         name: 'Eron',
         types: ['ia'],
         active: true,
+        rare: false,
         ...data,
       }),
     ),
@@ -242,6 +243,7 @@ describe('AdminProfessorsService', () => {
         slug: 'eron',
         name: 'Eron',
         active: true,
+        rare: false,
         types: ['arquitetura', 'ia'],
       });
       const { service } = criarService(prisma);
@@ -249,6 +251,127 @@ describe('AdminProfessorsService', () => {
       await service.update('prof-1', { types: ['arquitetura', 'ia'] }, {});
 
       expect(prisma.professorVariant.createMany).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  /**
+   * Professor raro (tarefa 15). O gate do quiz são os `types` dele, e a
+   * raridade é decidida no cadastro e nunca mais.
+   */
+  describe('professor raro', () => {
+    it('grava rare e cria UMA variante, não três', async () => {
+      const { prisma, service } = criarService();
+
+      await service.create(
+        { name: 'Eron', types: ['matematica', 'ia'], rare: true },
+        arteCompleta(),
+      );
+
+      expect(prisma.professor.create.mock.calls[0][0].data.rare).toBe(true);
+      expect(prisma.professorVariant.createMany).toHaveBeenCalledTimes(1);
+      expect(
+        prisma.professorVariant.createMany.mock.calls[0][0].data.typeKey,
+      ).toBe('ia+matematica');
+    });
+
+    it('professor comum continua nascendo com rare: false', async () => {
+      const { prisma, service } = criarService();
+
+      await service.create({ name: 'Renata', types: ['ia'] }, arteCompleta());
+
+      expect(prisma.professor.create.mock.calls[0][0].data.rare).toBe(false);
+    });
+
+    /**
+     * Um raro por tema (decisão 8). O 409 vem ANTES de qualquer escrita: nem
+     * linha no banco, nem byte de arte no volume de uploads.
+     */
+    it('recusa com TEMA_JA_TEM_RARO quando o tema já tem raro ativo', async () => {
+      const prisma = criarPrisma();
+      prisma.professor.findMany.mockResolvedValue([
+        { name: 'Eron', types: ['matematica', 'ia'] },
+      ]);
+      const { service } = criarService(prisma);
+
+      const erro = await service
+        .create(
+          { name: 'Outro', types: ['matematica'], rare: true },
+          arteCompleta(),
+        )
+        .catch((e: unknown) => e);
+
+      expect(erro).toBeInstanceOf(ConflictException);
+      expect((erro as ConflictException).getResponse()).toMatchObject({
+        code: 'TEMA_JA_TEM_RARO',
+        temas: ['matematica'],
+      });
+      expect(prisma.professor.create).not.toHaveBeenCalled();
+      expect(writeAsset).not.toHaveBeenCalled();
+    });
+
+    it('a busca por tema ocupado olha só raros ATIVOS', async () => {
+      const prisma = criarPrisma();
+      const { service } = criarService(prisma);
+
+      await service.create(
+        { name: 'Eron', types: ['matematica'], rare: true },
+        arteCompleta(),
+      );
+
+      expect(prisma.professor.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ rare: true, active: true }),
+        }),
+      );
+    });
+
+    it('professor COMUM não consulta o limite de um raro por tema', async () => {
+      const prisma = criarPrisma();
+      const { service } = criarService(prisma);
+
+      await service.create(
+        { name: 'Renata', types: ['matematica'] },
+        arteCompleta(),
+      );
+
+      expect(prisma.professor.findMany).not.toHaveBeenCalled();
+    });
+
+    /**
+     * `rare` é imutável: virar raro alguém que já tem exemplares em circulação
+     * o tiraria da contagem da dex de todo mundo e deixaria as variantes dele
+     * órfãs. O DTO de update nem tem o campo — este teste fixa que um corpo
+     * forjado também não passa.
+     */
+    it('o PATCH não altera rare, mesmo com o campo no corpo', async () => {
+      const { prisma, service } = criarService();
+
+      await service.update('prof-1', { name: 'Eron', rare: true } as never, {});
+
+      expect(prisma.professor.update.mock.calls[0][0].data).not.toHaveProperty(
+        'rare',
+      );
+    });
+
+    /**
+     * Ao editar um raro, o `rare` usado nas variantes vem do BANCO. Se viesse
+     * do corpo, trocar os tipos de um raro materializaria as três combinações.
+     */
+    it('editar os tipos de um raro continua criando uma variante só', async () => {
+      const prisma = criarPrisma();
+      prisma.professor.update.mockResolvedValue({
+        id: 'raro-1',
+        slug: 'eron',
+        name: 'Eron',
+        active: true,
+        rare: true,
+        types: ['matematica', 'ia'],
+      });
+      const { service } = criarService(prisma);
+
+      await service.update('raro-1', { types: ['matematica', 'ia'] }, {});
+
+      expect(prisma.professorVariant.createMany).toHaveBeenCalledTimes(1);
     });
   });
 

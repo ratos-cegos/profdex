@@ -11,6 +11,20 @@ const engagement = ref([])
 const retention = ref(null)
 const interacoes = ref(null)
 
+// Professores raros. Esta é a ÚNICA tela onde progresso de raro aparece — e
+// pode, porque o painel nunca fica virado para aluno. É ela que compensa a
+// bancada não ter aviso prévio (tarefa 15, decisão 16).
+const raros = ref({ capturas: [], porRaro: [], aUmAcerto: [] })
+
+// Hora e dia curtos: a pergunta do painel é "quando foi", e o evento dura dias.
+const horaLegivel = (iso) =>
+  new Date(iso).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
 const numero = (v) => (v ?? 0).toLocaleString('pt-BR')
 
 // Série horária. O seletor troca a métrica sem recarregar o resto do painel.
@@ -44,18 +58,20 @@ async function carregarSerie() {
 
 onMounted(async () => {
   try {
-    const [o, f, e, r, i] = await Promise.all([
+    const [o, f, e, r, i, raro] = await Promise.all([
       api.get('/admin/metrics/overview'),
       api.get('/admin/metrics/funnel'),
       api.get('/admin/metrics/engagement', { params: { limit: 20 } }),
       api.get('/admin/metrics/retention'),
       api.get('/admin/metrics/interactions'),
+      api.get('/admin/metrics/rares'),
     ])
     overview.value = o.data
     funnel.value = f.data
     engagement.value = e.data
     retention.value = r.data
     interacoes.value = i.data
+    raros.value = raro.data
     await carregarSerie()
   } catch (e) {
     error.value =
@@ -233,6 +249,70 @@ const labelSerie = computed(
               <span class="pixel linha__score">{{ u.score }}</span>
             </li>
           </ol>
+        </section>
+
+        <!-- Raros ✦.
+             `destravaram` vs `capturaram` lado a lado é o número que diz,
+             DURANTE o evento, se o 5 está calibrado: 30 destravaram e 2
+             capturaram significa que faltou papel ou que o operador não
+             entendeu o aviso da bancada. -->
+        <section class="bloco bloco--raro" aria-label="Professores raros">
+          <span class="pixel bloco__titulo">RAROS ✦</span>
+
+          <p v-if="!raros.porRaro.length" class="hint">
+            Nenhum professor raro cadastrado.
+          </p>
+
+          <template v-else>
+            <ul class="lista">
+              <li v-for="r in raros.porRaro" :key="r.professorId" class="linha">
+                <span class="linha__nome linha__nome--raro">✦ {{ r.name }}</span>
+                <span class="linha__extra">
+                  {{ r.destravaram }} destravaram · {{ r.capturaram }} capturaram
+                </span>
+                <span
+                  class="pixel linha__score"
+                  :class="{ 'linha__score--alerta': !r.estoqueVivo }"
+                >
+                  {{ r.estoqueVivo }} fichas
+                </span>
+              </li>
+            </ul>
+
+            <!-- A um acerto. É a mitigação de "o aluno nunca vê progresso":
+                 quem administra vê e avisa a mesa. -->
+            <template v-if="raros.aUmAcerto.length">
+              <span class="pixel bloco__sub">A UM ACERTO</span>
+              <ul class="lista">
+                <li
+                  v-for="(a, i) in raros.aUmAcerto"
+                  :key="`${a.matricula}-${a.theme}-${i}`"
+                  class="linha"
+                >
+                  <span class="linha__nome">{{ a.name }}</span>
+                  <span class="linha__extra">{{ a.matricula }}</span>
+                  <span class="linha__extra">{{ a.theme }}</span>
+                </li>
+              </ul>
+            </template>
+
+            <span class="pixel bloco__sub">QUEM CAPTUROU</span>
+            <p v-if="!raros.capturas.length" class="hint">
+              Nenhum raro capturado ainda.
+            </p>
+            <ul v-else class="lista">
+              <li
+                v-for="(c, i) in raros.capturas"
+                :key="`${c.matricula}-${i}`"
+                class="linha"
+              >
+                <span class="linha__nome">{{ c.name }}</span>
+                <span class="linha__extra">{{ c.matricula }}</span>
+                <span class="linha__extra linha__extra--raro">✦ {{ c.professor }}</span>
+                <span class="linha__extra">{{ horaLegivel(c.capturedAt) }}</span>
+              </li>
+            </ul>
+          </template>
         </section>
       </template>
     </main>
@@ -535,5 +615,30 @@ const labelSerie = computed(
 .linha__score {
   font-size: 9px;
   color: var(--yellow);
+}
+
+/* ── Raros ✦ ───────────────────────────────────────────────────────────── */
+.bloco--raro {
+  border-color: color-mix(in srgb, var(--raro) 40%, var(--border));
+}
+
+.bloco--raro .bloco__titulo {
+  color: var(--raro);
+}
+
+.bloco__sub {
+  margin-top: 4px;
+  font-size: 8px;
+  color: var(--text-muted);
+}
+
+.linha__nome--raro,
+.linha__extra--raro {
+  color: var(--raro);
+}
+
+/* Pilha no fim: quem destravar a partir daqui não recebe nada. */
+.linha__score--alerta {
+  color: var(--error);
 }
 </style>

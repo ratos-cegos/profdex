@@ -25,7 +25,16 @@
 
 import type { RandomSource } from './capture-ivs';
 
-/** Uma variante candidata: já filtrada por tipo e por professor ativo. */
+/**
+ * Uma variante candidata: já filtrada por tipo, por professor ativo e por
+ * **não-raro**.
+ *
+ * O filtro do raro é da CONSULTA (ver `CapturesService.sortearPorTipo`), não
+ * daqui, e é obrigatório: o raro não tem exemplar de ninguém no começo do
+ * evento, então cairia na Faixa 1 — a preferencial — e seria o resultado *mais
+ * provável* de uma ficha comum. Ele só sai pela ficha rara própria, que aponta
+ * direto para a variante e nem passa por este sorteio.
+ */
 export interface CandidateVariant {
   id: string;
   professorId: string;
@@ -45,7 +54,10 @@ export interface LotteryPick {
 
 /** Sorteia um item. Lista vazia é erro de quem chamou, não resultado. */
 function pick<T>(items: T[], random: RandomSource): T {
-  const indice = Math.min(items.length - 1, Math.floor(random() * items.length));
+  const indice = Math.min(
+    items.length - 1,
+    Math.floor(random() * items.length),
+  );
   return items[indice];
 }
 
@@ -83,7 +95,9 @@ export function sortearVariante(
   }
 
   // Faixa 2 — todos os professores já vistos; faltam combinações.
-  const variantesIneditas = candidatas.filter((v) => !variantesQueTem.has(v.id));
+  const variantesIneditas = candidatas.filter(
+    (v) => !variantesQueTem.has(v.id),
+  );
   if (variantesIneditas.length > 0) {
     return escolher(pick(variantesIneditas, random));
   }

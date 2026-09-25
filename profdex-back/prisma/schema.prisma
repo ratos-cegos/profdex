@@ -59,6 +59,9 @@ model User {
   // Tiragens de ficha geradas por esta conta (ver QrBatch).
   qrBatches QrBatch[] @relation("QrBatchAutor")
 
+  // Temas destravados para professor raro (ver tarefa 15).
+  rareUnlocks RareUnlock[]
+
   @@index([battleRating(sort: Desc)])
   @@index([engagementScore(sort: Desc)])
   @@map("users")
@@ -127,7 +130,7 @@ model MetricHourly {
 // senão bastaria abrir o DevTools do tablet da bancada.
 model QuizQuestion {
   id         String        @id @default(uuid())
-  theme      String // logica | calculo | ia-ml | robotica | arquitetura | npi | redes | banco | algoritmos
+  theme      String // humanas | matematica | ia | robotica | arquitetura | engenharia-software | redes | banco | algoritmos
   difficulty String // facil | media | dificil
   prompt     String
   options    Json // string[] com as alternativas, na ordem de exibição
@@ -271,6 +274,26 @@ model QuizAttempt {
   @@map("quiz_attempts")
 }
 
+/// Um tema destravado por um aluno: 5 acertos, e vale para sempre.
+///
+/// Gravado no momento do 5º acerto e NUNCA recalculado na hora do resgate. Uma
+/// errata que anule uma tentativa depois não tira o raro de quem já destravou —
+/// o mesmo princípio de "corrigir gabarito não reprocessa tentativa antiga".
+model RareUnlock {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  theme      String
+  /// A tentativa que fechou os 5. Auditoria: responde "quando e com o quê?".
+  attemptId  String?  @map("attempt_id")
+  unlockedAt DateTime @default(now()) @map("unlocked_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, theme])
+  @@index([theme, unlockedAt])
+  @@map("rare_unlocks")
+}
+
 // Token de redefinição de senha.
 //
 // Guardamos apenas o HASH: um vazamento do banco não pode virar tomada de
@@ -385,6 +408,15 @@ model Professor {
   // verdade cascatearia em captures, discoveries e battle_slots.
   active Boolean @default(true)
 
+  /// Professor raro: não sai em ficha comum, não conta para completar a
+  /// Profdex e só é capturável por quem destravou TODOS os tipos dele no quiz
+  /// (5 acertos em cada). Os `types` fazem dois trabalhos no raro: gate e tipo
+  /// de batalha — ver tarefa 15, decisão 12.
+  ///
+  /// Definido na CRIAÇÃO e imutável: virar raro depois tiraria o professor da
+  /// contagem da dex de todo mundo e deixaria as 3 variantes dele órfãs.
+  rare Boolean @default(false)
+
   // Legado da AR por marcador: colunas obrigatórias que o front nunca leu
   // (nenhuma referência em profdex-front/src). Ganharam default para não
   // travarem migration nem cadastro, e ficam FORA do formulário.
@@ -478,6 +510,11 @@ model QrBatch {
   // Os tipos que entraram na tiragem. Substituiu `variant_ids`: a ficha passou
   // a valer por tipo, e o banco foi limpo junto (ver deploy.md).
   types       String[]
+
+  /// Tiragem de ficha RARA: o raro daquela pilha. `types` fica vazio nela, e
+  /// nulo aqui significa tiragem comum. Sem FK pelo mesmo motivo de
+  /// `createdById`: o registro de que a tiragem existiu não pode desaparecer.
+  rareProfessorId String? @map("rare_professor_id")
   // SetNull: apagar um admin não pode apagar o registro de que a tiragem
   // existiu — é esse rastro que a tabela serve para guardar.
   createdBy User? @relation("QrBatchAutor", fields: [createdById], references: [id], onDelete: SetNull)

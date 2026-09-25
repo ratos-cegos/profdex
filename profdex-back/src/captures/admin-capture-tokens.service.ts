@@ -1,7 +1,13 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { TYPE_CYCLE } from '../battle/engine/types';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { TYPE_CYCLE, typeKeyOf } from '../battle/engine/types';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  buildRareSheetEntries,
   buildSheetEntries,
   labelFor,
   newBatchId,
@@ -30,6 +36,19 @@ export interface PlanLine {
   label: string;
   professors: number;
   copies: number;
+}
+
+/** Uma linha do estoque de fichas RARAS: uma por professor raro ativo. */
+export interface RareInventoryRow {
+  professorId: string;
+  name: string;
+  /** Os temas que o aluno precisa destravar. São os tipos do professor. */
+  themes: string[];
+  label: string;
+  /** Fichas ainda válidas na pilha dele. */
+  alive: number;
+  /** Fichas já resgatadas — no máximo uma por conta. */
+  redeemedTotal: number;
 }
 
 /**
@@ -63,6 +82,7 @@ export class AdminCaptureTokensService {
       total: number;
     } | null;
     types: InventoryRow[];
+    rares: RareInventoryRow[];
   }> {
     const lastBatch = await this.prisma.qrBatch.findFirst({
       orderBy: { createdAt: 'desc' },
@@ -104,7 +124,12 @@ export class AdminCaptureTokensService {
           ? contar({ batch: lastBatch.batch, redeemedAt: { not: null } })
           : semTiragem,
         this.prisma.professorVariant.findMany({
-          where: { professor: { active: true } },
+          // `rare: false` porque esta contagem responde "quantos professores
+          // podem sair numa ficha DESTE TIPO", e o raro nunca sai em ficha
+          // comum. Sem o filtro, o painel diria que Matemática tem 4
+          // professores quando só 3 são alcançáveis por ficha comum — e a
+          // decisão de imprimir sairia de um número errado.
+          where: { professor: { active: true, rare: false } },
           select: { professorId: true, types: true },
         }),
       ]);
@@ -165,6 +190,169 @@ export class AdminCaptureTokensService {
           }
         : null,
       types,
+      rares: await this.estoqueDeRaros(),
+    };
+  }
+
+  /**
+   * Estoque das pilhas raras, uma linha por raro ativo.
+   *
+   * A contagem é por VARIANTE, não por tipo: a ficha rara é do caminho legado
+   * (`capture_tokens.variantId`) e tem `type: null`, então ela nunca aparece no
+   * `groupBy` por tipo que alimenta o estoque comum. O índice
+   * `[variantId, redeemedAt]` já cobre esta consulta.
+   */
+  private async estoqueDeRaros(): Promise<RareInventoryRow[]> {
+    const raros = await this.prisma.professor.findMany({
+      where: { rare: true, active: true },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        types: true,
+        variants: { select: { id: true } },
+      },
+    });
+    if (!raros.length) return [];
+
+    const contar = (redeemed: boolean) =>
+      this.prisma.captureToken.groupBy({
+        by: ['variantId'],
+        where: {
+          variant: { professor: { rare: true } },
+          redeemedAt: redeemed ? { not: null } : null,
+        },
+        _count: { _all: true },
+      });
+    const [vivas, resgatadas] = await Promise.all([
+      contar(false),
+      contar(true),
+    ]);
+
+    const mapear = (
+      linhas: { variantId: string | null; _count: { _all: number } }[],
+    ) =>
+      new Map(
+        linhas
+          .filter((l) => l.variantId !== null)
+          .map((l) => [l.variantId as string, l._count._all]),
+      );
+    const porVariante = {
+      vivas: mapear(vivas),
+      resgatadas: mapear(resgatadas),
+    };
+
+    // Somado sobre as variantes do raro: hoje ele tem exatamente uma, mas um
+    // raro cadastrado antes desta regra poderia ter mais, e somar é o que
+    // impede a tela de mostrar estoque a menos do que existe no papel.
+    const somar = (ids: string[], mapa: Map<string, number>) =>
+      ids.reduce((total, id) => total + (mapa.get(id) ?? 0), 0);
+
+    return raros.map((raro) => {
+      const ids = raro.variants.map((v) => v.id);
+      return {
+        professorId: raro.id,
+        name: raro.name,
+        themes: raro.types,
+        label: labelFor(raro.types),
+        alive: somar(ids, porVariante.vivas),
+        redeemedTotal: somar(ids, porVariante.resgatadas),
+      };
+    });
+  }
+
+  /**
+   * Imprime a pilha de UM professor raro.
+   *
+   * Pilha própria por raro, rotulada com o nome dele: com gate de dois temas,
+   * "✦ RARO — MATEMÁTICA" seria ambíguo, e a mesa não pode ter de decidir nada.
+   * A tiragem grava `rareProfessorId` e deixa `types` vazio — é assim que uma
+   * tiragem rara se distingue de uma comum no histórico.
+   */
+  async generateRare(
+    userId: string,
+    professorId: string,
+    copies: number,
+  ): Promise<{ html: string; batch: string; total: number }> {
+    const professor = await this.prisma.professor.findFirst({
+      // `rare` E `active` na mesma consulta: 404 sem dizer qual dos dois falhou
+      // é o suficiente para o painel, e evita uma segunda ida ao banco.
+      where: { id: professorId, rare: true, active: true },
+      select: {
+        id: true,
+        name: true,
+        types: true,
+        variants: { select: { id: true, typeKey: true } },
+      },
+    });
+    if (!professor) {
+      throw new NotFoundException(
+        'Professor raro não encontrado ou fora de circulação.',
+      );
+    }
+
+    // A variante COMPLETA, que é a única que o raro tem (ver
+    // professor-variants.ts). Escolher pelo typeKey e não pela primeira da
+    // lista mantém a ficha correta mesmo num raro que tenha variantes antigas.
+    const typeKey = typeKeyOf(professor.types);
+    const variant =
+      professor.variants.find((v) => v.typeKey === typeKey) ??
+      professor.variants[0];
+    if (!variant) {
+      throw new BadRequestException(
+        `${professor.name} está sem variante — reative o professor ou ` +
+          'cadastre-o de novo para materializá-la.',
+      );
+    }
+
+    const batch = newBatchId();
+    const entries = buildRareSheetEntries(
+      {
+        id: variant.id,
+        professorName: professor.name,
+        themes: professor.types,
+      },
+      copies,
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.captureToken.createMany({
+        data: entries.map((e) => ({
+          // `variantId` e NÃO `type`: a ficha rara entrega exatamente aquela
+          // variante, sem passar pelo sorteio.
+          variantId: e.variantId,
+          tokenHash: e.tokenHash,
+          batch,
+        })),
+      });
+      await tx.qrBatch.create({
+        data: {
+          batch,
+          createdById: userId,
+          source: 'panel',
+          copies,
+          total: entries.length,
+          types: [],
+          rareProfessorId: professor.id,
+        },
+      });
+    });
+
+    this.logger.log(
+      JSON.stringify({
+        audit: 'qr_batch_rare',
+        batch,
+        by: userId,
+        professor: professor.id,
+        copies,
+        total: entries.length,
+      }),
+    );
+
+    return {
+      html: await renderSheetInline(entries, batch, copies),
+      batch,
+      total: entries.length,
     };
   }
 

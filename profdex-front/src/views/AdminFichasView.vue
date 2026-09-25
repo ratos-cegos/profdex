@@ -90,6 +90,7 @@ async function carregar() {
     const { data } = await api.get('/admin/capture-tokens')
     ultimaTiragem.value = data.lastBatch
     tipos.value = data.types
+    raros.value = data.rares ?? []
   } catch (e) {
     erro.value = mensagemDeErro(e, 'Não foi possível carregar o estoque.')
   } finally {
@@ -135,17 +136,30 @@ async function gerar() {
 
   gerando.value = true
   erroGeracao.value = ''
+  try {
+    await abrirFolha('/admin/capture-tokens/batch', {
+      copies: copias.value,
+      types: alvo.value,
+      allowEmpty: confirmouVazios.value,
+    })
+    plano.value = null
+  } catch (e) {
+    erroGeracao.value = mensagemDeErro(e, 'Não foi possível gerar a tiragem.')
+  } finally {
+    gerando.value = false
+  }
+}
+
+/**
+ * Pede a folha e a abre numa aba. Compartilhado pelas duas tiragens (por tipo e
+ * de raro) porque o cuidado com o pop-up bloqueado vale igual nas duas: a folha
+ * é a ÚNICA vez que aqueles QRs existem, e perdê-la por configuração de
+ * navegador custaria a tiragem inteira.
+ */
+async function abrirFolha(rota, corpo) {
   let url = null
   try {
-    const { data } = await api.post(
-      '/admin/capture-tokens/batch',
-      {
-        copies: copias.value,
-        types: alvo.value,
-        allowEmpty: confirmouVazios.value,
-      },
-      { responseType: 'blob' },
-    )
+    const { data } = await api.post(rota, corpo, { responseType: 'blob' })
     url = URL.createObjectURL(new Blob([data], { type: 'text/html' }))
     const aba = window.open(url, '_blank', 'noopener')
     if (!aba) {
@@ -154,14 +168,44 @@ async function gerar() {
       folhaUrl.value = url
       url = null // não revogar: o link ainda vai ser usado
     }
-    plano.value = null
     await carregar()
-  } catch (e) {
-    erroGeracao.value = mensagemDeErro(e, 'Não foi possível gerar a tiragem.')
   } finally {
-    gerando.value = false
     // A aba já carregou o documento; segurar a URL só vazaria memória.
     if (url) setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+}
+
+// ── Raros ───────────────────────────────────────────────────────────────────
+// Pilha PRÓPRIA por raro, e nunca no mesmo formulário da tiragem por tipo:
+// misturar as duas no mesmo papel acaba com o raro nos primeiros 10 minutos de
+// evento (tarefa 15).
+const raros = ref([])
+const copiasRaras = ref(10)
+const gerandoRaroId = ref(null)
+
+async function gerarRaro(raro) {
+  const ok = window.confirm(
+    `Imprimir ${copiasRaras.value} ficha(s) de ✦ ${raro.name}?\n\n` +
+      `Elas exigem 5 acertos em CADA tema: ${raro.label}.\n\n` +
+      'A folha abre em outra aba e NÃO pode ser reimpressa — o banco guarda ' +
+      'só o hash dos QRs. Mantenha esta pilha separada das fichas por tipo.',
+  )
+  if (!ok) return
+
+  gerandoRaroId.value = raro.professorId
+  erroGeracao.value = ''
+  try {
+    await abrirFolha('/admin/capture-tokens/rare-batch', {
+      professorId: raro.professorId,
+      copies: copiasRaras.value,
+    })
+  } catch (e) {
+    erroGeracao.value = mensagemDeErro(
+      e,
+      `Não foi possível gerar as fichas de ${raro.name}.`,
+    )
+  } finally {
+    gerandoRaroId.value = null
   }
 }
 
@@ -292,6 +336,63 @@ onMounted(carregar)
           aviso e a ficha <strong>não</strong> é consumida — o aluno volta para a
           fila da bancada. Cadastre um professor do tipo antes de imprimir.
         </p>
+      </section>
+
+      <!-- Raros ✦.
+           Bloco SEPARADO, com tiragem por raro. Nunca no formulário da tiragem
+           por tipo: as duas pilhas no mesmo papel acabam com o raro nos
+           primeiros 10 minutos de evento. -->
+      <section v-if="raros.length" class="bloco bloco--raro">
+        <div class="bloco__head">
+          <h2 class="bloco__titulo">Raros ✦</h2>
+          <span class="bloco__meta">{{ raros.length }} em circulação</span>
+        </div>
+
+        <p class="form__nota">
+          Cada raro tem <strong>pilha própria</strong>, rotulada com o nome dele.
+          O <strong>servidor</strong> recusa quem não destravou os temas — e a
+          ficha recusada <strong>não</strong> é consumida, volta para a pilha.
+        </p>
+
+        <label class="campo-rotulo">
+          Cópias por tiragem
+          <input
+            v-model.number="copiasRaras"
+            class="campo"
+            type="number"
+            min="1"
+            :max="TETO_COPIAS"
+          />
+        </label>
+
+        <ul class="raros">
+          <li v-for="r in raros" :key="r.professorId" class="raro">
+            <div class="raro__id">
+              <strong class="raro__nome">✦ {{ r.name }}</strong>
+              <span class="raro__gate">exige 5 acertos em {{ r.label }}</span>
+            </div>
+
+            <div class="raro__numeros">
+              <span class="raro__vivas" :class="{ 'raro__vivas--zero': !r.alive }">
+                {{ r.alive }} vivas
+              </span>
+              <span class="raro__resgatadas">{{ r.redeemedTotal }} resgatadas</span>
+            </div>
+
+            <button
+              class="botao botao--principal botao--pequeno"
+              type="button"
+              :disabled="gerandoRaroId === r.professorId || gerando"
+              @click="gerarRaro(r)"
+            >
+              {{
+                gerandoRaroId === r.professorId
+                  ? 'Gerando…'
+                  : `Imprimir ${copiasRaras} fichas`
+              }}
+            </button>
+          </li>
+        </ul>
       </section>
 
       <!-- Tiragem nova -->
@@ -593,6 +694,70 @@ onMounted(carregar)
   gap: 6px;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* ── Raros ✦ ───────────────────────────────────────────────────────────── */
+.bloco--raro {
+  border-color: color-mix(in srgb, var(--raro) 45%, var(--border));
+}
+
+.bloco--raro .bloco__titulo {
+  color: var(--raro);
+}
+
+.raros {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.raro {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--raro) 35%, var(--border));
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+
+.raro__id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.raro__nome {
+  color: var(--raro);
+  font-size: 13px;
+}
+
+.raro__gate {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.raro__numeros {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.raro__vivas {
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Pilha no fim é o aviso que importa: sem papel, quem destravar não recebe. */
+.raro__vivas--zero {
+  color: var(--error);
 }
 
 .campo {
