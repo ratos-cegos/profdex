@@ -470,10 +470,49 @@ describe('CapturesService', () => {
 
       expect(ficha.redeemedAt).toBeInstanceOf(Date);
       expect(criadas).toHaveLength(1);
-      // Exemplar igual a qualquer outro: variante, deck e IVs do sorteio normal.
       expect(resultado.moves.length).toBeGreaterThan(0);
       expect(resultado.types).toEqual(['arquitetura', 'ia']);
-      expect(resultado).toHaveProperty('stars');
+    });
+
+    /**
+     * Tarefa 16, decisão 1: o raro nasce no teto. O RNG deste teste devolve
+     * sempre 0.5 (IV 8), então 15 nos quatro só pode ter vindo da flag — e não
+     * de um sorteio que por acaso deu bom.
+     */
+    it('o raro nasce com IV 15 nos quatro — 5 estrelas de verdade', async () => {
+      const { prisma, criadas } = fakeDb({
+        raro: true,
+        destravados: ['arquitetura', 'ia'],
+      });
+
+      const resultado = await build(prisma).captureByToken('user-1', token);
+
+      expect(criadas[0].data).toEqual(
+        expect.objectContaining({
+          ivHp: 15,
+          ivRigor: 15,
+          ivDidatica: 15,
+          ivRaciocinio: 15,
+        }),
+      );
+      expect(resultado.stars).toBe(5);
+    });
+
+    /** O teto é do raro e só dele: a ficha comum continua sorteando. */
+    it('a ficha comum continua com IVs do sorteio', async () => {
+      const { prisma, criadas } = fakeDb({ type: 'ia' });
+
+      const resultado = await build(prisma).captureByToken('user-1', token);
+
+      expect(criadas[0].data).toEqual(
+        expect.objectContaining({
+          ivHp: 8,
+          ivRigor: 8,
+          ivDidatica: 8,
+          ivRaciocinio: 8,
+        }),
+      );
+      expect(resultado.stars).toBe(2.5);
     });
 
     it('a segunda ficha do mesmo raro dá 409 sem consumir o papel', async () => {

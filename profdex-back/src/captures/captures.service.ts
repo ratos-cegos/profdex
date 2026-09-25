@@ -155,7 +155,13 @@ export class CapturesService {
             moves: buildMoveset(variant.types, 4, this.random).map(
               (move) => move.id,
             ),
-            ...rollCaptureIvs(this.random),
+            // O raro nasce no teto (tarefa 16, decisão 1). A flag sai da mesma
+            // fonte que alimenta a métrica `rare_captured` logo abaixo — o
+            // sorteio por tipo filtra `rare: false`, então uma variante sorteada
+            // nunca chega aqui como rara.
+            ...rollCaptureIvs(this.random, {
+              rare: ficha.variant?.professor.rare ?? false,
+            }),
           },
           select: CAPTURE_SELECT,
         });
