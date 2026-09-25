@@ -52,6 +52,21 @@
   --tab-icon: 30px;
   /* Disco de ícone dos botões grandes da lista de batalha. */
   --option-icon: 56px;
+
+  /* Medidas do palco de batalha (ArenaPalco.vue), aqui pelo mesmo motivo da
+     navegação: palco e faixa de comandos divergiriam em silêncio se cada view
+     guardasse a sua cópia do número.
+
+     `--palco-faixa` é a altura da faixa de comandos do TREINO, a referência com
+     que o enquadramento dos dois lutadores foi fechado e aprovado. Uma tela com
+     faixa mais alta (o PvP, que ainda carrega o banco de reservas e o botão de
+     troca) recua o palco só pela DIFERENÇA — encolher pela faixa inteira
+     devolveria dois personagens do tamanho do que sobrou.
+     Se o painel do treino mudar de altura, este número muda junto. */
+  --palco-faixa: 305px;
+  /* Onde a barra de HP do jogador encosta, medida do rodapé do palco. Fica
+     dentro da faixa de propósito: é o enquadramento aprovado do treino. */
+  --palco-barra-jogador: 256px;
 }
 
 *, *::before, *::after {
