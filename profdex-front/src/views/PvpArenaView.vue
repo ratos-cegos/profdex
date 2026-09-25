@@ -328,14 +328,19 @@ onUnmounted(() => clock && clearInterval(clock))
     }"
   >
     <div class="pvp-arena__bg">
-      <img
-        class="pvp-arena__cenario"
-        src="/cenarios/ginasio-unifil.jpg"
-        alt=""
-        aria-hidden="true"
-        decoding="async"
-        fetchpriority="high"
-      />
+      <!-- Tela deitada (desktop): a versão panorâmica do ginásio. A retrato,
+           esticada em tela larga, virava um borrão ampliado. -->
+      <picture>
+        <source media="(min-aspect-ratio: 1/1)" srcset="/cenarios/ginasio-unifil-desktop.jpg" />
+        <img
+          class="pvp-arena__cenario"
+          src="/cenarios/ginasio-unifil.jpg"
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+          fetchpriority="high"
+        />
+      </picture>
     </div>
     <img class="pvp-arena__brand" src="/marca/logotipo-branco.png" alt="UNIFIL" />
 
@@ -558,6 +563,15 @@ onUnmounted(() => clock && clearInterval(clock))
   height: 120%;
   object-fit: cover;
   object-position: center bottom;
+}
+
+/* Na foto panorâmica a linha de fundo da quadra fica na metade da imagem; com
+   125% de altura ancorada embaixo ela sobe para ~37% da tela, perto dos pés do
+   oponente, e o placar e a arquibancada continuam à vista. */
+@media (min-aspect-ratio: 1/1) {
+  .pvp-arena__cenario {
+    height: 125%;
+  }
 }
 
 /* Escurecimento: a quadra é clara e alaranjada, e aqui o HUD tem DUAS barras de
