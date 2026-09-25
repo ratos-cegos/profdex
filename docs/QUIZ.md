@@ -46,8 +46,32 @@ acerta uma questão de `banco` é mandado capturar um professor de `banco`, ent�
 as duas listas precisam ser a mesma. A identidade visual (ícone, cor) vem de
 `profdex-front/src/data/types.js`, que já era a dona desses metadados.
 
-O banco de questões tem **20 por tema** (8 fáceis, 6 médias, 6 difíceis), em
-`prisma/quiz-questions.ts`.
+O banco de questões tem **pelo menos 40 por tema** (16 fáceis, 12 médias, 12
+difíceis), em `prisma/quiz-questions.ts` — 420 no total, porque `matematica`
+tem 60 e `algoritmos`, 80, que absorveu o antigo tema Lógica.
+
+## A resposta certa não pode ser a mais longa
+
+Um banco de múltipla escolha escrito sem cuidado entrega a resposta pelo
+tamanho: quem escreve capricha na alternativa certa e despacha as erradas em
+três palavras. Foi o que aconteceu aqui — **em 51% das questões oficiais a
+correta era a única mais longa** (o acaso é 25%), e em 41% ela passava de todas
+as erradas por 6 caracteres ou mais. Dava para gabaritar `humanas` sem ler o
+enunciado.
+
+A regra vive em `src/quiz/option-balance.ts` e o CI a verifica nos dois bancos:
+
+- **por questão**, a correta não pode passar da errada mais longa por mais de 8
+  caracteres — menos de uma palavra curta, que ninguém mede no olho lendo
+  quatro alternativas em 60 segundos;
+- **no banco todo**, no máximo 15% das questões podem ter a correta
+  visivelmente mais longa, e o tamanho médio da correta não pode passar de
+  1,15× o dos distratores.
+
+O conserto nunca é encurtar a resposta certa: é escrever distrator do mesmo
+peso, que represente um erro plausível de quem não estudou. O gerador de treino
+(`scripts/gerar-questoes-treino.ts`) pede isso no prompt e descarta a questão
+que voltar fora da margem — é o vício mais comum do lote gerado por IA.
 
 ## Fluxo
 
@@ -335,8 +359,8 @@ O **quiz de treino não conta**: ele não grava `quiz_attempts`, por construçã
 ## Operação
 
 ```bash
-npm run db:seed-quiz            # popula/atualiza as 180 questões oficiais (idempotente)
-npm run db:seed-quiz-treino     # popula/atualiza as 135 questões de treino
+npm run db:seed-quiz            # popula/atualiza as 420 questões oficiais (idempotente)
+npm run db:seed-quiz-treino     # popula/atualiza as 317 questões de treino
 npm run db:set-admin -- <matricula>   # quem pode abrir a bancada
 ```
 
