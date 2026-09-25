@@ -1,6 +1,14 @@
 import { TRAINING_QUESTIONS } from '../../prisma/training-questions';
 import { QUIZ_QUESTIONS } from '../../prisma/quiz-questions';
 import { QUIZ_DIFFICULTIES, QUIZ_THEMES } from './quiz.constants';
+import {
+  MARGEM_RESPOSTA_MAIS_LONGA,
+  TETO_RAZAO_MEDIA,
+  TETO_VISIVELMENTE_LONGA,
+  excessoDaResposta,
+  fatiaVisivelmenteLonga,
+  razaoMediaDeTamanho,
+} from './option-balance';
 
 /**
  * Sanidade do banco de treino, verificada no CI.
@@ -12,7 +20,7 @@ import { QUIZ_DIFFICULTIES, QUIZ_THEMES } from './quiz.constants';
  * treino, que é a coisa que a tabela separada existe para impedir.
  */
 describe('banco de questões do Quiz Treino', () => {
-  const MINIMO_POR_TEMA = 15;
+  const MINIMO_POR_TEMA = 30;
 
   it('não repete nenhum enunciado do banco OFICIAL', () => {
     // A unicidade do Prisma é por tabela, então um enunciado repetido entre os
@@ -32,7 +40,7 @@ describe('banco de questões do Quiz Treino', () => {
     expect(new Set(chaves).size).toBe(chaves.length);
   });
 
-  it('tem pelo menos 15 questões por tema, em todos os 9 temas', () => {
+  it(`tem pelo menos ${MINIMO_POR_TEMA} questões por tema, nos 9 temas`, () => {
     const contagem = new Map<string, number>();
     for (const q of TRAINING_QUESTIONS) {
       contagem.set(q.theme, (contagem.get(q.theme) ?? 0) + 1);
@@ -60,5 +68,27 @@ describe('banco de questões do Quiz Treino', () => {
     ).map((q) => q.prompt);
 
     expect(invalidas).toEqual([]);
+  });
+
+  // ── Equilíbrio das alternativas ────────────────────────────────────────────
+  // A mesma regra do banco oficial (ver `option-balance.ts`). Aqui ela pesa
+  // ainda mais: o treino é regenerado por IA, e modelo de linguagem tende a
+  // caprichar na alternativa certa e despachar as erradas.
+
+  it('não deixa a resposta certa se destacar pelo tamanho', () => {
+    const entregues = TRAINING_QUESTIONS.filter(
+      (q) => excessoDaResposta(q) > MARGEM_RESPOSTA_MAIS_LONGA,
+    ).map((q) => `${q.prompt} (+${excessoDaResposta(q)} caracteres)`);
+
+    expect(entregues).toEqual([]);
+  });
+
+  it('mantém o banco inteiro longe do padrão "a maior é a certa"', () => {
+    expect(fatiaVisivelmenteLonga(TRAINING_QUESTIONS)).toBeLessThanOrEqual(
+      TETO_VISIVELMENTE_LONGA,
+    );
+    expect(razaoMediaDeTamanho(TRAINING_QUESTIONS)).toBeLessThanOrEqual(
+      TETO_RAZAO_MEDIA,
+    );
   });
 });

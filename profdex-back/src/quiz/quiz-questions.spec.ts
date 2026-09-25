@@ -4,6 +4,14 @@ import {
   QUIZ_DIFFICULTY_MIX,
   QUIZ_THEMES,
 } from './quiz.constants';
+import {
+  MARGEM_RESPOSTA_MAIS_LONGA,
+  TETO_RAZAO_MEDIA,
+  TETO_VISIVELMENTE_LONGA,
+  excessoDaResposta,
+  fatiaVisivelmenteLonga,
+  razaoMediaDeTamanho,
+} from './option-balance';
 
 /**
  * Sanidade do banco OFICIAL, verificada no CI.
@@ -15,7 +23,7 @@ import {
  * nenhuma questão de uma das faixas silenciosamente muda o perfil do quiz.
  */
 describe('banco de questões do quiz de bancada', () => {
-  const MINIMO_POR_TEMA = 20;
+  const MINIMO_POR_TEMA = 40;
 
   it(`tem pelo menos ${MINIMO_POR_TEMA} questões em cada um dos 9 temas`, () => {
     const contagem = new Map<string, number>();
@@ -65,5 +73,26 @@ describe('banco de questões do quiz de bancada', () => {
     ).map((q) => q.prompt);
 
     expect(invalidas).toEqual([]);
+  });
+
+  // ── Equilíbrio das alternativas ────────────────────────────────────────────
+  // Ver `option-balance.ts`: o banco já entregou a resposta pelo tamanho uma
+  // vez, e o CI existe para isso não voltar na próxima leva de questões.
+
+  it('não deixa a resposta certa se destacar pelo tamanho', () => {
+    const entregues = QUIZ_QUESTIONS.filter(
+      (q) => excessoDaResposta(q) > MARGEM_RESPOSTA_MAIS_LONGA,
+    ).map((q) => `${q.prompt} (+${excessoDaResposta(q)} caracteres)`);
+
+    expect(entregues).toEqual([]);
+  });
+
+  it('mantém o banco inteiro longe do padrão "a maior é a certa"', () => {
+    expect(fatiaVisivelmenteLonga(QUIZ_QUESTIONS)).toBeLessThanOrEqual(
+      TETO_VISIVELMENTE_LONGA,
+    );
+    expect(razaoMediaDeTamanho(QUIZ_QUESTIONS)).toBeLessThanOrEqual(
+      TETO_RAZAO_MEDIA,
+    );
   });
 });

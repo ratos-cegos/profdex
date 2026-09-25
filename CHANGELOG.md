@@ -6,6 +6,56 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 `Adicionado` para novidades, `Alterado` para mudanças de comportamento existente,
 `Corrigido` para defeitos e `Removido` para o que saiu.
 
+## [Não publicado] — banco de questões do quiz
+
+### Corrigido
+
+- **A resposta certa não é mais a alternativa mais longa.** O banco tinha o
+  vício clássico de prova de múltipla escolha: quem escreve capricha na
+  alternativa correta e despacha as erradas em três palavras. Medido, o padrão
+  era gritante — em **51%** das questões oficiais (e 55% das de treino) a
+  correta era a única mais longa, contra 25% que o acaso daria, e em **41%**
+  delas a diferença passava de 6 caracteres. Em `humanas` chegava a 75%: dava
+  para gabaritar o tema sem ler o enunciado, que é o oposto do que a bancada
+  precisa medir antes de liberar um QR de captura.
+
+  As 126 questões fora da linha tiveram os **distratores reescritos** — não a
+  resposta certa encurtada, que só empobreceria o gabarito. O enunciado de cada
+  uma ficou intocado de propósito: ele é a chave única das tabelas, e mexer
+  nele criaria questão nova e desativaria a antiga, junto com o código de 4
+  dígitos que já está impresso na bancada.
+
+  Depois: a fatia de respostas visivelmente mais longas caiu de **41% para
+  6,4%** (oficial) e de **41% para 5,7%** (treino), e o tamanho médio da
+  correta saiu de 1,34× o dos distratores para 1,05×.
+
+### Adicionado
+
+- **Os dois bancos dobraram de tamanho.** O oficial foi de 210 para **420**
+  questões (40 por tema, mantendo a proporção 4:3:3 de fácil/média/difícil;
+  `matematica` tem 60 e `algoritmos`, 80) e o de treino, de 158 para **317**
+  (30 por tema, 47 em `matematica` e 60 em `algoritmos`). O assunto de cada
+  tema é o mesmo: o que entrou foi conteúdo que ainda não estava coberto —
+  ANPD, licenças e propriedade intelectual em `humanas`; combinatória, matrizes
+  e inferência em `matematica`; Transformers, RAG e métricas em `ia`; SLAM,
+  filtro de Kalman e barramentos em `robotica`; paginação, TLB e coerência de
+  cache em `arquitetura`; TDD, MVC e SOLID em `engenharia-software`; BGP, TLS e
+  sub-redes em `redes`; transações, isolamento e planos de execução em `banco`;
+  grafos, ordenação e quantificadores em `algoritmos`.
+
+  Dobrar o pool importa porque o sorteio **nunca devolve ao aluno uma questão
+  que ele já respondeu no tema** enquanto houver inédita: com 20 por tema, quem
+  passava o dia no estande esgotava o banco antes do fim do evento e caía no
+  modo de repetição.
+
+- **`src/quiz/option-balance.ts` e o guarda de CI.** A regra que impede o vício
+  de voltar, verificada nos dois bancos: por questão, a correta não pode passar
+  da errada mais longa por mais de 8 caracteres; no banco todo, no máximo 15%
+  podem ter a correta visivelmente mais longa e a média dela não passa de
+  1,15× a dos distratores. O gerador de treino
+  (`scripts/gerar-questoes-treino.ts`) passou a pedir alternativas de
+  comprimento parecido no prompt e a **descartar** a questão que voltar fora da
+  margem — é o erro mais frequente do lote gerado por IA.
 ## [Não publicado] — branch `feat/professores-raros`
 
 ### Adicionado

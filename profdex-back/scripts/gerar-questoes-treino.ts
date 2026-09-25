@@ -18,10 +18,14 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { QUIZ_THEMES } from '../src/quiz/quiz.constants';
+import {
+  MARGEM_RESPOSTA_MAIS_LONGA,
+  excessoDaResposta,
+} from '../src/quiz/option-balance';
 import type { QuizSeedQuestion } from '../prisma/quiz-questions';
 
 /** Quantas questões por tema, quando não vier `--quantidade`. */
-const POR_TEMA_PADRAO = 15;
+const POR_TEMA_PADRAO = 30;
 
 /** Nome legível de cada tema, para o prompt. O id sozinho ("ia") não basta. */
 const DESCRICAO_DO_TEMA: Record<string, string> = {
@@ -66,7 +70,9 @@ Regras:
 - nada de "todas as anteriores" ou "nenhuma das anteriores";
 - nada de pegadinha de redação;
 - nada que dependa de bibliografia específica, de um professor específico ou de um dado que mude com o tempo;
-- as 4 alternativas devem ser plausíveis: os distratores representam erros comuns, não absurdos.
+- as 4 alternativas devem ser plausíveis: os distratores representam erros comuns, não absurdos;
+- as 4 alternativas devem ter comprimento parecido, e a correta NUNCA pode ser a mais longa por folga: quem chuta a maior alternativa tem de acertar 1 em 4, não mais que isso. Se a resposta certa pedir mais palavras, escreva distratores igualmente detalhados em vez de encurtá-la;
+- varie a posição da resposta certa entre 0, 1, 2 e 3 ao longo do lote.
 
 Responda APENAS com o JSON, sem cercas de código e sem texto em volta:
 [{ "prompt": "...", "options": ["...", "...", "...", "..."], "answer": 0, "explanation": "..." }]`;
@@ -122,6 +128,27 @@ function validar(
     }
     if (typeof q.explanation !== 'string' || !q.explanation.trim()) {
       problemas.push('explicação vazia');
+    }
+
+    // O modelo capricha na alternativa certa e despacha as erradas, o que
+    // entrega a resposta pelo tamanho (ver `src/quiz/option-balance.ts`). É o
+    // vício mais comum do lote gerado — e o CI reprova o banco inteiro por
+    // causa dele, então é mais barato descartar a questão e pedir outra.
+    if (
+      Array.isArray(q.options) &&
+      q.options.length === 4 &&
+      q.options.every((o) => typeof o === 'string') &&
+      typeof q.answer === 'number' &&
+      q.answer >= 0 &&
+      q.answer < 4
+    ) {
+      const excesso = excessoDaResposta({
+        options: q.options as string[],
+        answer: q.answer,
+      });
+      if (excesso > MARGEM_RESPOSTA_MAIS_LONGA) {
+        problemas.push(`resposta ${excesso} caracteres mais longa que a maior errada`);
+      }
     }
 
     // O enunciado é a chave única no banco: duplicata quebraria o seed.
