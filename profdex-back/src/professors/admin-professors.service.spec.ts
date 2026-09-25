@@ -80,6 +80,55 @@ function criarService(prisma = criarPrisma()) {
   };
 }
 
+/**
+ * Banco de mentira em que o INSERT fica visível para as leituras seguintes,
+ * como num banco de verdade dentro da mesma transação.
+ *
+ * O `criarPrisma` acima devolve `findMany: []` fixo, e foi essa mentira que
+ * deixou passar o bug de 24/09/2026: a checagem de "um raro por tema" rodava
+ * depois do `create`, encontrava o próprio professor recém-inserido e recusava
+ * o cadastro com o nome dele na mensagem. Nenhum raro conseguia nascer.
+ */
+function criarPrismaComEstado(existentes: Record<string, unknown>[] = []) {
+  const linhas = [...existentes];
+  const professor = {
+    create: jest.fn(({ data }: { data: Record<string, unknown> }) => {
+      const criado = { id: `prof-${linhas.length + 1}`, active: true, ...data };
+      linhas.push(criado);
+      return Promise.resolve(criado);
+    }),
+    findMany: jest.fn(({ where }: { where: Record<string, any> }) =>
+      Promise.resolve(
+        linhas.filter(
+          (p: any) =>
+            p.rare === where.rare &&
+            p.active === where.active &&
+            (where.types?.hasSome as string[]).some((t) =>
+              (p.types as string[]).includes(t),
+            ),
+        ),
+      ),
+    ),
+    findUnique: jest.fn().mockResolvedValue({ id: 'prof-1', slug: 'eron' }),
+    update: jest.fn(),
+    delete: jest.fn().mockResolvedValue({}),
+  };
+  const professorVariant = {
+    createMany: jest.fn().mockResolvedValue({ count: 1 }),
+  };
+  const capture = { groupBy: jest.fn().mockResolvedValue([]) };
+
+  return {
+    linhas,
+    professor,
+    professorVariant,
+    capture,
+    $transaction: jest.fn((fn: (tx: unknown) => unknown) =>
+      fn({ professor, professorVariant, capture }),
+    ),
+  };
+}
+
 beforeEach(() => jest.clearAllMocks());
 
 describe('AdminProfessorsService', () => {
@@ -323,6 +372,62 @@ describe('AdminProfessorsService', () => {
           where: expect.objectContaining({ rare: true, active: true }),
         }),
       );
+    });
+
+    /**
+     * Regressão do bug que foi para produção em 24/09/2026 e impedia QUALQUER
+     * raro de existir: a checagem de "um raro por tema" rodava depois do
+     * `create`, dentro da mesma transação, e enxergava a linha recém-inserida.
+     * O professor era recusado por conflito consigo mesmo — a mensagem de erro
+     * trazia o nome que o admin tinha acabado de digitar — e o rollback deixava
+     * o banco sem raro nenhum, o que fazia a próxima tentativa falhar igual.
+     */
+    it('o primeiro raro de um tema livre é cadastrado', async () => {
+      const prisma = criarPrismaComEstado();
+      const { service } = criarService(prisma);
+
+      const criado = await service.create(
+        { name: 'Tânia Palmeiras', types: ['matematica'], rare: true },
+        arteCompleta(),
+      );
+
+      expect(criado.name).toBe('Tânia Palmeiras');
+      expect(prisma.linhas).toHaveLength(1);
+    });
+
+    it('o raro não entra em conflito consigo mesmo dentro da transação', async () => {
+      const prisma = criarPrismaComEstado();
+      const { service } = criarService(prisma);
+
+      // Dois tipos é o caso mais sensível: o `hasSome` casa pelos dois temas.
+      await expect(
+        service.create(
+          { name: 'Eron', types: ['matematica', 'ia'], rare: true },
+          arteCompleta(),
+        ),
+      ).resolves.toMatchObject({ rare: true });
+    });
+
+    it('mas um SEGUNDO raro no mesmo tema continua sendo recusado', async () => {
+      const prisma = criarPrismaComEstado([
+        {
+          id: 'raro-1',
+          name: 'Tânia Palmeiras',
+          types: ['matematica'],
+          rare: true,
+          active: true,
+        },
+      ]);
+      const { service } = criarService(prisma);
+
+      await expect(
+        service.create(
+          { name: 'Outro', types: ['matematica'], rare: true },
+          arteCompleta(),
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+      // Nada gravado: continua só o raro que já existia.
+      expect(prisma.linhas).toHaveLength(1);
     });
 
     it('professor COMUM não consulta o limite de um raro por tema', async () => {

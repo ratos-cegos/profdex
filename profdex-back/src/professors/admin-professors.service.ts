@@ -110,6 +110,22 @@ export class AdminProfessorsService {
     const versao = Date.now();
     const professor = await this.prisma
       .$transaction(async (tx) => {
+        // ANTES do `create`, e a ordem aqui é a correção de um bug que foi para
+        // produção: depois dele, esta consulta enxerga a linha recém-inserida
+        // (que é rara, ativa e tem os temas pedidos), o professor conflita
+        // CONSIGO MESMO e nenhum raro consegue nascer. O rollback ainda
+        // escondia o rastro — o banco ficava sem raro nenhum, e a tentativa
+        // seguinte falhava igual.
+        //
+        // Ela repete a checagem de fora da transação porque aquela roda antes
+        // da validação da arte, para um 409 não escrever arquivo nenhum. Esta
+        // aqui apenas estreita a janela entre a checagem e o insert; ela NÃO
+        // fecha a corrida entre dois admins simultâneos, porque em READ
+        // COMMITTED uma transação não vê o insert não commitado da outra.
+        // Fechar de verdade exigiria constraint de exclusão sobre `unnest`,
+        // que o Prisma não gera — e o painel tem meia dúzia de usuários.
+        if (rare) await this.assertTemasLivres(dto.types, tx);
+
         const criado = await tx.professor.create({
           data: {
             name: dto.name.trim(),
@@ -123,11 +139,6 @@ export class AdminProfessorsService {
           },
           select: ADMIN_PROFESSOR_SELECT,
         });
-
-        // De novo, agora DENTRO da transação: a checagem de fora protege os
-        // arquivos de arte, esta protege o invariante. Sem ela, dois admins
-        // cadastrando raros do mesmo tema ao mesmo tempo passariam os dois.
-        if (rare) await this.assertTemasLivres(dto.types, tx);
 
         // Mesma transação: professor sem variante é professor fora do sorteio.
         // O raro ganha UMA variante, a dupla — ver professor-variants.ts.
