@@ -25,6 +25,9 @@ const abas = [
   // (o script, o comentário do CaptureToken, a folha impressa). QR é o meio.
   { name: 'admin-fichas', label: 'Fichas de Captura' },
   { name: 'admin-professores', label: 'Professores' },
+  // Por último: é a aba que menos se abre durante o evento, mas é onde se
+  // afrouxa a fila quando ela cresce.
+  { name: 'admin-config', label: 'Configurações' },
 ]
 
 const atual = computed(() => route.name)

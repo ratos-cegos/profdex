@@ -224,6 +224,14 @@ const router = createRouter({
           name: 'admin-professores',
           component: () => import('../views/AdminProfessoresView.vue'),
         },
+        {
+          // Ajustes de operação (cooldowns). Muda a regra do jogo com o evento
+          // no ar, sem deploy — por isso a rota tem auditoria no log do
+          // servidor, como a tiragem de fichas.
+          path: 'configuracoes',
+          name: 'admin-config',
+          component: () => import('../views/AdminConfiguracoesView.vue'),
+        },
       ],
     },
     {
