@@ -25,14 +25,16 @@ bancada: **matrícula → tema → questão de 60s → resultado** (ver
 `AdminQuizBoothView.vue`), com a matrícula pedida a cada rodada porque quem
 responde muda o tempo todo.
 
-> ⚠️ **Divergência a resolver.** O passo 3 acima descreve o QR como **sorteado
-> da pilha, podendo sair qualquer professor de qualquer tipo**. O servidor, no
-> entanto, devolve em `POST /admin/quiz/answer` a lista `professores` **filtrada
-> pelo tema da questão** (`professoresDoTema`), e o resto deste documento parte
-> dessa premissa — inclusive a seção "Por que tema". As duas coisas não podem
-> valer ao mesmo tempo: ou o QR é do tema, ou é sorteado. Enquanto a decisão de
-> produto não for tomada, vale o que o operador faz na mesa — o gate é humano e
-> o servidor não amarra a captura ao acerto de qualquer forma.
+> ✅ **Divergência resolvida (25/09/2026).** Este documento descrevia duas
+> coisas incompatíveis: o QR como sorteado da pilha, e o servidor devolvendo em
+> `POST /admin/quiz/answer` a lista `professores` daquele tema. Venceu o
+> sorteio, que é como a captura funciona de verdade desde a tarefa 12 — quem o
+> aluno leva sai no scan, a partir do que ele **já tem** (`capture-lottery.ts`).
+>
+> A lista saiu das duas rotas da bancada (`themes` e `answer`). Anunciar um nome
+> ali era promessa que a captura não tinha como cumprir: o aluno podia ouvir
+> "vá capturar o Eron" e receber outro professor. Agora a tela manda escanear o
+> QR do tema, e pronto.
 
 ## Por que "tema"
 
@@ -50,12 +52,12 @@ O banco de questões tem **20 por tema** (8 fáceis, 6 médias, 6 difíceis), em
 ## Fluxo
 
 ```
-GET  /api/admin/quiz/themes                 temas, nº de questões, professores
+GET  /api/admin/quiz/themes                 temas e nº de questões (sem professor)
 GET  /api/admin/quiz/aluno?matricula=…      nome, cooldowns em curso, histórico
 POST /api/admin/quiz/start  { matricula, theme }
         → { sessionId, question: { prompt, options }, durationMs }
 POST /api/admin/quiz/answer { sessionId, answerIndex? }
-        → { correct, correctOption, expired, professores }
+        → { correct, correctOption, expired, cooldownMinutos }
 GET  /api/admin/quiz/attempts?theme=&matricula=&correct=&limit=&offset=
 GET  /api/admin/quiz/stats
 ```
@@ -118,13 +120,29 @@ alternativas — sem isso o comportamento acima não é testável.
 
 ## Cooldown
 
-10 minutos por **aluno + tema**. Enquanto corre, aquele tema aparece bloqueado
-na tela com o tempo restante, e `start` responde **429** com
+**10 minutos** por **aluno + tema**, por padrão. Enquanto corre, aquele tema
+aparece bloqueado na tela com o tempo restante, e `start` responde **429** com
 `retryAfterSeconds` — a checagem do servidor é a que vale, a da tela é só para
 o operador não tentar à toa.
 
 Os outros 8 temas continuam liberados: o cooldown limita a repetição, não a
 participação.
+
+### É ajustável durante o evento
+
+O valor vive em `app_settings` e é editável em **`/admin/configuracoes`**, de 1
+a 120 minutos. Deixou de ser constante de código porque o número certo depende
+do tamanho da fila, e isso ninguém sabe antes de abrir o estande: com fila
+grande, encurtar acelera o giro; com fila pequena, alongar faz a tiragem de
+fichas durar o dia.
+
+Vale **na hora**, sem deploy nem restart — o servidor lê o valor a cada
+`start`, `aluno` e `answer`, com cache de 10 segundos. Encurtar o cooldown
+libera na mesma hora quem já estava esperando, porque a conta é sempre
+"agora − última tentativa", nunca um prazo congelado no momento da resposta.
+
+Sem nenhuma linha gravada, vale o padrão de 10 minutos — a tabela nasce vazia,
+então uma instalação que nunca abriu a tela se comporta como antes.
 
 ## Errata: quando a questão é que está errada
 

@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 
+/**
+ * O padrão histórico, usado quando `app_settings` não tem a chave.
+ *
+ * Deixou de ser a fonte da verdade: o valor que vale é o do painel (ver
+ * `SettingsService`), porque o número certo depende de quanta gente está no
+ * evento — e isso ninguém sabe antes de abrir o estande.
+ */
 export const PAIR_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 /**
@@ -20,11 +28,21 @@ export function pairKeyOf(a: string, b: string): string {
  */
 @Injectable()
 export class CooldownService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private settings: SettingsService,
+  ) {}
 
-  /** Retorna quando a dupla estará liberada, ou null se já pode batalhar. */
+  /**
+   * Retorna quando a dupla estará liberada, ou null se já pode batalhar.
+   *
+   * A janela é lida a cada chamada (com cache de 10s no `SettingsService`), e
+   * não fixada na subida: diminuir o cooldown no painel precisa liberar duplas
+   * que já estavam esperando, sem restart.
+   */
   async availableAt(userA: string, userB: string): Promise<Date | null> {
-    const since = new Date(Date.now() - PAIR_COOLDOWN_MS);
+    const janela = await this.settings.battlePairCooldownMs();
+    const since = new Date(Date.now() - janela);
     const last = await this.prisma.battle.findFirst({
       where: {
         pairKey: pairKeyOf(userA, userB),
@@ -36,6 +54,6 @@ export class CooldownService {
     });
 
     if (!last?.finishedAt) return null;
-    return new Date(last.finishedAt.getTime() + PAIR_COOLDOWN_MS);
+    return new Date(last.finishedAt.getTime() + janela);
   }
 }

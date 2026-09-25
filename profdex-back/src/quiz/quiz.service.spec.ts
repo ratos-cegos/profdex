@@ -1,6 +1,7 @@
 import { HttpStatus, NotFoundException } from '@nestjs/common';
 import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import { ANSWER_WINDOW_MS, THEME_COOLDOWN_MS } from './quiz.constants';
 import { QuizService } from './quiz.service';
 
@@ -36,6 +37,8 @@ interface SubjectOptions {
   questions?: ReturnType<typeof questao>[];
   /** RNG fixo: sem ele o sorteio não é observável em teste. */
   rng?: () => number;
+  /** Cooldown de tema configurado, quando o teste quiser outro valor. */
+  cooldownMs?: number;
   /** O raro ATIVO do tema, quando o cenário tem um. */
   raro?: { id: string; name: string; types: string[] } | null;
   /** Acertos que o aluno já tem no tema, ANTES da resposta em teste. */
@@ -118,12 +121,20 @@ function createSubject(options: SubjectOptions = {}) {
     },
   };
   const metrics = { record: jest.fn() };
+  // O cooldown de tema é configurável no painel. Os testes usam o padrão de
+  // 10min, que é o que `THEME_COOLDOWN_MS` valia quando era constante.
+  const settings = {
+    themeCooldownMs: jest
+      .fn()
+      .mockResolvedValue(options.cooldownMs ?? THEME_COOLDOWN_MS),
+  };
   const service = new QuizService(
     prisma as unknown as PrismaService,
     metrics as unknown as MetricsService,
+    settings as unknown as SettingsService,
     options.rng ?? Math.random,
   );
-  return { metrics, prisma, service };
+  return { metrics, prisma, settings, service };
 }
 
 /** Enunciado da questão sorteada — é o que a bancada devolve, e o id não sai. */
@@ -344,14 +355,25 @@ describe('QuizService', () => {
     expect(sorteada(aberta)).toBe('Enunciado q-facil');
   });
 
-  it('points the student to the professors of the theme', async () => {
-    const { service } = createSubject();
+  /**
+   * A bancada não promete NOME nenhum. Quem o aluno leva é sorteado no scan,
+   * a partir do que ele já tem (capture-lottery.ts) — anunciar um nome aqui
+   * seria promessa que a captura não tem como cumprir. De quebra, some a
+   * superfície que obrigava a filtrar professor raro em duas telas viradas
+   * para o aluno.
+   */
+  it('não devolve professor nenhum, nem no acerto', async () => {
+    const { prisma, service } = createSubject();
     const aberta = await service.start('202312345', 'banco');
 
     const resultado = await service.answer('admin-1', aberta.sessionId, 0);
+    const temas = await service.themes();
 
-    // O Marcos é de Banco de Dados na linha dele — é para ele que o aluno vai.
-    expect(resultado.professores).toEqual([{ name: 'Marcos', slug: 'marcos' }]);
+    expect(resultado).not.toHaveProperty('professores');
+    expect(temas.every((t) => !('professores' in t))).toBe(true);
+    // Nenhuma das duas rotas sequer consulta a tabela de professores.
+    expect(prisma.professor.findMany).not.toHaveBeenCalled();
+    expect(JSON.stringify({ resultado, temas })).not.toContain('Marcos');
   });
 });
 
@@ -516,16 +538,21 @@ describe('QuizService — professor raro', () => {
    * para o aluno; sem o filtro, o nome do raro sairia na lista "vá capturar X"
    * e na escolha de tema, entregando o tema do raro de graça.
    */
-  it('themes() e answer() nunca listam professor raro', async () => {
+  /**
+   * Antes isto era garantido por um filtro `rare: false` em duas consultas.
+   * Agora a garantia é estrutural e mais forte: as telas viradas para o aluno
+   * não listam professor NENHUM, então não há por onde o nome de um raro
+   * escapar — nem por um filtro que alguém esqueça de repetir numa consulta
+   * nova.
+   */
+  it('themes() e answer() não expõem professor nenhum, raro ou comum', async () => {
     const { prisma, service } = createSubject({ raro: ERON });
 
-    await service.themes();
-    await errar(service);
+    const temas = await service.themes();
+    const resultado = await errar(service);
 
-    expect(prisma.professor.findMany).toHaveBeenCalled();
-    for (const [arg] of prisma.professor.findMany.mock.calls) {
-      expect(arg.where).toMatchObject({ active: true, rare: false });
-    }
+    expect(prisma.professor.findMany).not.toHaveBeenCalled();
+    expect(JSON.stringify({ temas, resultado })).not.toContain('Eron');
   });
 
   /**

@@ -13,6 +13,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import {
   ANSWER_GRACE_MS,
   ANSWER_WINDOW_MS,
@@ -21,7 +22,6 @@ import {
   QUIZ_THEMES,
   RARE_UNLOCK_CORRECT_ANSWERS,
   REPEAT_OLDEST_FRACTION,
-  THEME_COOLDOWN_MS,
   type QuizDifficulty,
   type RandomSource,
 } from './quiz.constants';
@@ -45,27 +45,18 @@ interface QuizSession {
 
 const SWEEP_INTERVAL_MS = 60_000;
 
-interface ProfessorRow {
-  id: string;
-  name: string;
-  slug: string;
-  types: string[];
-}
-
 /**
- * Só professor ATIVO é sugerido ao aluno que acerta: mandar alguém atrás de um
- * professor fora de circulação é mandá-lo para uma ficha que não captura nada.
+ * NENHUMA rota da bancada devolve professor.
  *
- * **E nunca um RARO.** Este select alimenta `themes()` E `answer()`, que são as
- * duas telas viradas para o aluno. Sem o `rare: false`, o nome do raro
- * apareceria na lista "vá capturar X ou Y" e na escolha de tema — entregando de
- * graça qual tema tem raro, para a fila inteira, o dia inteiro. O aluno tem de
- * descobrir isso no instante em que destrava, ganhando (tarefa 15, decisão 15).
+ * Havia um `PROFESSOR_DO_TEMA_SELECT` alimentando `themes()` e `answer()` com
+ * a lista de "vá capturar X ou Y". Ele saiu inteiro, e com ele a superfície de
+ * vazamento que obrigava a filtrar `rare: false` em dois lugares — o segredo
+ * "em que tema existe raro" não pode vazar por uma tela virada para o aluno.
+ *
+ * Some também uma promessa que a captura não tinha como cumprir: quem o aluno
+ * leva é sorteado no scan, a partir do que ele já tem (capture-lottery.ts).
+ * Um nome anunciado na bancada podia não ser o que saía no QR.
  */
-const PROFESSOR_DO_TEMA_SELECT = {
-  where: { active: true, rare: false },
-  select: { id: true, name: true, slug: true, types: true },
-} as const;
 
 /** O raro que o acerto acabou de liberar, ou o que segue pendente de entrega. */
 export interface RaroNaResposta {
@@ -118,6 +109,7 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private prisma: PrismaService,
     private metrics: MetricsService,
+    private settings: SettingsService,
     @Optional()
     @Inject(QUIZ_RNG)
     private readonly rng: RandomSource = Math.random,
@@ -135,23 +127,26 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
 
   // ── Consulta para montar a bancada ────────────────────────────────────────
 
-  /** Temas disponíveis, com quantas questões e quais professores cada um tem. */
+  /**
+   * Temas disponíveis e quantas questões cada um tem.
+   *
+   * **Não devolve professor nenhum**, e é de propósito. A bancada fica virada
+   * para o aluno: dizer quem cai em cada tema faria ele escolher pelo professor
+   * que falta na coleção, não pelo assunto que sabe. O sorteio da captura é do
+   * servidor e acontece só no scan, então o nome nem seria promessa confiável.
+   */
   async themes() {
-    const [contagens, professores] = await Promise.all([
-      this.prisma.quizQuestion.groupBy({
-        by: ['theme'],
-        where: { active: true },
-        _count: { _all: true },
-      }),
-      this.prisma.professor.findMany(PROFESSOR_DO_TEMA_SELECT),
-    ]);
+    const contagens = await this.prisma.quizQuestion.groupBy({
+      by: ['theme'],
+      where: { active: true },
+      _count: { _all: true },
+    });
 
     const porTema = new Map(contagens.map((c) => [c.theme, c._count._all]));
 
     return QUIZ_THEMES.map((theme) => ({
       theme,
       questoes: porTema.get(theme) ?? 0,
-      professores: this.professoresDoTema(professores, theme),
     }));
   }
 
@@ -162,7 +157,8 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
    */
   async aluno(matricula: string) {
     const user = await this.findAluno(matricula);
-    const desde = new Date(Date.now() - THEME_COOLDOWN_MS);
+    const cooldownMs = await this.settings.themeCooldownMs();
+    const desde = new Date(Date.now() - cooldownMs);
 
     const [recentes, totais] = await Promise.all([
       // Anuladas ficam de fora do cartão do operador pelo mesmo motivo que
@@ -186,7 +182,7 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
     for (const r of recentes) {
       if (vistos.has(r.theme)) continue;
       vistos.add(r.theme);
-      const restante = THEME_COOLDOWN_MS - (Date.now() - r.createdAt.getTime());
+      const restante = cooldownMs - (Date.now() - r.createdAt.getTime());
       if (restante > 0) {
         cooldowns.push({
           theme: r.theme,
@@ -220,16 +216,20 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
     const user = await this.findAluno(matricula);
     await this.assertForaDoCooldown(user.id, theme);
 
+    // O TTL do descarte acompanha o cooldown: se ele encolher para 2min, uma
+    // questão abandonada não pode continuar suprimida por 10.
+    const cooldownMs = await this.settings.themeCooldownMs();
+
     // Um aluno por vez: se o operador recomeçou, a questão anterior morre em
     // vez de ficar aberta para ser respondida depois. Ela conta como VISTA — o
     // aluno leu o enunciado, mesmo sem responder.
     for (const [id, s] of this.sessions) {
       if (s.userId !== user.id) continue;
       this.sessions.delete(id);
-      this.marcarDescartada(s.userId, s.questionId);
+      this.marcarDescartada(s.userId, s.questionId, cooldownMs);
     }
 
-    const question = await this.sortearQuestao(user.id, theme);
+    const question = await this.sortearQuestao(user.id, theme, cooldownMs);
     const { options, correctIndex } = embaralhar(
       lerAlternativas(question.options),
       question.answer,
@@ -323,9 +323,7 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
       acertou,
     );
 
-    const professores = await this.prisma.professor.findMany(
-      PROFESSOR_DO_TEMA_SELECT,
-    );
+    const cooldownMs = await this.settings.themeCooldownMs();
 
     return {
       raro,
@@ -339,10 +337,15 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
       answerIndex: escolha,
       elapsedMs: Math.min(agora - session.startedAt, ANSWER_WINDOW_MS),
       theme: session.theme,
-      // Para onde mandar o aluno quando acerta. Vem sempre, para o operador
-      // conseguir explicar o próximo passo mesmo depois de um erro.
-      professores: this.professoresDoTema(professores, session.theme),
-      liberadoAte: new Date(agora + THEME_COOLDOWN_MS).toISOString(),
+      // NENHUM nome de professor sai daqui. Quem o aluno leva é sorteado no
+      // servidor, no instante do scan (captures/capture-lottery.ts), e depende
+      // do que ele já tem — prometer um nome na bancada seria promessa que a
+      // captura não tem como cumprir. A tela manda escanear o QR do tema, e
+      // pronto.
+      liberadoAte: new Date(agora + cooldownMs).toISOString(),
+      // Para a tela dizer a espera certa sem repetir o número no Vue: o valor
+      // é configurável no painel e mudaria em dois lugares.
+      cooldownMinutos: Math.round(cooldownMs / 60_000),
     };
   }
 
@@ -590,22 +593,29 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Cooldown de 10min por aluno e tema, lido do banco e não de memória: ele
-   * precisa sobreviver a um restart no meio do evento, senão a fila descobre
-   * que basta esperar o servidor reiniciar.
+   * Cooldown por aluno e tema, lido do banco e não de memória: ele precisa
+   * sobreviver a um restart no meio do evento, senão a fila descobre que basta
+   * esperar o servidor reiniciar.
+   *
+   * A duração é configurável no painel (padrão 10min) e é lida a cada chamada:
+   * afrouxar o cooldown com a fila crescendo precisa liberar na hora quem já
+   * estava esperando, sem deploy.
    */
   private async assertForaDoCooldown(userId: string, theme: string) {
-    const ultima = await this.prisma.quizAttempt.findFirst({
-      // Tentativa anulada por errata procedente não segura o aluno: a pergunta
-      // estava errada, então a espera de 10min seria punição pelo erro do banco.
-      where: { userId, theme, annulled: false },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    });
+    const [ultima, cooldownMs] = await Promise.all([
+      this.prisma.quizAttempt.findFirst({
+        // Tentativa anulada por errata procedente não segura o aluno: a
+        // pergunta estava errada, então a espera seria punição pelo erro do
+        // banco de questões.
+        where: { userId, theme, annulled: false },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+      this.settings.themeCooldownMs(),
+    ]);
     if (!ultima) return;
 
-    const restante =
-      THEME_COOLDOWN_MS - (Date.now() - ultima.createdAt.getTime());
+    const restante = cooldownMs - (Date.now() - ultima.createdAt.getTime());
     if (restante <= 0) return;
 
     const segundos = Math.ceil(restante / 1000);
@@ -628,7 +638,11 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
    * Esgotado o banco, repetir é melhor que recusar a tentativa, e aí a ordem é
    * a da memória: primeiro o que ele viu há mais tempo.
    */
-  private async sortearQuestao(userId: string, theme: string) {
+  private async sortearQuestao(
+    userId: string,
+    theme: string,
+    cooldownMs: number,
+  ) {
     const [respondidas, questoes] = await Promise.all([
       // `groupBy` em vez de listar as tentativas: o que interessa é o conjunto
       // de questões vistas e QUANDO cada uma foi vista pela última vez, não o
@@ -658,7 +672,7 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const vistaEm = this.montarVistas(userId, respondidas);
+    const vistaEm = this.montarVistas(userId, respondidas, cooldownMs);
     const ineditas = questoes.filter((q) => !vistaEm.has(q.id));
     return this.sortearPorDificuldade(
       ineditas.length ? ineditas : maisAntigas(questoes, vistaEm),
@@ -673,6 +687,7 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
   private montarVistas(
     userId: string,
     respondidas: { questionId: string; _max: { createdAt: Date | null } }[],
+    cooldownMs: number,
   ): Map<string, number> {
     const vistas = new Map<string, number>();
     for (const r of respondidas) {
@@ -682,7 +697,7 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
     const agora = Date.now();
     for (const [questionId, expiraEm] of this.descartadas.get(userId) ?? []) {
       if (expiraEm <= agora) continue;
-      const quando = expiraEm - THEME_COOLDOWN_MS;
+      const quando = expiraEm - cooldownMs;
       vistas.set(questionId, Math.max(vistas.get(questionId) ?? 0, quando));
     }
     return vistas;
@@ -725,16 +740,14 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Registra uma questão exibida e abandonada. Ver `descartadas`. */
-  private marcarDescartada(userId: string, questionId: string): void {
+  private marcarDescartada(
+    userId: string,
+    questionId: string,
+    cooldownMs: number,
+  ): void {
     const doAluno = this.descartadas.get(userId) ?? new Map<string, number>();
-    doAluno.set(questionId, Date.now() + THEME_COOLDOWN_MS);
+    doAluno.set(questionId, Date.now() + cooldownMs);
     this.descartadas.set(userId, doAluno);
-  }
-
-  private professoresDoTema(professores: ProfessorRow[], theme: string) {
-    return professores
-      .filter((p) => p.types.includes(theme))
-      .map(({ name, slug }) => ({ name, slug }));
   }
 
   /** Métrica de engajamento. Nunca derruba a resposta do quiz. */

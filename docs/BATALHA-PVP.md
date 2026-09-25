@@ -42,7 +42,7 @@ Criado em **02/08/2026**. Feature para a semana tecnológica (1000+ alunos).
 
 | Decisão | Escolha |
 |---|---|
-| Cooldown anti win-trading | **12h por dupla** — cada par de jogadores tem 1 batalha ranqueada a cada 12h |
+| Cooldown anti win-trading | **12h por dupla** (padrão) — cada par de jogadores tem 1 batalha ranqueada a cada 12h. Ajustável de 1 a 72h em `/admin/configuracoes`, sem deploy |
 | Presença | **Todos os usuários logados e conectados aparecem online**, sem filtro de rede |
 | Autoridade da batalha | **Servidor autoritativo** — o motor roda no backend; o cliente só envia intenções e renderiza eventos |
 | Tema dos tiers | **Metais clássicos** (Bronze → Prata → Ouro → Platina → Diamante → Mestre) |
