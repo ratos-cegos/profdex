@@ -15,7 +15,7 @@
  * O cronômetro daqui é conforto visual: quem decide se o tempo acabou é o
  * servidor, na hora de conferir a resposta.
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
 import TypeIcon from '../components/TypeIcon.vue'
@@ -90,14 +90,38 @@ const raroPendentesDoAluno = computed(() => aluno.value?.raroPendentes ?? [])
 
 const rotuloDoTema = (id) => getType(id)?.label ?? id
 
+// ── Cooldown dos temas, contando na tela ────────────────────────────────────
+// O servidor diz quantos segundos faltam NO MOMENTO da consulta; daí em diante
+// a contagem é local. Sem ela o número ficava congelado, e o aluno a quem
+// faltavam 10s tinha de sair e digitar a matrícula de novo para o tema abrir.
+// A contagem é relativa (segundos), então relógio do tablet defasado não
+// importa — e quem decide continua sendo o `/start`, que recusa quem ainda está
+// em cooldown.
+const agora = ref(Date.now())
+const liberacoes = ref(new Map())
+let relogio = null
+
+watch(aluno, (a) => {
+  const base = Date.now()
+  agora.value = base
+  liberacoes.value = new Map(
+    (a?.cooldowns ?? []).map((c) => [c.theme, base + c.segundosRestantes * 1000]),
+  )
+})
+
+onMounted(() => {
+  relogio = setInterval(() => (agora.value = Date.now()), 1000)
+})
+onBeforeUnmount(() => clearInterval(relogio))
+
 const temasExibidos = computed(() =>
   TYPE_CYCLE.map((t) => {
     const dados = temas.value.find((x) => x.theme === t.id)
-    const espera = aluno.value?.cooldowns.find((c) => c.theme === t.id)
+    const liberaEm = liberacoes.value.get(t.id) ?? 0
     return {
       ...t,
       questoes: dados?.questoes ?? 0,
-      esperaSegundos: espera?.segundosRestantes ?? 0,
+      esperaSegundos: Math.max(0, Math.ceil((liberaEm - agora.value) / 1000)),
     }
   }),
 )
