@@ -30,6 +30,9 @@ let lastScannedData = null
 let lastScannedAt = 0
 let avisoTimer = null
 
+// Quanto tempo o mesmo código precisa ficar FORA da mira para ser lido de novo.
+const RELEITURA_MS = 3000
+
 /**
  * Recusas com código de domínio estável. Texto do servidor muda; código, não —
  * por isso o app não lê `message` (ver .codex/CODE_STYLE.md).
@@ -39,26 +42,53 @@ let avisoTimer = null
  * não há como devolvê-lo depois.
  */
 const AVISOS_POR_CODIGO = {
-  TIPO_SEM_PROFESSOR:
-    'Ainda não há professor deste tipo. Sua ficha continua valendo — ' +
-    'procure a bancada.',
+  TIPO_SEM_PROFESSOR: {
+    titulo: 'SEM PROFESSOR AINDA',
+    texto:
+      'Ainda não há professor deste tipo. Sua ficha continua valendo — ' +
+      'procure a bancada.',
+  },
   // NÃO diz qual tema falta: é a mesma regra de vazamento que tira o raro da
   // lista da bancada. Quem pegou uma ficha emprestada não descobre por aqui
   // onde estudar para merecê-la.
-  RARO_BLOQUEADO:
-    'Esta ficha é de um professor raro e ainda não está liberada para você — ' +
-    'procure a bancada.',
-  RARO_INDISPONIVEL:
-    'Este professor raro saiu de circulação. Sua ficha não foi gasta — ' +
-    'procure a bancada.',
-  RARO_JA_CAPTURADO:
-    'Você já tem este professor raro. Cada raro vale uma captura por conta — ' +
-    'esta ficha continua valendo para outra pessoa.',
+  RARO_BLOQUEADO: {
+    titulo: 'RARO BLOQUEADO',
+    texto:
+      'Esta ficha é de um professor raro e ainda não está liberada para você — ' +
+      'procure a bancada.',
+  },
+  RARO_INDISPONIVEL: {
+    titulo: 'RARO INDISPONÍVEL',
+    texto:
+      'Este professor raro saiu de circulação. Sua ficha não foi gasta — ' +
+      'procure a bancada.',
+  },
+  RARO_JA_CAPTURADO: {
+    titulo: 'RARO JÁ CAPTURADO',
+    texto:
+      'Você já tem este professor raro. Cada raro vale uma captura por conta — ' +
+      'esta ficha continua valendo para outra pessoa.',
+  },
 }
 
-// Aviso passageiro sobre a câmera: some sozinho para o scanner seguir usável.
-function mostrarAviso(mensagem) {
-  aviso.value = mensagem
+const AVISO_JA_USADO = {
+  titulo: 'QR JÁ USADO',
+  texto: 'Este QR já foi utilizado. Cada ficha vale uma captura.',
+}
+const AVISO_INVALIDO = {
+  titulo: 'QR INVÁLIDO',
+  texto: 'Este QR não é uma ficha de captura do ProfDex.',
+}
+// Rede, servidor fora, limite de requisições: nada disso gasta a ficha, e o
+// aluno precisa saber que pode tentar de novo — e como.
+const AVISO_FALHA = {
+  titulo: 'NÃO DEU AGORA',
+  texto: 'Não foi possível capturar. Sua ficha não foi gasta — afaste o QR e aponte de novo.',
+}
+
+// Aviso passageiro: some sozinho para o scanner seguir usável.
+function mostrarAviso(novo) {
+  aviso.value = novo
   clearTimeout(avisoTimer)
   avisoTimer = setTimeout(() => (aviso.value = null), 5000)
 }
@@ -98,10 +128,19 @@ function extractCaptureToken(data) {
 // ── Processa dado lido pelo scanner ───────────────────────────────────────
 async function onQRDetected(data) {
   const now = Date.now()
-  // Debounce: ignora o mesmo código por 3 s
-  if (data === lastScannedData && now - lastScannedAt < 3000) return
+  // O mesmo código só volta a ser processado depois de sair da mira por
+  // RELEITURA_MS. A janela DESLIZA a cada leitura: com um intervalo fixo (ou
+  // zerado no erro, como era), o papel recusado parado na frente da câmera era
+  // relido em loop, e a tela alternava "CAPTURANDO!" e o aviso sem parar.
+  const repetido = data === lastScannedData && now - lastScannedAt < RELEITURA_MS
   lastScannedData = data
   lastScannedAt = now
+  if (repetido) {
+    // O aviso acompanha o papel: enquanto ele continua na mira, a explicação
+    // continua na tela, em vez de sumir e deixar "aponte para o QR" por cima.
+    if (aviso.value) mostrarAviso(aviso.value)
+    return
+  }
 
   // ── Caminho 1: token de captura ──────────────────────────────────────────
   const token = extractCaptureToken(data)
@@ -117,15 +156,18 @@ async function onQRDetected(data) {
       // ficha rara reusam 404 e 409, e cair no texto genérico de "QR já
       // utilizado" mandaria embora um aluno cuja ficha continua valendo.
       const codigo = e?.response?.data?.code
+      const status = e?.response?.status
       if (codigo && AVISOS_POR_CODIGO[codigo]) {
         mostrarAviso(AVISOS_POR_CODIGO[codigo])
-      } else if (e?.response?.status === 409) {
+      } else if (status === 409) {
         // Ficha já resgatada precisa de resposta na tela: sem isso o aluno fica
         // insistindo num papel que o app nunca vai aceitar de novo.
-        mostrarAviso('Este QR já foi utilizado. Cada ficha vale uma captura.')
+        mostrarAviso(AVISO_JA_USADO)
+      } else if (status === 404) {
+        mostrarAviso(AVISO_INVALIDO)
+      } else {
+        mostrarAviso(AVISO_FALHA)
       }
-      // token inválido — ignora silenciosamente, não trava o scanner
-      lastScannedData = null
     } finally {
       capturing.value = false
     }
@@ -318,10 +360,10 @@ onUnmounted(() => {
               QR
             </div>
             <div class="hint-copy">
-              <p v-if="aviso" class="pixel hint-title hint-title--warn">QR JÁ USADO</p>
+              <p v-if="aviso" class="pixel hint-title hint-title--warn">{{ aviso.titulo }}</p>
               <p v-else class="pixel hint-title">APONTE PARA O QR CODE</p>
               <p class="hint-subtitle">
-                {{ aviso ?? 'Mantenha o código inteiro dentro da mira.' }}
+                {{ aviso?.texto ?? 'Mantenha o código inteiro dentro da mira.' }}
               </p>
               <p v-if="!aviso" class="hint-origin">
                 O QR aparece quando você acerta uma questão na bancada do ProfDex, na Semana Tecnológica.
