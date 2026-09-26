@@ -32,7 +32,11 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
 </script>
 
 <template>
-  <div
+  <!-- O card INTEIRO abre a ficha, não só a foto: numa grade de celular o
+       alvo de toque era o círculo de 64px, e tocar no nome ou no status não
+       fazia nada. Só o capturado é botão — os outros não têm ficha a abrir. -->
+  <component
+    :is="professor.captured ? 'button' : 'div'"
     class="prof-card"
     :class="{
       'prof-card--captured': professor.captured,
@@ -40,6 +44,9 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
       'prof-card--unknown': !professor.discovered,
       'prof-card--rare': rare,
     }"
+    :type="professor.captured ? 'button' : undefined"
+    :aria-label="professor.captured ? `Ver ficha de ${professor.name}` : undefined"
+    @click="professor.captured && emit('details', professor)"
   >
     <div class="prof-card__inner">
       <div class="prof-card__num pixel">
@@ -47,14 +54,7 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
         <template v-else>#{{ String(index + 1).padStart(3, '0') }}</template>
       </div>
 
-      <component
-        :is="professor.captured ? 'button' : 'div'"
-        class="prof-card__avatar"
-        :class="{ 'prof-card__avatar--clickable': professor.captured }"
-        :type="professor.captured ? 'button' : undefined"
-        :aria-label="professor.captured ? `Ver ficha de ${professor.name}` : undefined"
-        @click="professor.captured && emit('details', professor)"
-      >
+      <div class="prof-card__avatar">
         <template v-if="professor.captured">
           <img
             v-if="!imgError"
@@ -82,7 +82,7 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
             <span class="unknown-badge pixel" aria-hidden="true">?</span>
           </div>
         </template>
-      </component>
+      </div>
 
       <div class="prof-card__name">
         <span v-if="professor.captured">{{ professor.name }}</span>
@@ -101,7 +101,7 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
         <span v-else class="status-unknown">???</span>
       </div>
     </div>
-  </div>
+  </component>
 </template>
 
 <style scoped>
@@ -156,22 +156,28 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
   justify-content: center;
 }
 
-/* Avatar de professor liberado vira botão para abrir a ficha */
-.prof-card__avatar--clickable {
-  background: transparent;
+/* Card de professor capturado é o botão que abre a ficha. O reset devolve o
+   que o <button> tira: largura da célula da grade, cor e alinhamento do texto. */
+button.prof-card {
+  display: block;
+  width: 100%;
   padding: 0;
-  border: none;
-  border-radius: 50%;
-  transition: transform 0.15s ease, filter 0.15s ease;
+  color: inherit;
+  text-align: inherit;
+  font: inherit;
 }
 
-.prof-card__avatar--clickable:hover {
-  transform: scale(1.06);
-  filter: brightness(1.08);
+button.prof-card:hover {
+  transform: translateY(-2px);
 }
 
-.prof-card__avatar--clickable:active {
+button.prof-card:active {
   transform: scale(0.97);
+}
+
+button.prof-card:focus-visible {
+  outline: 2px solid var(--yellow);
+  outline-offset: 2px;
 }
 
 .avatar-img {
