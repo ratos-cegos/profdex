@@ -36,6 +36,10 @@ const aberto = ref(null)
 const time = ref([])
 const enviando = ref(false)
 const saindo = ref(false)
+// O lead que VOCÊ escolheu, para o card continuar aceso enquanto o rival
+// decide. Só local: num F5 do preview o destaque some, mas a escolha já está
+// no servidor e os cards seguem travados.
+const leadEscolhido = ref(null)
 
 onMounted(() => {
   battle.connect() // idempotente; cobre refresh no meio da seleção (resync)
@@ -52,13 +56,33 @@ onUnmounted(() => clock && clearInterval(clock))
 
 // Só professores com pelo menos um exemplar — a lista sai das capturas, não da
 // dex, porque é o exemplar que entra na arena.
+//
+// Os raros possuídos entram junto: fora da contagem da dex eles não estão em
+// `professors`, mas em batalha são exemplares como qualquer outro (tarefa 15,
+// decisão 13). O servidor já os aceita no time; sem eles aqui, o aluno que
+// pegou um raro não tinha como escolhê-lo.
 const capturados = computed(() =>
-  professors.professors
+  [...professors.professors, ...professors.rares.owned]
     .map((p) => ({ ...p, exemplares: captures.byProfessorId(p.id) }))
     .filter((p) => p.exemplares.length > 0),
 )
 
 const grupos = computed(() => (aberto.value ? captures.groupedByVariant(aberto.value.id) : []))
+
+// Quantos slots dá para preencher. O time sai dos EXEMPLARES — dois do mesmo
+// professor contam dois —, então quem tem menos de 3 não tem como encher a
+// faixa, e os slots que sobram aparecem TRANCADOS em vez de vazios: vazio
+// sugere "falta escolher", e o aluno ficava procurando o que pôr ali.
+// Enquanto as listas não chegaram nada tranca: "vazio" ainda não quer dizer
+// "não tem".
+const exemplaresDisponiveis = computed(() =>
+  capturados.value.reduce((total, p) => total + p.exemplares.length, 0),
+)
+const slotsDisponiveis = computed(() => {
+  if (!exemplaresDisponiveis.value && (captures.loading || professors.loading)) return MAX_TIME
+  return Math.min(MAX_TIME, exemplaresDisponiveis.value)
+})
+const slotTrancado = (i) => i > slotsDisponiveis.value
 
 const secondsLeft = computed(() => {
   const deadline = battle.pvp?.pickDeadline
@@ -78,7 +102,7 @@ function typesOf(professor) {
 }
 
 const emPreview = computed(() => battle.pvp?.phase === 'preview')
-const timeCheio = computed(() => time.value.length >= MAX_TIME)
+const timeCheio = computed(() => time.value.length >= slotsDisponiveis.value)
 const jaNoTime = (id) => time.value.some((e) => e.id === id)
 
 // Sem nada para escolher, a tela precisa dizer isso — e dar saída. Enquanto a
@@ -150,7 +174,8 @@ async function escolherLead(membro) {
   if (battle.pvp?.youPicked || enviando.value) return
   enviando.value = true
   try {
-    await battle.chooseLead(membro.captureId)
+    const ack = await battle.chooseLead(membro.captureId)
+    if (ack.ok) leadEscolhido.value = membro.captureId
   } finally {
     enviando.value = false
   }
@@ -183,11 +208,19 @@ async function escolherLead(membro) {
         v-for="i in MAX_TIME"
         :key="i"
         class="slot"
-        :class="{ 'slot--cheio': time[i - 1], 'slot--proximo': time.length === i - 1 }"
+        :class="{
+          'slot--cheio': time[i - 1],
+          'slot--proximo': time.length === i - 1 && !slotTrancado(i),
+          'slot--trancado': slotTrancado(i),
+        }"
         type="button"
         :disabled="!time[i - 1] || battle.pvp.youPicked"
         :aria-label="
-          time[i - 1] ? `Remover ${time[i - 1].professor.name} do time` : `Slot ${i} vazio`
+          time[i - 1]
+            ? `Remover ${time[i - 1].professor.name} do time`
+            : slotTrancado(i)
+              ? `Slot ${i} trancado — capture mais professores para usar`
+              : `Slot ${i} vazio`
         "
         @click="removerSlot(i - 1)"
       >
@@ -195,26 +228,45 @@ async function escolherLead(membro) {
           <ProfessorFace class="slot__face" :professor="time[i - 1].professor" />
           <span class="slot__remover" aria-hidden="true">✕</span>
         </template>
+        <span v-else-if="slotTrancado(i)" class="slot__cadeado" aria-hidden="true">🔒</span>
         <span v-else class="pixel slot__vazio">{{ i }}</span>
       </button>
 
       <button
         class="pixel slots__confirmar"
+        :class="{ 'slots__confirmar--pronto': time.length && timeCheio && !battle.pvp.youPicked }"
         type="button"
         :disabled="!time.length || battle.pvp.youPicked || enviando"
         @click="confirmarTime"
       >
-        {{ battle.pvp.youPicked ? 'CONFIRMADO' : `CONFIRMAR (${time.length})` }}
+        {{ battle.pvp.youPicked ? 'CONFIRMADO' : `CONFIRMAR (${time.length}/${slotsDisponiveis})` }}
       </button>
+
+      <p v-if="!semExemplar && slotsDisponiveis < MAX_TIME" class="slots__aviso">
+        Você tem {{ slotsDisponiveis }}
+        {{ slotsDisponiveis === 1 ? 'professor capturado' : 'professores capturados' }}, então seu
+        time vai até {{ slotsDisponiveis }}. Os slots com 🔒 abrem quando você capturar mais.
+      </p>
     </div>
 
     <main class="pick__main page">
       <!-- ── Fase 2: team preview + escolha do lead ───────────────────────── -->
       <template v-if="emPreview">
-        <p class="pick__hint">
-          Times revelados. Escolha quem entra primeiro — o rival escolhe o dele ao mesmo tempo, sem
-          ver o seu.
-        </p>
+        <!-- A chamada é o centro da tela: um parágrafo cinza pedindo a escolha
+             passava batido, e o aluno ficava olhando os dois times sem saber
+             que o próximo toque era dele. -->
+        <header class="lead-chamada" :class="{ 'lead-chamada--feita': battle.pvp.youPicked }">
+          <h2 class="pixel lead-chamada__titulo">
+            {{ battle.pvp.youPicked ? 'PRIMEIRO ESCOLHIDO' : 'SELECIONE O PRIMEIRO' }}
+          </h2>
+          <p class="lead-chamada__sub">
+            <template v-if="battle.pvp.youPicked">Pronto. Agora é esperar o rival.</template>
+            <template v-else>
+              Toque no professor do seu time que começa a batalha. O rival escolhe ao mesmo tempo,
+              sem ver o seu.
+            </template>
+          </p>
+        </header>
 
         <section class="preview">
           <h2 class="pixel preview__titulo">SEU TIME</h2>
@@ -222,6 +274,10 @@ async function escolherLead(membro) {
             <li v-for="m in battle.pvp.you?.team ?? []" :key="m.captureId">
               <button
                 class="lead-card"
+                :class="{
+                  'lead-card--escolhivel': !battle.pvp.youPicked,
+                  'lead-card--escolhido': leadEscolhido === m.captureId,
+                }"
                 type="button"
                 :disabled="battle.pvp.youPicked || enviando"
                 @click="escolherLead(m)"
@@ -229,13 +285,15 @@ async function escolherLead(membro) {
                 <ProfessorFace class="lead-card__face" :professor="m.professor" />
                 <span class="pixel lead-card__nome">{{ m.professor.name }}</span>
                 <TypeBadges :types="m.types" />
-                <span class="lead-card__cta">Entrar primeiro</span>
+                <span class="pixel lead-card__cta">
+                  {{ leadEscolhido === m.captureId ? '1º ✓' : 'ENTRA 1º' }}
+                </span>
               </button>
             </li>
           </ul>
         </section>
 
-        <section class="preview">
+        <section class="preview preview--rival">
           <h2 class="pixel preview__titulo">TIME DE {{ battle.pvp.foe?.name?.toUpperCase() }}</h2>
           <ul class="preview__lista">
             <li v-for="(m, i) in battle.pvp.foe?.team ?? []" :key="i" class="preview__foe">
@@ -250,8 +308,9 @@ async function escolherLead(membro) {
       <!-- ── Fase 1, etapa 1: qual professor ──────────────────────────────── -->
       <template v-else-if="!aberto">
         <p v-if="!semExemplar" class="pick__hint">
-          Monte seu time com até {{ MAX_TIME }} professores. Quanto mais levar, mais chances de
-          virar o jogo — o rival não vê sua escolha até os dois confirmarem.
+          Monte seu time com até {{ slotsDisponiveis }}
+          {{ slotsDisponiveis === 1 ? 'professor' : 'professores' }}. Quanto mais levar, mais
+          chances de virar o jogo — o rival não vê sua escolha até os dois confirmarem.
         </p>
 
         <p v-if="captures.loading && !capturados.length" class="pick__empty">
@@ -457,6 +516,40 @@ async function escolherLead(membro) {
   color: var(--text-muted, #8b93a7);
 }
 
+.slot:disabled {
+  cursor: default;
+}
+
+/* Trancado: não é "falta escolher", é "não dá". Sem a borda tracejada de slot
+   vazio, apagado e listrado — o mesmo visual de algo indisponível. */
+.slot--trancado {
+  border-style: solid;
+  border-color: transparent;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.06) 0 6px,
+    transparent 6px 12px
+  );
+  opacity: 0.5;
+}
+
+.slot--trancado:disabled {
+  cursor: not-allowed;
+}
+
+.slot__cadeado {
+  font-size: 18px;
+  filter: grayscale(1);
+}
+
+.slots__aviso {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted, #8b93a7);
+}
+
 .slots__confirmar {
   margin-left: auto;
   min-height: 44px;
@@ -469,6 +562,11 @@ async function escolherLead(membro) {
   cursor: pointer;
 }
 
+/* Time no limite: o próximo passo é confirmar, e o botão avisa. */
+.slots__confirmar--pronto {
+  animation: pick-pulso 1.2s ease-in-out infinite;
+}
+
 .slots__confirmar:disabled {
   opacity: 0.45;
   background: transparent;
@@ -478,6 +576,38 @@ async function escolherLead(membro) {
 }
 
 /* ── Team preview ────────────────────────────────────────────────────────── */
+.lead-chamada {
+  padding: 18px 16px;
+  border-radius: var(--radius-lg);
+  border: 3px solid var(--yellow, #ffcb05);
+  background: rgba(255, 203, 5, 0.1);
+  text-align: center;
+}
+
+.lead-chamada__titulo {
+  margin: 0 0 10px;
+  font-size: clamp(16px, 5.5vw, 24px);
+  line-height: 1.3;
+  color: var(--yellow, #ffcb05);
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+.lead-chamada__sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text, #e8eaf0);
+}
+
+.lead-chamada--feita {
+  border-color: var(--success-text);
+  background: var(--success-bg);
+}
+
+.lead-chamada--feita .lead-chamada__titulo {
+  color: var(--success-text);
+}
+
 .preview {
   margin-bottom: 20px;
 }
@@ -521,11 +651,30 @@ async function escolherLead(membro) {
 
 .lead-card {
   cursor: pointer;
+  color: inherit;
+}
+
+/* Ainda por escolher: borda amarela pulsando diz "isto é para tocar". */
+.lead-card--escolhivel {
+  border-color: var(--yellow, #ffcb05);
+  animation: pick-pulso 1.2s ease-in-out infinite;
+}
+
+.lead-card--escolhivel:active {
+  transform: scale(0.97);
 }
 
 .lead-card:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* O escolhido fica aceso enquanto os outros apagam. */
+.lead-card--escolhido,
+.lead-card--escolhido:disabled {
+  opacity: 1;
+  border-color: var(--success-text);
+  background: var(--success-bg);
 }
 
 /* Só o rosto, como no avatar da lista: a sprite de corpo inteiro reduzida a
@@ -547,14 +696,38 @@ async function escolherLead(membro) {
 }
 
 .lead-card__cta {
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--yellow, #ffcb05);
+  margin-top: 4px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 9px;
+  background: var(--yellow, #ffcb05);
+  color: #1a1a1a;
+}
+
+.lead-card--escolhido .lead-card__cta {
+  background: var(--success-text);
 }
 
 /* O time do rival é informação, não alvo de toque. */
+.preview--rival .preview__titulo {
+  color: var(--text-muted, #8b93a7);
+}
+
 .preview__foe {
-  opacity: 0.9;
+  opacity: 0.75;
+}
+
+@keyframes pick-pulso {
+  50% {
+    box-shadow: 0 0 0 4px rgba(255, 203, 5, 0.25);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lead-card--escolhivel,
+  .slots__confirmar--pronto {
+    animation: none;
+  }
 }
 
 .exemplar-card--no-time {
