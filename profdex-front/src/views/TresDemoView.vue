@@ -5,9 +5,13 @@ import Stage3D from '@/components/Stage3D.vue'
 const router = useRouter()
 
 // A página só descreve O QUE mostrar; o Stage3D cuida do COMO renderizar.
+// `autoRotate` ligado para esta ser a tela onde dá para conferir a revelação da
+// bancada sem subir o backend nem passar por um QR — é o mesmo config, e a
+// bancada só troca a cor de fundo e desliga a interação.
 const stageConfig = {
   modelPath: '/models/modelo-gustavo.glb',
   clearColor: '#1a1a1a',
+  autoRotate: true,
 }
 </script>
 
@@ -28,8 +32,9 @@ const stageConfig = {
     </section>
 
     <p class="hint">
-      Arraste para girar · pinça/scroll para zoom. O toroide é geometria
-      procedural; o modelo à direita é o GLB carregado de <code>/public/models</code>.
+      Arraste para girar · pinça/scroll para zoom. O modelo é o GLB carregado de
+      <code>/public/models</code>, centrado e escalado pelo enquadramento do
+      <code>SceneContent</code> — é o que a bancada usa na revelação.
     </p>
   </main>
 </template>

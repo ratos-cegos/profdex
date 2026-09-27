@@ -22,10 +22,13 @@ const props = defineProps({
 // para o aluno e ninguém vai arrastar a cena para ver o professor de outro
 // ângulo. Desligada por padrão — a tela de AR continua como era.
 //
+// Quem gira é o MODELO, no próprio eixo (ver SceneContent), e não a câmera em
+// volta dele: com o `autoRotate` do OrbitControls o chão e a luz giravam junto,
+// e o professor passava de um lado para o outro da tela em vez de só rodar.
+//
 // `prefers-reduced-motion` para a rotação, como o resto do app já respeita.
 const semMovimento =
-  typeof window !== 'undefined' &&
-  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
 const autoRotate = computed(() => Boolean(props.config.autoRotate) && !semMovimento)
 const interativo = computed(() => props.config.interactive !== false)
@@ -37,16 +40,17 @@ const interativo = computed(() => props.config.interactive !== false)
          ele cria o WebGLRenderer do Three.js e preenche o elemento pai.
          Tudo dentro dele é interpretado pelo renderer do TresJS. -->
     <TresCanvas :clear-color="config.clearColor ?? '#1a1a1a'" shadows :dpr="[1, 2]">
-      <!-- Câmera: posição no espaço + para onde olha -->
-      <TresPerspectiveCamera :position="[0, 1.6, 4.5]" :look-at="[0, 0.6, 0]" />
+      <!-- Câmera: posição no espaço + para onde olha.
+           Enquadra a caixa de lado LADO_ALVO (2) em que o SceneContent encaixa
+           qualquer professor: a 2,6 de distância, num FOV de 50°, cabem ~2,4
+           unidades de altura — o modelo inteiro com uma margem estreita. -->
+      <TresPerspectiveCamera :position="[0, 1.35, 2.6]" :look-at="[0, 0.95, 0]" />
 
       <!-- Controle de órbita touch/mouse (arrastar pra girar, pinça pra zoom).
            Vem pronto do @tresjs/cientos — nada de escrever na mão. -->
       <OrbitControls
         :enable-damping="true"
-        :target="[0, 0.6, 0]"
-        :auto-rotate="autoRotate"
-        :auto-rotate-speed="1.8"
+        :target="[0, 0.95, 0]"
         :enable-rotate="interativo"
         :enable-zoom="interativo"
         :enable-pan="interativo"
@@ -58,7 +62,7 @@ const interativo = computed(() => props.config.interactive !== false)
 
       <!-- Suspense trata o carregamento assíncrono do GLB lá dentro -->
       <Suspense>
-        <SceneContent :model-path="config.modelPath ?? ''" />
+        <SceneContent :model-path="config.modelPath ?? ''" :spin="autoRotate" />
       </Suspense>
     </TresCanvas>
   </div>
