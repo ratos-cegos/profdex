@@ -7,7 +7,8 @@ import ProfessorGolpes from '../components/ProfessorGolpes.vue'
 import ProfessorIdentidade from '../components/ProfessorIdentidade.vue'
 import TypeIcon from '../components/TypeIcon.vue'
 import { movesForTypes } from '../data/moves.js'
-import { spriteFrenteDe } from '../data/professorArte.js'
+import { atributosDe, melhorExemplarDe } from '../data/professorAtributos.js'
+import { ehPixelArt, spriteFrenteDe } from '../data/professorArte.js'
 import { typeInfos } from '../data/types.js'
 import { useCapturesStore } from '../stores/captures.js'
 import { useProfessorsStore } from '../stores/professors.js'
@@ -53,36 +54,8 @@ const description = computed(
 const groups = computed(() => captures.groupedByVariant(professor.value.id))
 const moves = computed(() => movesForTypes(typeIds.value))
 
-function seeded(salt, min, max) {
-  const text = `${professor.value.slug}:${salt}`
-  let hash = 0
-  for (const char of text) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
-  return min + (hash % (max - min + 1))
-}
-const stats = computed(() => [
-  { key: 'pv', label: 'PV', value: seeded('pv', 100, 150), max: 150, color: 'var(--success-text)' },
-  {
-    key: 'rigor',
-    label: 'Ataque',
-    value: seeded('rigor', 55, 95),
-    max: 100,
-    color: 'var(--error)',
-  },
-  {
-    key: 'didatica',
-    label: 'Defesa',
-    value: seeded('didatica', 55, 95),
-    max: 100,
-    color: 'var(--ds-blue-glow)',
-  },
-  {
-    key: 'raciocinio',
-    label: 'Velocidade',
-    value: seeded('raciocinio', 55, 95),
-    max: 100,
-    color: 'var(--ds-orange-glow)',
-  },
-])
+const melhorExemplar = computed(() => melhorExemplarDe(captures.byProfessorId(professor.value.id)))
+const stats = computed(() => atributosDe(melhorExemplar.value))
 const tabs = ['SOBRE', 'EXEMPLARES', 'GOLPES']
 function selectTab(index) {
   active.value = index
@@ -164,7 +137,15 @@ function voltar() {
       </nav>
       <div ref="panels" class="detail__panels" @scroll.passive="onScroll">
         <section role="tabpanel">
-          <ProfessorIdentidade :description="description" :stats="stats" @open-ar="openAr" />
+          <ProfessorIdentidade
+            :description="description"
+            :stats="stats"
+            :exemplar="melhorExemplar"
+            :sprite="spriteFrenteDe(professor)"
+            :sprite-alt="`Arte de ${professor.name}`"
+            :pixel-art="ehPixelArt(professor)"
+            @open-ar="openAr"
+          />
         </section>
         <section role="tabpanel">
           <ProfessorExemplares :groups="groups" :erro="capturesIndisponiveis" />
