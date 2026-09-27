@@ -62,6 +62,9 @@ model User {
   // Temas destravados para professor raro (ver tarefa 15).
   rareUnlocks RareUnlock[]
 
+  // QRs de captura gerados na tela da bancada para esta conta (ver tarefa 17).
+  captureTokens CaptureToken[] @relation("CaptureTokenDoAluno")
+
   @@index([battleRating(sort: Desc)])
   @@index([engagementScore(sort: Desc)])
   @@map("users")
@@ -492,22 +495,40 @@ model CaptureToken {
   // já está no bolso do aluno não pode virar lixo silencioso no meio do evento.
   variantId String? @map("variant_id")
 
+  /// QR gerado NA TELA da bancada, vinculado ao aluno que acertou: só ele
+  /// resgata, e qualquer outra conta leva 403 sem consumir a ficha.
+  ///
+  /// Nulo = ficha de PAPEL, que continua anônima — quem escanear primeiro leva.
+  /// É o que mantém válido o papel já impresso nos dois modos de entrega
+  /// (tarefa 17, decisão 12): são tokens independentes no banco.
+  assignedToId String? @map("assigned_to_id")
+
   tokenHash  String            @unique @map("token_hash")
   batch      String?
   redeemedAt DateTime?         @map("redeemed_at")
   redeemedBy String?           @map("redeemed_by")
   createdAt  DateTime          @default(now()) @map("created_at")
   variant    ProfessorVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  // Cascade: a ficha de tela só vale para uma conta. Sem o dono ela não é
+  // resgatável por ninguém, então guardá-la só inflaria o estoque.
+  assignedTo User?             @relation("CaptureTokenDoAluno", fields: [assignedToId], references: [id], onDelete: Cascade)
   capture    Capture?
 
-  // Os dois são opcionais no schema, mas EXATAMENTE UM é preenchido: ficha nova
-  // tem `type`, ficha legada tem `variantId`. É regra de aplicação — o banco não
-  // tem como expressar "um ou outro" sem um CHECK que o Prisma não gera.
+  // Os dois primeiros são opcionais no schema, mas EXATAMENTE UM é preenchido:
+  // ficha por tipo tem `type`, ficha rara (e a legada) tem `variantId`. É regra
+  // de aplicação — o banco não tem como expressar "um ou outro" sem um CHECK
+  // que o Prisma não gera.
+  //
+  // `assignedToId` é ORTOGONAL aos outros dois: ele diz de QUEM é a ficha, não
+  // o que ela entrega, e vale tanto para a comum quanto para a rara.
 
   // Estoque do painel, que hoje conta por tipo.
   @@index([type, redeemedAt])
   // Estoque das fichas legadas, por variante.
   @@index([variantId, redeemedAt])
+  // O QR de tela ainda não resgatado de um aluno: lido a cada acerto no modo
+  // `tela` para matar o anterior antes de emitir o novo.
+  @@index([assignedToId, redeemedAt])
   @@map("capture_tokens")
 }
 

@@ -34,6 +34,42 @@ institucional.
 | `googleId` | Id estável do Google (o e-mail pode ser renomeado) |
 | `role` | `aluno` ou `admin`, derivado do domínio |
 
+### Corrigir a matrícula
+
+A matrícula é digitada uma vez, na conclusão do cadastro, com `MaxLength(64)` e
+**nenhuma validação de formato** — um dígito trocado é aceito em silêncio, e o
+aluno aparece na bancada como "não encontrado", ou pior, como outra pessoa.
+
+`PATCH /users/me/matricula` conserta isso, no **Perfil** e pelo próprio dono. O
+erro é do cadastro e quem sabe o valor certo é ele; a unicidade impede tomar
+matrícula já cadastrada, então ninguém rouba conta existente.
+
+```
+PATCH /api/users/me/matricula { matricula, currentPassword }  → { user }
+```
+
+- **A senha atual é exigida.** É troca de **credencial de login** (`LoginDto` é
+  matrícula + senha): sem ela, um celular emprestado e desbloqueado troca o
+  login do dono em dois toques. Senha errada → **401**; matrícula de outra conta
+  → **409**, com a mesma mensagem do cadastro.
+- Passa pelo **mesmo rate limit do login** (`ip:matricula`). Um campo de senha
+  atual num endpoint autenticado é um oráculo de senha se ficar sem contagem de
+  tentativa — e contar também o 409 impede usar a rota para descobrir quais
+  matrículas existem.
+- **Reassina a sessão** e reemite o cookie: o JWT carrega `matricula` no
+  payload, e sem isso o perfil seguiria mostrando o valor velho por até 8h.
+  Ninguém precisa relogar — justamente com a credencial que acabou de mudar.
+- **Sem validação de formato** e **sem limite de trocas**: o formato varia entre
+  cursos e anos, e uma regra nova trancaria conta legítima.
+- **A rota não toca `role`**, e o DTO não tem o campo: o papel vem do domínio do
+  e-mail validado no ticket do Google, nunca da matrícula.
+- O progresso não se move — capturas, `quiz_attempts`, `rare_unlocks` e vouchers
+  são todos por `userId`. Fica registrado um
+  `{ audit: 'matricula_changed', userId, from, to }` no log, sem tabela nova.
+
+⚠️ **`db:set-admin -- <matricula>` passa a mirar um valor que muda.** Quem
+administrar durante o evento precisa saber disso.
+
 ## Domínios institucionais
 
 | Domínio | Papel |

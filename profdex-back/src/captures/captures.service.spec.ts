@@ -54,11 +54,17 @@ describe('CapturesService', () => {
     destravados = [] as string[],
     /** Ele já capturou este raro? A trava de "1 por conta". */
     jaTemRaro = false,
+    /**
+     * Ficha de TELA: o dono. Nulo é papel, que continua anônimo — quem
+     * escanear primeiro leva.
+     */
+    assignedToId = null as string | null,
   } = {}) {
     const ficha = {
       id: 'token-1',
       tokenHash,
       redeemedAt: redeemed ? new Date() : (null as Date | null),
+      assignedToId,
       type,
       variant: type
         ? null
@@ -188,6 +194,68 @@ describe('CapturesService', () => {
     await expect(build(prisma).captureByToken('user-1', token)).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  /**
+   * Ficha de TELA (tarefa 17.6). O QR fica exposto numa tela virada para a
+   * fila: sem o vínculo, quem fotografasse levaria o professor de quem
+   * acertou. A recusa acontece ANTES da baixa, então a ficha continua valendo
+   * para o dono — é a mesma disciplina das três recusas do raro.
+   */
+  describe('ficha vinculada a um aluno', () => {
+    it('outra conta leva 403 e NÃO consome a ficha', async () => {
+      const { prisma, ficha, transaction } = fakeDb({
+        type: 'ia',
+        assignedToId: 'aluno-dono',
+      });
+
+      await expect(
+        build(prisma).captureByToken('aluno-intruso', token),
+      ).rejects.toMatchObject({
+        response: { code: 'FICHA_DE_OUTRO_ALUNO' },
+        status: 403,
+      });
+
+      expect(ficha.redeemedAt).toBeNull();
+      expect(transaction.captureToken.updateMany).not.toHaveBeenCalled();
+      expect(transaction.capture.create).not.toHaveBeenCalled();
+    });
+
+    it('a recusa não diz de quem é a ficha', async () => {
+      const { prisma } = fakeDb({ type: 'ia', assignedToId: 'aluno-dono' });
+
+      const erro = await build(prisma)
+        .captureByToken('aluno-intruso', token)
+        .catch((e: unknown) => e);
+
+      expect(JSON.stringify(erro)).not.toContain('aluno-dono');
+    });
+
+    it('o dono captura normalmente', async () => {
+      const { prisma, ficha } = fakeDb({
+        type: 'ia',
+        assignedToId: 'aluno-dono',
+      });
+
+      await expect(
+        build(prisma).captureByToken('aluno-dono', token),
+      ).resolves.toMatchObject({ id: 'capture-1' });
+      expect(ficha.redeemedAt).toBeInstanceOf(Date);
+    });
+
+    /**
+     * Papel já impresso continua valendo nos dois modos (decisão 12): são
+     * tokens independentes no banco, e o que está no bolso do aluno não pode
+     * virar lixo por causa de um clique no painel.
+     */
+    it('ficha anônima segue capturável por qualquer conta', async () => {
+      const { prisma, ficha } = fakeDb({ type: 'ia', assignedToId: null });
+
+      await expect(
+        build(prisma).captureByToken('qualquer-um', token),
+      ).resolves.toMatchObject({ id: 'capture-1' });
+      expect(ficha.redeemedAt).toBeInstanceOf(Date);
+    });
   });
 
   it('rejects a ficha that was already redeemed', async () => {

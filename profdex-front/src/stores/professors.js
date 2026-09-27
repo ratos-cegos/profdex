@@ -17,6 +17,15 @@ export const useProfessorsStore = defineStore('professors', () => {
   // bloqueados a partir daqui e não tem como revelar o que não recebeu.
   const rares = ref({ total: 0, owned: [] })
 
+  // Onde a grade da coleção estava quando o aluno abriu a ficha de um professor.
+  //
+  // Mora aqui, e não no router: o scroll do app não é o da janela (o body tem
+  // `overflow: hidden`), então `scrollBehavior` não alcança o elemento certo —
+  // quem sabe qual é o `.profdex__main` é a própria view. ProfdexView grava ao
+  // sair para a ficha e CONSOME ao voltar, para que só o retorno imediato
+  // restaure a posição.
+  const dexScroll = ref(0)
+
   // Uma única requisição em voo por vez: o guard da rota e o onMounted das
   // telas podem pedir a lista ao mesmo tempo.
   let inflight = null
@@ -79,6 +88,7 @@ export const useProfessorsStore = defineStore('professors', () => {
     professors,
     rares,
     loading,
+    dexScroll,
     fetch,
     ensureLoaded,
     findByKey,

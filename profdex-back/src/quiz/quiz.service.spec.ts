@@ -1,4 +1,5 @@
 import { HttpStatus, NotFoundException } from '@nestjs/common';
+import { typeKeyOf } from '../battle/engine/types';
 import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -33,12 +34,23 @@ function vista(questionId: string, quando: Date) {
   return { questionId, _max: { createdAt: quando } };
 }
 
+/** Quem a bancada encontra por matrícula. Ana é a de sempre; Bruno é a fila. */
+const ALUNOS: Record<
+  string,
+  { id: string; name: string; matricula: string } | undefined
+> = {
+  '202312345': { id: 'aluno-1', name: 'Ana', matricula: '202312345' },
+  '202399999': { id: 'aluno-2', name: 'Bruno', matricula: '202399999' },
+};
+
 interface SubjectOptions {
   questions?: ReturnType<typeof questao>[];
   /** RNG fixo: sem ele o sorteio não é observável em teste. */
   rng?: () => number;
   /** Cooldown de tema configurado, quando o teste quiser outro valor. */
   cooldownMs?: number;
+  /** Janela sem repetir na fila (K). 0 desliga e reproduz o comportamento antigo. */
+  janelaGlobal?: number;
   /** O raro ATIVO do tema, quando o cenário tem um. */
   raro?: { id: string; name: string; types: string[] } | null;
   /** Acertos que o aluno já tem no tema, ANTES da resposta em teste. */
@@ -47,18 +59,36 @@ interface SubjectOptions {
   destravados?: string[];
   /** Ele já capturou o raro? */
   jaCapturou?: boolean;
+  /** Entrega do QR: papel da pilha (padrão) ou QR gerado na tela. */
+  modoQr?: 'ficha' | 'tela';
 }
 
 function createSubject(options: SubjectOptions = {}) {
-  const raro = options.raro ?? null;
+  // `resolverRaro` lê também a arte (para a revelação 3D) e as variantes (para
+  // a ficha rara de tela). Os testes descrevem só id/nome/tipos, e o resto vem
+  // do padrão — um raro tem exatamente uma variante, a completa.
+  const raro = options.raro
+    ? {
+        modelUrl: null,
+        spriteFrontUrl: null,
+        pixelArt: false,
+        variants: [
+          {
+            id: `variante-${options.raro.id}`,
+            typeKey: typeKeyOf(options.raro.types),
+          },
+        ],
+        ...options.raro,
+      }
+    : null;
   const destravados = new Set(options.destravados ?? []);
-  const prisma = {
+  const prisma: Record<string, any> = {
     user: {
-      findUnique: jest.fn().mockResolvedValue({
-        id: 'aluno-1',
-        name: 'Ana',
-        matricula: '202312345',
-      }),
+      // Resolve pela matrícula digitada, e não um aluno fixo: a janela sem
+      // repetir na fila só é observável com DOIS alunos na bancada.
+      findUnique: jest.fn(({ where }: { where: { matricula: string } }) =>
+        Promise.resolve(ALUNOS[where.matricula] ?? null),
+      ),
     },
     quizQuestion: {
       findMany: jest.fn().mockResolvedValue(options.questions ?? [QUESTION]),
@@ -119,7 +149,18 @@ function createSubject(options: SubjectOptions = {}) {
           options.jaCapturou && raro ? [{ professorId: raro.id }] : [],
         ),
     },
+    // Ficha de tela (tarefa 17.6). No modo `ficha`, que é o padrão, nada aqui
+    // é tocado — é exatamente essa a garantia que os testes cobram.
+    captureToken: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      create: jest.fn().mockResolvedValue({ id: 'ficha-1' }),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
+    qrBatch: { upsert: jest.fn().mockResolvedValue({}) },
   };
+  // Transação interativa: o callback recebe o próprio mock, então `tx.x` e
+  // `prisma.x` são o mesmo espião e as asserções continuam valendo.
+  prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma));
   const metrics = { record: jest.fn() };
   // O cooldown de tema é configurável no painel. Os testes usam o padrão de
   // 10min, que é o que `THEME_COOLDOWN_MS` valia quando era constante.
@@ -127,6 +168,17 @@ function createSubject(options: SubjectOptions = {}) {
     themeCooldownMs: jest
       .fn()
       .mockResolvedValue(options.cooldownMs ?? THEME_COOLDOWN_MS),
+    // A janela sem repetir na fila também sai do painel. O padrão do catálogo
+    // é 10; os testes do sorteio pessoal ficam com 0 quando precisam do
+    // comportamento anterior isolado.
+    get: jest.fn((name: string) =>
+      Promise.resolve(
+        name === 'quizGlobalRepeatWindow' ? (options.janelaGlobal ?? 10) : 0,
+      ),
+    ),
+    // `ficha` é o padrão do catálogo e o comportamento histórico: no modo
+    // `ficha` nenhuma tela e nenhuma rota mudam.
+    captureQrMode: jest.fn().mockResolvedValue(options.modoQr ?? 'ficha'),
   };
   const service = new QuizService(
     prisma as unknown as PrismaService,
@@ -378,6 +430,106 @@ describe('QuizService', () => {
 });
 
 /**
+ * A questão não repete na fila (tarefa 17.1).
+ *
+ * A bancada é UMA e a fila assiste: quem está atrás lê o enunciado e as
+ * alternativas de quem está respondendo. O filtro por aluno não alcança isso.
+ *
+ * O que estas provas guardam é a hierarquia entre os dois filtros: **o pessoal
+ * é regra e o global é preferência**. Inverter é invisível em teste feliz e só
+ * aparece com o banco quase esgotado, no fim do dia de evento.
+ */
+describe('QuizService — janela sem repetir na fila', () => {
+  /** As últimas K aplicações do tema, sem filtro de aluno. */
+  const naFila = (
+    prisma: ReturnType<typeof createSubject>['prisma'],
+    ids: string[],
+  ) =>
+    prisma.quizAttempt.findMany.mockResolvedValue(
+      ids.map((questionId) => ({ questionId })),
+    );
+
+  it('o próximo da fila não recebe a questão que acabou de ser lida', async () => {
+    const { prisma, service } = createSubject({
+      questions: [questao('q-1'), questao('q-2')],
+      rng: () => 0,
+    });
+    naFila(prisma, ['q-1']);
+
+    // Bruno nunca respondeu nada: para ELE as duas são inéditas, e sem a
+    // janela global o RNG em 0 devolveria a q-1 que a fila acabou de ver.
+    const aberta = await service.start('202399999', 'banco');
+
+    expect(sorteada(aberta)).toBe('Enunciado q-2');
+  });
+
+  it('o filtro pessoal vence o global quando os dois brigam', async () => {
+    const { prisma, service } = createSubject({
+      questions: [questao('q-1'), questao('q-2')],
+      rng: () => 0,
+    });
+    // Ana já respondeu a q-2; a única inédita para ela é justamente a que a
+    // fila acabou de ver. Eliminar pelo global zeraria o pool e devolveria a
+    // q-2 — o inverso do que a regra pede.
+    prisma.quizAttempt.groupBy.mockResolvedValue([
+      vista('q-2', new Date('2026-09-26T10:00:00Z')),
+    ]);
+    naFila(prisma, ['q-1']);
+
+    const aberta = await service.start('202312345', 'banco');
+
+    expect(sorteada(aberta)).toBe('Enunciado q-1');
+  });
+
+  it('tema com menos questões que a janela não trava a bancada', async () => {
+    const { prisma, service } = createSubject({
+      questions: [questao('q-1'), questao('q-2')],
+      rng: () => 0,
+      janelaGlobal: 10,
+    });
+    // Com TODAS as questões ativas dentro da janela, o sorteio cai no passo 2
+    // e a tentativa acontece do mesmo jeito.
+    naFila(prisma, ['q-1', 'q-2']);
+
+    await expect(service.start('202399999', 'banco')).resolves.toMatchObject({
+      question: { prompt: 'Enunciado q-1' },
+    });
+  });
+
+  it('K = 0 reproduz exatamente o comportamento anterior', async () => {
+    const { prisma, service } = createSubject({
+      questions: [questao('q-1'), questao('q-2')],
+      rng: () => 0,
+      janelaGlobal: 0,
+    });
+    naFila(prisma, ['q-1']);
+
+    const aberta = await service.start('202399999', 'banco');
+
+    // Sem janela a q-1 volta a ser sorteável — e o servidor nem vai ao banco
+    // buscar as últimas aplicações, que é o interruptor de emergência.
+    expect(sorteada(aberta)).toBe('Enunciado q-1');
+    expect(prisma.quizAttempt.findMany).not.toHaveBeenCalled();
+  });
+
+  it('questão aberta e abandonada não sai para o próximo da fila (fila)', async () => {
+    // A tentativa só é gravada em `answer`: uma questão lida em voz alta e
+    // abandonada não deixa rastro em `quiz_attempts`, mas a fila já a viu.
+    const { service } = createSubject({
+      questions: [questao('q-1'), questao('q-2')],
+      rng: () => 0,
+    });
+
+    const daAna = await service.start('202312345', 'banco');
+    await service.start('202312345', 'banco'); // recomeçou: a q-1 é abandonada
+    const doBruno = await service.start('202399999', 'banco');
+
+    expect(sorteada(daAna)).toBe('Enunciado q-1');
+    expect(sorteada(doBruno)).not.toBe('Enunciado q-1');
+  });
+});
+
+/**
  * Professor raro (tarefa 15).
  *
  * O segredo desta suíte é **em que tema existe raro**. O aluno só pode
@@ -426,7 +578,7 @@ describe('QuizService — professor raro', () => {
       }),
     );
     expect(resultado.raro).toEqual({
-      liberado: { name: 'Eron', temas: ['banco'] },
+      liberado: expect.objectContaining({ name: 'Eron', temas: ['banco'] }),
     });
     expect(metrics.record).toHaveBeenCalledWith(
       'aluno-1',
@@ -483,7 +635,10 @@ describe('QuizService — professor raro', () => {
     const resultado = await acertar(service);
 
     expect(resultado.raro).toEqual({
-      liberado: { name: 'Eron', temas: ['banco', 'ia'] },
+      liberado: expect.objectContaining({
+        name: 'Eron',
+        temas: ['banco', 'ia'],
+      }),
     });
   });
 
@@ -598,5 +753,173 @@ describe('QuizService — professor raro', () => {
     const cartao = await service.aluno('202312345');
 
     expect(cartao.raroPendentes).toEqual([]);
+  });
+});
+
+/**
+ * O QR na tela (tarefa 17.6).
+ *
+ * No modo `tela` o acerto gera na hora uma ficha VINCULADA ao aluno. O que
+ * estas provas guardam:
+ *
+ * - no modo `ficha` nada muda — nenhuma tela, nenhuma rota, nenhuma escrita;
+ * - a ficha nasce na MESMA transação da tentativa;
+ * - emitir uma nova mata a anterior do mesmo aluno;
+ * - o token em texto puro nunca aparece num campo da resposta.
+ */
+describe('QuizService — QR na tela', () => {
+  const ERON = { id: 'raro-1', name: 'Eron', types: ['banco'] };
+
+  async function acertar(service: QuizService) {
+    const aberta = await service.start('202312345', 'banco');
+    const correta = aberta.question.options.indexOf('SELECT');
+    return service.answer('admin-1', aberta.sessionId, correta);
+  }
+
+  async function errar(service: QuizService) {
+    const aberta = await service.start('202312345', 'banco');
+    const errada = aberta.question.options.indexOf('INSERT');
+    return service.answer('admin-1', aberta.sessionId, errada);
+  }
+
+  it('modo ficha: o acerto não emite nada e a resposta não tem QR', async () => {
+    const { prisma, service } = createSubject({ modoQr: 'ficha' });
+
+    const resultado = await acertar(service);
+
+    expect(resultado.qr).toBeNull();
+    expect(prisma.captureToken.create).not.toHaveBeenCalled();
+    expect(prisma.qrBatch.upsert).not.toHaveBeenCalled();
+  });
+
+  it('modo tela: o acerto emite a ficha do tema vinculada ao aluno', async () => {
+    const { prisma, service } = createSubject({ modoQr: 'tela' });
+
+    const resultado = await acertar(service);
+
+    expect(prisma.captureToken.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'banco',
+          assignedToId: 'aluno-1',
+        }),
+      }),
+    );
+    expect(resultado.qr).toMatchObject({ id: 'ficha-1', raro: false });
+  });
+
+  /**
+   * O erro não produz ficha, e o cooldown é a única consequência. Emitir aqui
+   * seria captura de graça por responder qualquer coisa.
+   */
+  it('modo tela: errar não emite ficha nenhuma', async () => {
+    const { prisma, service } = createSubject({ modoQr: 'tela' });
+
+    const resultado = await errar(service);
+
+    expect(resultado.qr).toBeNull();
+    expect(prisma.captureToken.create).not.toHaveBeenCalled();
+  });
+
+  /**
+   * "Um QR vivo por aluno" (decisão 19) — a mesma regra que `start` já aplica à
+   * sessão da questão. Sem ela, o tablet que recarregou deixaria dois QRs
+   * válidos na mão de quem acertou uma vez.
+   */
+  it('modo tela: emitir um QR mata o anterior não resgatado do aluno', async () => {
+    const { prisma, service } = createSubject({ modoQr: 'tela' });
+
+    await acertar(service);
+
+    expect(prisma.captureToken.deleteMany).toHaveBeenCalledWith({
+      where: { assignedToId: 'aluno-1', redeemedAt: null },
+    });
+    // A morte vem ANTES da emissão: invertido, o delete levaria junto o QR que
+    // acabou de nascer.
+    const ordemDelete =
+      prisma.captureToken.deleteMany.mock.invocationCallOrder[0];
+    const ordemCreate = prisma.captureToken.create.mock.invocationCallOrder[0];
+    expect(ordemDelete).toBeLessThan(ordemCreate);
+  });
+
+  /**
+   * Falha ao gravar a ficha não pode deixar tentativa registrada sem QR (o
+   * aluno acertou e sai sem nada, com o cooldown correndo) nem QR sem
+   * tentativa (ficha de graça, sem prova de acerto).
+   */
+  it('modo tela: a ficha nasce na mesma transação da tentativa', async () => {
+    const { prisma, service } = createSubject({ modoQr: 'tela' });
+
+    await acertar(service);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    const dentroDaTransacao = prisma.$transaction.mock.invocationCallOrder[0];
+    expect(
+      prisma.quizAttempt.create.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(dentroDaTransacao);
+    expect(
+      prisma.captureToken.create.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(dentroDaTransacao);
+  });
+
+  /**
+   * A ficha rara aponta a VARIANTE e não passa pelo sorteio — por isso ela pode
+   * sair no mesmo acerto que fecha o gate, sem abrir reroll.
+   */
+  it('gate do raro fechado: a ficha é a rara, e não a do tema', async () => {
+    const { prisma, service } = createSubject({
+      modoQr: 'tela',
+      raro: ERON,
+      acertosNoTema: 5,
+    });
+
+    const resultado = await acertar(service);
+
+    const { data } = prisma.captureToken.create.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(data).toMatchObject({
+      variantId: 'variante-raro-1',
+      assignedToId: 'aluno-1',
+    });
+    expect(data.type).toBeUndefined();
+    expect(resultado.qr?.raro).toBe(true);
+  });
+
+  /** A tiragem sintética do dia, para o estoque de /admin/fichas não mudar sozinho. */
+  it('modo tela: a emissão cria/atualiza a tiragem do dia da bancada', async () => {
+    const { prisma, service } = createSubject({ modoQr: 'tela' });
+
+    await acertar(service);
+
+    const chamada = prisma.qrBatch.upsert.mock.calls[0][0] as {
+      where: { batch: string };
+      create: { source: string };
+      update: unknown;
+    };
+    expect(chamada.where.batch).toMatch(/^bancada-\d{4}-\d{2}-\d{2}$/);
+    expect(chamada.create.source).toBe('bancada');
+    expect(chamada.update).toEqual({ total: { increment: 1 } });
+  });
+
+  /**
+   * O token é ficha em texto puro. Ele só existe dentro da imagem do QR — nunca
+   * num campo próprio da resposta, e nunca no log.
+   */
+  it('o token em texto puro não atravessa a resposta', async () => {
+    const { prisma, service } = createSubject({ modoQr: 'tela' });
+
+    const resultado = await acertar(service);
+
+    const { data } = prisma.captureToken.create.mock.calls[0][0] as {
+      data: { tokenHash: string };
+    };
+    expect(Object.keys(resultado.qr ?? {}).sort()).toEqual([
+      'dataUrl',
+      'id',
+      'raro',
+    ]);
+    // O que vai ao banco é só o hash — o mesmo contrato das fichas de papel.
+    expect(data.tokenHash).toHaveLength(64);
   });
 });

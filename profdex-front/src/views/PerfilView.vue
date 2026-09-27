@@ -1,4 +1,5 @@
 <script setup>
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
 import AppHeader from '../components/AppHeader.vue'
@@ -14,6 +15,55 @@ async function leave() {
   if (!window.confirm('Deseja mesmo sair da sua conta?')) return
   await auth.logout()
   router.replace({ name: 'home' })
+}
+
+// ── Corrigir a matrícula ────────────────────────────────────────────────────
+// A matrícula é digitada uma vez, no cadastro, e um dígito trocado é aceito em
+// silêncio: o aluno aparece na bancada como "não encontrado", ou pior, como
+// outra pessoa. Quem sabe o valor certo é o dono — daí o autoatendimento.
+const editandoMatricula = ref(false)
+const novaMatricula = ref('')
+const senhaAtual = ref('')
+const salvandoMatricula = ref(false)
+const erroMatricula = ref('')
+const okMatricula = ref('')
+
+function abrirTrocaDeMatricula() {
+  novaMatricula.value = auth.user?.matricula ?? ''
+  senhaAtual.value = ''
+  erroMatricula.value = ''
+  okMatricula.value = ''
+  editandoMatricula.value = true
+}
+
+function cancelarTrocaDeMatricula() {
+  editandoMatricula.value = false
+  senhaAtual.value = ''
+  erroMatricula.value = ''
+}
+
+async function salvarMatricula() {
+  const matricula = novaMatricula.value.trim()
+  if (!matricula || !senhaAtual.value) {
+    erroMatricula.value = 'Preencha a matrícula nova e a sua senha atual.'
+    return
+  }
+
+  salvandoMatricula.value = true
+  erroMatricula.value = ''
+  try {
+    await auth.changeMatricula(matricula, senhaAtual.value)
+    editandoMatricula.value = false
+    senhaAtual.value = ''
+    okMatricula.value = `Matrícula atualizada para ${matricula}. É com ela que você entra a partir de agora.`
+  } catch (e) {
+    // A mensagem do servidor é a que importa: senha errada (401) e matrícula
+    // já cadastrada (409) precisam ser distinguíveis pelo aluno.
+    erroMatricula.value =
+      e?.response?.data?.message ?? 'Não foi possível corrigir a matrícula.'
+  } finally {
+    salvandoMatricula.value = false
+  }
 }
 </script>
 
@@ -55,6 +105,73 @@ async function leave() {
 
       <section class="profile__account">
         <h2 class="pixel">CONTA</h2>
+
+        <p>
+          Sua matrícula é <strong>{{ auth.user?.matricula ?? '—' }}</strong
+          >. É ela que a bancada usa para te encontrar no quiz.
+        </p>
+
+        <p v-if="okMatricula" class="profile__aviso profile__aviso--ok">{{ okMatricula }}</p>
+
+        <button
+          v-if="!editandoMatricula"
+          class="profile__acao"
+          type="button"
+          @click="abrirTrocaDeMatricula"
+        >
+          Corrigir matrícula
+        </button>
+
+        <form v-else class="profile__form" @submit.prevent="salvarMatricula">
+          <!-- Dito antes de salvar, e não depois: a matrícula É a credencial de
+               login, e quem trocar sem saber disso fica de fora na tentativa
+               seguinte. -->
+          <p class="profile__nota">
+            Atenção: o login passa a ser a <strong>matrícula nova</strong>. A antiga deixa de
+            funcionar.
+          </p>
+
+          <label class="profile__campo">
+            <span>Matrícula nova</span>
+            <input
+              v-model="novaMatricula"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              maxlength="64"
+              required
+            />
+          </label>
+
+          <label class="profile__campo">
+            <span>Sua senha atual</span>
+            <input
+              v-model="senhaAtual"
+              type="password"
+              autocomplete="current-password"
+              required
+            />
+          </label>
+
+          <p v-if="erroMatricula" class="profile__aviso profile__aviso--erro">
+            {{ erroMatricula }}
+          </p>
+
+          <div class="profile__form-acoes">
+            <button
+              class="profile__acao"
+              type="button"
+              :disabled="salvandoMatricula"
+              @click="cancelarTrocaDeMatricula"
+            >
+              Cancelar
+            </button>
+            <button class="profile__acao profile__acao--principal" type="submit" :disabled="salvandoMatricula">
+              {{ salvandoMatricula ? 'Salvando…' : 'Salvar matrícula' }}
+            </button>
+          </div>
+        </form>
+
         <p>Sair encerra a sessão e desconecta você do lobby de batalha.</p>
         <button class="profile__logout" type="button" aria-label="Sair da conta" @click="leave">
           Sair da conta
@@ -154,6 +271,76 @@ async function leave() {
   background: transparent;
   color: var(--error);
   font-weight: 800;
+}
+
+/* ── Corrigir matrícula ───────────────────────────────────────────────────── */
+.profile__acao {
+  flex: 1;
+  min-height: 44px;
+  margin-top: 14px;
+  padding: 0 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
+}
+.profile__acao--principal {
+  border-color: var(--unifil-gold);
+  color: var(--unifil-gold);
+}
+.profile__acao:disabled {
+  opacity: 0.5;
+}
+.profile__form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.profile__campo {
+  display: grid;
+  gap: 6px;
+}
+.profile__campo span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.profile__campo input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+}
+.profile__form-acoes {
+  display: flex;
+  gap: 10px;
+}
+/* Os botões do formulário já vêm com a margem de cima do `.profile__acao`;
+   dentro do grid ela empurraria a linha inteira. */
+.profile__form-acoes .profile__acao {
+  margin-top: 0;
+}
+.profile__nota {
+  margin: 0;
+  color: var(--yellow);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.profile__aviso {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.profile__aviso--erro {
+  color: var(--error);
+}
+.profile__aviso--ok {
+  color: var(--success-text);
 }
 .profile__about {
   min-height: 44px;

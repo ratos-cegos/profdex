@@ -260,12 +260,54 @@ uma versão antiga por cima de dados antigos fica com linhas apontando para tipo
 que não existe mais: silenciosamente, sem erro — a batalha perde a vantagem de
 tipo e o tema some do quiz.
 
-Por isso, no deploy que leva a roda nova, rode **dentro do container `app`**:
+### O deploy NÃO semeia — o banco de questões é passo próprio
+
+O `docker-entrypoint.sh` do container `app` roda **só** `prisma migrate deploy`
+e sobe a API. Migration mexe em schema, não em linha: subir código com tema novo
+não coloca uma questão sequer no banco. O servidor lê `quiz_questions` em
+runtime e nunca o arquivo `.ts`, então o tema novo aparece na tela **vazio**,
+sem erro em lugar nenhum.
+
+Depois de todo deploy que mexe no banco de questões:
 
 ```bash
-docker compose exec app npx prisma migrate deploy   # schema
-docker compose exec app npm run db:reset -- --yes   # APAGA TUDO e semeia do zero
-docker compose exec app npm run db:seed-quiz-treino # banco de treino
+docker compose exec app npm run db:seed-quiz         # banco oficial
+docker compose exec app npm run db:seed-quiz-treino  # banco de treino
+```
+
+Os dois são **idempotentes e não destrutivos**. O enunciado é a chave: questão
+que já existe tem tema/alternativas atualizados, questão nova é criada, e
+questão que saiu do arquivo é marcada `active = false` em vez de apagada (as
+tentativas já registradas apontam para ela). Foi assim que as questões de Lógica
+migraram para Algoritmos e as de NPI saíram de circulação sem perder histórico.
+
+### Os tipos dos professores NÃO se corrigem sozinhos
+
+`npm run db:seed` **não** conserta um professor que já tem tipo gravado — ele só
+completa quem está com `types` vazio, de propósito: desde a tarefa 13 o
+professor é editável pelo painel, e sobrescrever desfaria em silêncio o
+cadastro de quem mexeu lá.
+
+Num banco semeado antes da roda nova, os professores continuam com `ia-ml`,
+`logica` ou `npi`. Isso quebra duas coisas sem avisar: a ficha por tipo não acha
+ninguém de Humanas ou Eng. de Software para sortear, e um exemplar desses entra
+na batalha com moveset vazio. Para diagnosticar, pelo Adminer ou por
+`docker compose exec db psql -U profdex -d profdex`:
+
+```sql
+-- Quantas questões ATIVAS por tema (esperado: os 9 ids novos).
+select theme, count(*) from quiz_questions where active group by theme order by theme;
+
+-- Tipos realmente gravados nos professores. Qualquer logica/npi/ia-ml/calculo
+-- aqui é linha que precisa ser corrigida no painel.
+select unnest(types) as tipo, count(*) from professors group by 1 order by 1;
+```
+
+O conserto é editar os tipos no painel de professores. Só recaia no `db:reset`
+se o banco estiver descartável:
+
+```bash
+docker compose exec app npm run db:reset -- --yes    # APAGA TUDO e semeia do zero
 ```
 
 `db:reset` derruba as tabelas e reaplica as migrations — ele também leva embora

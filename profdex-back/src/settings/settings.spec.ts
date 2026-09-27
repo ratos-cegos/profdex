@@ -1,6 +1,7 @@
 import {
   SETTINGS,
   SETTING_NAMES,
+  type SettingSpec,
   clampSetting,
   isInRange,
   parseSetting,
@@ -13,22 +14,34 @@ import {
  * ter sido gravado por uma versão anterior ou à mão no banco.
  */
 describe('catálogo de ajustes', () => {
-  it('todo ajuste tem padrão dentro da própria faixa', () => {
+  it('todo ajuste tem padrão utilizável e texto de apoio', () => {
     for (const name of SETTING_NAMES) {
-      const spec = SETTINGS[name];
+      const spec: SettingSpec = SETTINGS[name];
+      expect(spec.label).toBeTruthy();
+      expect(spec.help).toBeTruthy();
+
+      if (spec.kind === 'enum') {
+        // Padrão fora das opções faria `parseSetting` devolver um valor que a
+        // própria validação recusa — o ajuste nasceria inválido.
+        expect(spec.options.length).toBeGreaterThan(1);
+        expect(spec.options).toContain(spec.default);
+        continue;
+      }
+
       expect(spec.min).toBeLessThanOrEqual(spec.max);
       expect(spec.default).toBeGreaterThanOrEqual(spec.min);
       expect(spec.default).toBeLessThanOrEqual(spec.max);
-      expect(spec.label).toBeTruthy();
-      expect(spec.help).toBeTruthy();
+      expect(spec.unit).toBeTruthy();
     }
   });
 
-  it('mantém os padrões históricos: 10 min de tema e 12 h de dupla', () => {
-    // Estes dois eram constantes de código. Mudar o padrão aqui mudaria o
-    // comportamento de toda instalação que nunca editou o painel.
+  it('mantém os padrões históricos: 10 min de tema, 12 h de dupla e ficha', () => {
+    // Estes eram constantes de código (ou o único comportamento possível).
+    // Mudar o padrão aqui mudaria o comportamento de toda instalação que nunca
+    // editou o painel.
     expect(SETTINGS.themeCooldownMinutes.default).toBe(10);
     expect(SETTINGS.battlePairCooldownHours.default).toBe(12);
+    expect(SETTINGS.captureQrMode.default).toBe('ficha');
   });
 
   /**
@@ -71,6 +84,40 @@ describe('leitura de um ajuste', () => {
   it('decimal é arredondado — minuto e hora são inteiros na tela', () => {
     expect(parseSetting('themeCooldownMinutes', '7.4')).toBe(7);
     expect(parseSetting('themeCooldownMinutes', '7.6')).toBe(8);
+  });
+
+  /**
+   * Zero é o interruptor de emergência da janela sem repetir: com o banco
+   * esgotando no meio do evento, o operador desliga o filtro na hora. Precisa
+   * atravessar a leitura como zero, e não ser confundido com "ausente".
+   */
+  it('a janela sem repetir aceita zero', () => {
+    expect(parseSetting('quizGlobalRepeatWindow', '0')).toBe(0);
+    expect(parseSetting('quizGlobalRepeatWindow', null)).toBe(10);
+  });
+});
+
+/**
+ * O ajuste enum é o primeiro não-numérico do painel. As duas garantias que
+ * importam: sem linha no banco vale o comportamento histórico, e valor
+ * inválido gravado à mão cai no padrão em vez de derrubar a bancada.
+ */
+describe('ajuste de escolha fechada', () => {
+  it('sem linha no banco vale "ficha", o comportamento histórico', () => {
+    expect(parseSetting('captureQrMode', null)).toBe('ficha');
+    expect(parseSetting('captureQrMode', '')).toBe('ficha');
+    expect(parseSetting('captureQrMode', '   ')).toBe('ficha');
+  });
+
+  it('lê a opção gravada, com espaço em volta', () => {
+    expect(parseSetting('captureQrMode', 'tela')).toBe('tela');
+    expect(parseSetting('captureQrMode', ' tela ')).toBe('tela');
+  });
+
+  it('valor fora das opções cai no padrão', () => {
+    expect(parseSetting('captureQrMode', 'papel')).toBe('ficha');
+    expect(parseSetting('captureQrMode', 'TELA')).toBe('ficha');
+    expect(parseSetting('captureQrMode', '7')).toBe('ficha');
   });
 });
 

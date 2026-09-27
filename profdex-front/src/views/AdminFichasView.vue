@@ -25,6 +25,9 @@ const TETO_COPIAS = 20
 const carregando = ref(true)
 const erro = ref('')
 const ultimaTiragem = ref(null)
+// Fichas que a BANCADA gerou na tela (modo `tela`), agrupadas por dia. Nula até
+// o primeiro QR de tela — em modo `ficha` esta linha nunca aparece.
+const tiragemDaBancada = ref(null)
 const tipos = ref([])
 
 const copias = ref(1)
@@ -89,6 +92,7 @@ async function carregar() {
   try {
     const { data } = await api.get('/admin/capture-tokens')
     ultimaTiragem.value = data.lastBatch
+    tiragemDaBancada.value = data.booth
     tipos.value = data.types
     raros.value = data.rares ?? []
   } catch (e) {
@@ -235,9 +239,12 @@ onMounted(carregar)
     <p v-else-if="carregando" class="aviso">Carregando estoque…</p>
 
     <template v-else>
-      <!-- Última tiragem -->
+      <!-- Última tiragem IMPRESSA. A bancada fica fora dela de propósito: ela
+           emite uma ficha por acerto no modo `tela` e criaria uma tiragem nova
+           todo dia, empurrando para baixo justamente o número que responde
+           "preciso imprimir mais?". -->
       <section class="bloco">
-        <h2 class="bloco__titulo">Última tiragem</h2>
+        <h2 class="bloco__titulo">Última tiragem impressa</h2>
         <div v-if="ultimaTiragem" class="resumo">
           <div class="resumo__item">
             <span class="resumo__rotulo">Gerada em</span>
@@ -261,6 +268,34 @@ onMounted(carregar)
         </div>
         <p v-else class="aviso">
           Nenhuma tiragem registrada ainda. Gere a primeira abaixo.
+        </p>
+      </section>
+
+      <!-- Fichas geradas NA TELA da bancada. Só aparece quando existem: em
+           modo `ficha` este bloco nunca é desenhado. -->
+      <section v-if="tiragemDaBancada" class="bloco">
+        <div class="bloco__head">
+          <h2 class="bloco__titulo">Fichas geradas na bancada</h2>
+          <span class="etiqueta">TELA</span>
+        </div>
+        <div class="resumo">
+          <div class="resumo__item">
+            <span class="resumo__rotulo">Dia</span>
+            <strong>{{ dataLegivel(tiragemDaBancada.createdAt) }}</strong>
+          </div>
+          <div class="resumo__item">
+            <span class="resumo__rotulo">Emitidas</span>
+            <strong>{{ tiragemDaBancada.total }}</strong>
+          </div>
+          <div class="resumo__item">
+            <span class="resumo__rotulo">Escaneadas</span>
+            <strong>{{ tiragemDaBancada.redeemed }}</strong>
+          </div>
+        </div>
+        <p class="aviso">
+          Estas não são papel: o acerto gera o QR na tela, já vinculado ao aluno.
+          Elas entram no estoque por tipo abaixo, mas não consomem a pilha
+          impressa.
         </p>
       </section>
 

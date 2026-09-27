@@ -9,9 +9,13 @@ import api from '../services/api'
 // 1. **Muda a regra do jogo com o evento no ar.** Não há deploy no meio: o
 //    servidor lê o valor a cada tentativa de quiz e a cada convite de batalha,
 //    com cache de 10s. O efeito aparece em segundos, para todo mundo.
-// 2. **O formulário não sabe as regras.** Faixa, unidade e texto de apoio vêm
-//    do SERVIDOR, que é quem valida. Repetir os limites aqui criaria a chance
-//    de a tela aceitar o que a API recusa — ou pior, o contrário.
+// 2. **O formulário não sabe as regras.** Faixa, opções, unidade e texto de
+//    apoio vêm do SERVIDOR, que é quem valida. Repetir os limites aqui criaria
+//    a chance de a tela aceitar o que a API recusa — ou pior, o contrário.
+//
+// Por isso nenhum ajuste é reconhecido pelo NOME aqui: o que decide o controle
+// é o formato que veio. Ajuste com `options` vira um seletor, ajuste com
+// `min`/`max` vira o campo numérico de sempre.
 
 const carregando = ref(true)
 const erro = ref('')
@@ -45,13 +49,28 @@ function aplicar(settings) {
   rascunho.value = Object.fromEntries(settings.map((s) => [s.name, s.value]))
 }
 
-const alterado = (item) => Number(rascunho.value[item.name]) !== item.value
+// Escolha fechada (`options`) ou número (`min`/`max`): é o que o servidor
+// mandou que decide, nunca o nome do ajuste.
+const ehEscolha = (item) => Array.isArray(item.options)
+
+// O `<select>` já devolve uma das opções; só o `<input type=number>` precisa da
+// conversão, e ela tem de acontecer antes da comparação — senão "10" digitado
+// nunca bate com o 10 salvo.
+const valorDoRascunho = (item) =>
+  ehEscolha(item) ? rascunho.value[item.name] : Number(rascunho.value[item.name])
+
+const alterado = (item) => valorDoRascunho(item) !== item.value
 
 async function salvar(item) {
-  const valor = Number(rascunho.value[item.name])
+  const valor = valorDoRascunho(item)
 
   // Barra aqui só para dar a mensagem na hora; quem decide é o servidor.
-  if (!Number.isInteger(valor) || valor < item.min || valor > item.max) {
+  if (ehEscolha(item)) {
+    if (!item.options.includes(valor)) {
+      erro.value = `${item.label}: escolha uma das opções (${item.options.join(', ')}).`
+      return
+    }
+  } else if (!Number.isInteger(valor) || valor < item.min || valor > item.max) {
     erro.value = `${item.label}: informe um número inteiro entre ${item.min} e ${item.max} ${item.unit}.`
     return
   }
@@ -62,7 +81,7 @@ async function salvar(item) {
   try {
     const { data } = await api.patch('/admin/settings', { [item.name]: valor })
     aplicar(data.settings)
-    ok.value = `${item.label}: agora ${valor} ${item.unit}. Vale para todo mundo em até 10 segundos.`
+    ok.value = `${item.label}: agora ${valor}${item.unit ? ` ${item.unit}` : ''}. Vale para todo mundo em até 10 segundos.`
   } catch (e) {
     erro.value = mensagemDeErro(e, 'Não foi possível salvar a configuração.')
   } finally {
@@ -105,27 +124,37 @@ onMounted(carregar)
       <div class="bloco__head">
         <h2 class="bloco__titulo">{{ item.label }}</h2>
         <span class="bloco__meta">
-          padrão: {{ item.default }} {{ item.unit }}
+          padrão: {{ item.default }}<template v-if="item.unit"> {{ item.unit }}</template>
         </span>
       </div>
 
       <p class="ajuda">{{ item.help }}</p>
 
       <div class="linha">
-        <label class="campo-rotulo">
-          <span class="sr-only">{{ item.label }} em {{ item.unit }}</span>
-          <input
-            v-model.number="rascunho[item.name]"
-            class="campo"
-            type="number"
-            :min="item.min"
-            :max="item.max"
-            step="1"
-            @keyup.enter="salvar(item)"
-          />
+        <label v-if="ehEscolha(item)" class="campo-rotulo">
+          <span class="sr-only">{{ item.label }}</span>
+          <select v-model="rascunho[item.name]" class="campo campo--escolha">
+            <option v-for="opcao in item.options" :key="opcao" :value="opcao">
+              {{ opcao }}
+            </option>
+          </select>
         </label>
-        <span class="unidade">{{ item.unit }}</span>
-        <span class="faixa">de {{ item.min }} a {{ item.max }}</span>
+        <template v-else>
+          <label class="campo-rotulo">
+            <span class="sr-only">{{ item.label }} em {{ item.unit }}</span>
+            <input
+              v-model.number="rascunho[item.name]"
+              class="campo"
+              type="number"
+              :min="item.min"
+              :max="item.max"
+              step="1"
+              @keyup.enter="salvar(item)"
+            />
+          </label>
+          <span class="unidade">{{ item.unit }}</span>
+          <span class="faixa">de {{ item.min }} a {{ item.max }}</span>
+        </template>
 
         <div class="acoes">
           <button
@@ -156,7 +185,8 @@ onMounted(carregar)
       </div>
 
       <p v-if="alterado(item)" class="pendente">
-        Não salvo — em uso continua <strong>{{ item.value }} {{ item.unit }}</strong>.
+        Não salvo — em uso continua
+        <strong>{{ item.value }}<template v-if="item.unit"> {{ item.unit }}</template></strong>.
       </p>
     </section>
   </div>
@@ -245,6 +275,13 @@ onMounted(carregar)
   background: var(--bg-card);
   color: var(--text);
   font-size: 15px;
+}
+
+/* Mais largo que o campo numérico: "ficha"/"tela" cabem, e o seletor precisa
+   mostrar a opção inteira sem cortar. */
+.campo--escolha {
+  width: auto;
+  min-width: 160px;
 }
 
 .unidade {

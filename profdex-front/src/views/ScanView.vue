@@ -69,6 +69,15 @@ const AVISOS_POR_CODIGO = {
       'Você já tem este professor raro. Cada raro vale uma captura por conta — ' +
       'esta ficha continua valendo para outra pessoa.',
   },
+  // QR gerado NA TELA da bancada, vinculado a quem acertou. A mensagem não diz
+  // de quem é a ficha: mesma regra de vazamento das recusas do raro. Para o
+  // dono ela continua valendo — a recusa acontece antes da baixa.
+  FICHA_DE_OUTRO_ALUNO: {
+    titulo: 'QR DE OUTRO ALUNO',
+    texto:
+      'Este QR foi gerado para outro aluno. Responda uma questão na bancada ' +
+      'para receber o seu.',
+  },
 }
 
 const AVISO_JA_USADO = {

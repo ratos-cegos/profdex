@@ -115,9 +115,30 @@ describe('AdminCaptureTokensService', () => {
               ).map(([type, n]) => ({ type, _count: { _all: n } })),
             );
           }),
+          // Quantas fichas de uma tiragem já viraram captura.
+          count: jest.fn(({ where }: any) =>
+            Promise.resolve(
+              tokens.filter(
+                (t) =>
+                  t.batch === where.batch &&
+                  (where.redeemedAt?.not === null
+                    ? Boolean(t.redeemedAt)
+                    : true),
+              ).length,
+            ),
+          ),
         },
         qrBatch: {
-          findFirst: jest.fn(() => Promise.resolve(batches.at(-1) ?? null)),
+          // Duas perguntas diferentes na mesma tabela: a última tiragem em
+          // destaque é só de PAPEL, e a da bancada é a sintética do modo
+          // `tela`. O mock separa as duas como o `where` faz no Postgres.
+          findFirst: jest.fn(({ where }: any = {}) => {
+            const daBancada = where?.source === 'bancada';
+            const candidatas = batches.filter((b: any) =>
+              daBancada ? b.source === 'bancada' : b.source !== 'bancada',
+            );
+            return Promise.resolve(candidatas.at(-1) ?? null);
+          }),
         },
         $transaction: jest.fn((fn: any) => fn(tx)),
       } as unknown as PrismaService,
@@ -355,6 +376,62 @@ describe('AdminCaptureTokensService', () => {
       expect(ia.lastBatch).toEqual({ total: 1, redeemed: 0 });
       expect(ia.alive).toBe(2);
       expect(ia.redeemedTotal).toBe(1);
+    });
+
+    /**
+     * A bancada emite uma ficha por acerto no modo `tela` e cria uma tiragem
+     * sintética por dia. Sem separá-la, a "última tiragem" deixaria de ser a
+     * última que alguém IMPRIMIU — e é ela que responde "preciso imprimir
+     * mais?", que é a razão de a tela existir.
+     */
+    it('separa a tiragem da bancada da última tiragem de papel', async () => {
+      const { db } = fakeDb({
+        tokens: [
+          { type: 'ia', batch: 'papel', redeemedAt: null },
+          { type: 'ia', batch: 'bancada-2026-09-26', redeemedAt: new Date() },
+          { type: 'redes', batch: 'bancada-2026-09-26', redeemedAt: null },
+        ],
+        batches: [
+          {
+            batch: 'papel',
+            createdAt: new Date('2026-09-20T10:00:00Z'),
+            source: 'panel',
+            copies: 5,
+            total: 45,
+            createdBy: { name: 'Admin' },
+          },
+          {
+            batch: 'bancada-2026-09-26',
+            createdAt: new Date('2026-09-26T12:00:00Z'),
+            source: 'bancada',
+            copies: 1,
+            total: 2,
+            createdBy: null,
+          },
+        ],
+      });
+      const service = new AdminCaptureTokensService(db);
+
+      const { lastBatch, booth, types: rows } = await service.inventory();
+
+      // A tiragem da bancada é mais recente, mas não rouba o destaque.
+      expect(lastBatch).toMatchObject({ batch: 'papel', source: 'panel' });
+      expect(booth).toMatchObject({
+        batch: 'bancada-2026-09-26',
+        total: 2,
+        redeemed: 1,
+      });
+      // E o estoque vivo por tipo continua somando as duas origens.
+      expect(rows.find((r) => r.type === 'redes')!.alive).toBe(1);
+      expect(rows.find((r) => r.type === 'ia')!.redeemedTotal).toBe(1);
+    });
+
+    it('sem nenhum QR de tela, não há tiragem de bancada', async () => {
+      const { db } = fakeDb();
+
+      await expect(
+        new AdminCaptureTokensService(db).inventory(),
+      ).resolves.toMatchObject({ booth: null });
     });
 
     it('conta professores ativos por tipo e marca os tipos vazios', async () => {

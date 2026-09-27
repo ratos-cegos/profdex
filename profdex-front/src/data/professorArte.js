@@ -43,6 +43,22 @@ export function modeloDe(professor) {
 }
 
 /**
+ * Este professor tem modelo 3D PRÓPRIO?
+ *
+ * A pergunta existe porque `modeloDe` cai no Gustavo quando não há modelo, e
+ * esse fallback é certo na AR (uma imagem neutra em vez de nada) e errado na
+ * revelação da bancada: ali o 3D ANUNCIA quem o aluno acabou de capturar, e
+ * mostrar o Gustavo no lugar do professor certo é pior que não mostrar 3D
+ * nenhum (tarefa 17, decisão 17). Quem não tem modelo aparece pelo sprite.
+ *
+ * Mora aqui, e não na view, para o painel de professores e a bancada
+ * responderem a mesma coisa — existem 3 GLB para um elenco maior.
+ */
+export function temModeloProprio(professor) {
+  return Boolean(professor?.modelUrl)
+}
+
+/**
  * A sprite deve ser ampliada sem suavização?
  *
  * Só a pixel art de verdade recebe `image-rendering: pixelated`. Aplicar o

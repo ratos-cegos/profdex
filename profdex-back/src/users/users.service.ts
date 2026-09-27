@@ -1,4 +1,11 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 // `@node-rs/bcrypt` (nativo, roda na threadpool do libuv) e não `bcryptjs`
 // (JS puro, síncrono na thread principal): 20 hashes simultâneos com o bcryptjs
 // congelam o event loop por ~1,3s — nenhum websocket atendido, nenhum timer de
@@ -20,10 +27,84 @@ import { isDevSignupEnabled } from '../auth/dev-signup';
  */
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(private prisma: PrismaService) {}
 
   findByMatricula(matricula: string) {
     return this.prisma.user.findUnique({ where: { matricula } });
+  }
+
+  /**
+   * Corrige a matrícula do próprio dono.
+   *
+   * A matrícula é digitada uma vez, no cadastro, e um dígito trocado é aceito
+   * em silêncio — depois disso o aluno aparece na bancada como "não
+   * encontrado", ou pior, como outra pessoa. Quem sabe o valor certo é ele.
+   *
+   * **A senha atual é exigida** (decisão 7): isto é troca de CREDENCIAL DE
+   * LOGIN — `LoginDto` é matrícula + senha —, e sem ela um celular emprestado e
+   * desbloqueado troca o login do dono em dois toques.
+   *
+   * Nada mais se move: capturas, `quiz_attempts`, `rare_unlocks` e vouchers são
+   * todos por `userId`, então o progresso inteiro acompanha a conta.
+   */
+  async changeMatricula(
+    userId: string,
+    matricula: string,
+    currentPassword: string,
+  ) {
+    const nova = matricula.trim();
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    // Sessão válida para um usuário que sumiu: não é erro do cliente, mas a
+    // única resposta honesta é "entre de novo".
+    if (!user) throw new UnauthorizedException('Sessão inválida');
+
+    const senhaConfere = await bcrypt.verify(currentPassword, user.password);
+    if (!senhaConfere) {
+      throw new UnauthorizedException('Senha atual incorreta');
+    }
+
+    // Reenviar a mesma matrícula não é erro — e não merece linha de auditoria.
+    if (nova === user.matricula) return user;
+
+    const jaExiste = await this.prisma.user.findUnique({
+      where: { matricula: nova },
+      select: { id: true },
+    });
+    // Mesma mensagem do cadastro: a unicidade é a mesma regra, e ela é o que
+    // impede alguém de tomar a matrícula de uma conta existente.
+    if (jaExiste) throw new ConflictException('Matrícula já cadastrada');
+
+    const atualizado = await this.prisma.user
+      .update({ where: { id: userId }, data: { matricula: nova } })
+      .catch((erro: unknown) => {
+        // Entre a checagem acima e este update cabe outra requisição. Quem
+        // decide é o índice único do banco; aqui só traduzimos para o mesmo
+        // 409 que o caminho feliz já devolve.
+        if (
+          erro instanceof Prisma.PrismaClientKnownRequestError &&
+          erro.code === 'P2002'
+        ) {
+          throw new ConflictException('Matrícula já cadastrada');
+        }
+        throw erro;
+      });
+
+    // Sem tabela nova, no padrão de `qr_batch` e `setting_updated`: a pergunta
+    // depois do evento é "por que a bancada não acha mais este aluno?", e o
+    // valor ANTIGO é a única coisa que responde isso.
+    this.logger.log(
+      JSON.stringify({
+        audit: 'matricula_changed',
+        userId,
+        from: user.matricula,
+        to: nova,
+      }),
+    );
+
+    return atualizado;
   }
 
   async createForDevelopment(

@@ -64,9 +64,26 @@
      devolveria dois personagens do tamanho do que sobrou.
      Se o painel do treino mudar de altura, este número muda junto. */
   --palco-faixa: 305px;
-  /* Onde a barra de HP do jogador encosta, medida do rodapé do palco. Fica
-     dentro da faixa de propósito: é o enquadramento aprovado do treino. */
-  --palco-barra-jogador: 256px;
+  /* Onde a barra de HP do jogador encosta, medida do rodapé do palco.
+
+     Fica 8px ACIMA da faixa de comandos, e não dentro dela. O palco declara
+     `z-index: 0` para prender os lutadores abaixo do HUD, e isso o torna um
+     contexto de empilhamento próprio: a barra (z-index 2 DENTRO do palco) não
+     tem como passar por cima da faixa (z-index 2, fora do palco). No treino a
+     sobreposição passava despercebida porque o topo da faixa é um gradiente
+     translúcido; no PvP a faixa é opaca (`--bg-card` com borda sólida) e a
+     barra simplesmente sumia.
+
+     Derivado de `--palco-faixa` e não escrito à mão: o PvP sobe o palco
+     exatamente pela diferença entre a faixa dele e a do treino, então
+     `palco bottom + --palco-faixa` é o topo da faixa nas DUAS telas. Um valor,
+     dois lugares certos. */
+  --palco-barra-jogador: calc(var(--palco-faixa) + 8px);
+  /* Altura renderizada de BattleHpBar SEM avatar (a do jogador): padding 8+8,
+     borda 2+2, e a coluna de três linhas (nome 13 + 5 + barra 10 + 5 + número
+     9). Existe para o chip de status poder ser empilhado ACIMA da barra sem
+     que ArenaView repita o número. Mudou o painel, muda aqui. */
+  --palco-barra-altura: 62px;
 }
 
 *, *::before, *::after {

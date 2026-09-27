@@ -53,6 +53,18 @@ export const RARO_INDISPONIVEL = 'RARO_INDISPONIVEL';
 export const RARO_BLOQUEADO = 'RARO_BLOQUEADO';
 export const RARO_JA_CAPTURADO = 'RARO_JA_CAPTURADO';
 
+/**
+ * Ficha de TELA escaneada por outra conta (tarefa 17.6).
+ *
+ * O QR gerado na bancada fica exposto numa tela virada para a fila: sem o
+ * vínculo, quem fotografasse levaria o professor de quem acertou. A ficha
+ * continua valendo para o dono — a recusa acontece ANTES da baixa.
+ *
+ * A mensagem não diz de quem é a ficha, pela mesma regra de vazamento das três
+ * recusas do raro.
+ */
+export const FICHA_DE_OUTRO_ALUNO = 'FICHA_DE_OUTRO_ALUNO';
+
 @Injectable()
 export class CapturesService {
   constructor(
@@ -81,6 +93,24 @@ export class CapturesService {
 
     const { capture, novaDescoberta, raro } = await this.prisma.$transaction(
       async (transaction) => {
+        // ANTES do `updateMany`, e essa ordem não é estilo: o update
+        // condicional em `redeemedAt: null` é o que decide quem chegou
+        // primeiro, então checar o dono DEPOIS dele queimaria a ficha de quem
+        // tinha direito. Custa uma leitura por captura, e é o preço de o QR
+        // poder ficar exposto numa tela virada para a fila.
+        const dono = await transaction.captureToken.findUnique({
+          where: { tokenHash },
+          select: { assignedToId: true },
+        });
+        if (dono?.assignedToId != null && dono.assignedToId !== userId) {
+          throw new ForbiddenException({
+            code: FICHA_DE_OUTRO_ALUNO,
+            message:
+              'Este QR foi gerado para outro aluno. Responda uma questão na ' +
+              'bancada para receber o seu.',
+          });
+        }
+
         const { count } = await transaction.captureToken.updateMany({
           where: { tokenHash, redeemedAt: null },
           data: { redeemedAt: new Date(), redeemedBy: userId },

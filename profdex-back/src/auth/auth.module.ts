@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -16,7 +16,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
   imports: [
-    UsersModule,
+    // Ver a nota em users.module.ts: o ciclo é mútuo e declarado.
+    forwardRef(() => UsersModule),
     MailModule,
     PassportModule,
     JwtModule.registerAsync({
@@ -53,6 +54,11 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   ],
   // JwtModule exportado para o BattleModule verificar a sessão no handshake
   // do WebSocket com o MESMO segredo/config — sem duplicar registerAsync.
-  exports: [JwtAuthGuard, JwtModule],
+  //
+  // `AuthService` e `AuthRateLimitService` saem para o UsersController: trocar
+  // a matrícula reassina a sessão e é um caminho com senha, então tem de
+  // contar tentativa no MESMO balde do login — um segundo contador daria 5
+  // tentativas extras de graça.
+  exports: [JwtAuthGuard, JwtModule, AuthService, AuthRateLimitService],
 })
 export class AuthModule {}

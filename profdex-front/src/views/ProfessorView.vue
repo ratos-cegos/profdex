@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import BottomNav from '../components/BottomNav.vue'
 import ProfessorExemplares from '../components/ProfessorExemplares.vue'
 import ProfessorGolpes from '../components/ProfessorGolpes.vue'
 import ProfessorIdentidade from '../components/ProfessorIdentidade.vue'
@@ -109,60 +110,74 @@ function openAr() {
     state: { character: { ...professor.value } },
   })
 }
+
+/**
+ * Volta para de onde o aluno veio, que quase sempre é a coleção — e voltando
+ * pela história ela reaparece na rolagem em que estava (ver ProfdexView).
+ *
+ * `history.state.back` é o que o vue-router grava quando esta entrada nasceu de
+ * outra dentro do app. Abrir /professor/:id por link ou dar F5 não tem para
+ * onde voltar, e aí um `router.back()` sairia do ProfDex inteiro.
+ */
+function voltar() {
+  if (window.history.state?.back) router.back()
+  else router.push({ name: 'profdex' })
+}
 </script>
 
 <template>
-  <main class="detail">
-    <header class="detail__header">
-      <button
-        type="button"
-        aria-label="Voltar ao ProfDex"
-        @click="router.push({ name: 'profdex' })"
-      >
-        ←
-      </button>
-      <div class="detail__avatar">
-        <img
-          v-if="!imageError"
-          :src="spriteFrenteDe(professor)"
-          :alt="professor.name"
-          @error="imageError = true"
-        /><span v-else>{{ professor.name[0] }}</span>
-      </div>
-      <div class="detail__identity">
-        <span class="pixel">{{ dexNum }}</span>
-        <h1>{{ professor.name }}</h1>
-        <div>
-          <i v-for="type in types" :key="type.id" :style="{ '--type-color': type.color }"
-            ><TypeIcon :type="type.id" :size="12" /> {{ type.label }}</i
-          >
+  <div class="detail">
+    <main class="detail__conteudo">
+      <header class="detail__header">
+        <button type="button" aria-label="Voltar ao ProfDex" @click="voltar">←</button>
+        <div class="detail__avatar">
+          <img
+            v-if="!imageError"
+            :src="spriteFrenteDe(professor)"
+            :alt="professor.name"
+            @error="imageError = true"
+          /><span v-else>{{ professor.name[0] }}</span>
         </div>
+        <div class="detail__identity">
+          <span class="pixel">{{ dexNum }}</span>
+          <h1>{{ professor.name }}</h1>
+          <div>
+            <i v-for="type in types" :key="type.id" :style="{ '--type-color': type.color }"
+              ><TypeIcon :type="type.id" :size="12" /> {{ type.label }}</i
+            >
+          </div>
+        </div>
+      </header>
+      <nav class="detail__tabs" role="tablist" aria-label="Ficha do professor">
+        <button
+          v-for="(tab, index) in tabs"
+          :key="tab"
+          class="pixel"
+          :class="{ active: active === index }"
+          role="tab"
+          :aria-selected="active === index"
+          @click="selectTab(index)"
+          @keydown="onTabKey($event, index)"
+        >
+          {{ tab }}
+        </button>
+      </nav>
+      <div ref="panels" class="detail__panels" @scroll.passive="onScroll">
+        <section role="tabpanel">
+          <ProfessorIdentidade :description="description" :stats="stats" @open-ar="openAr" />
+        </section>
+        <section role="tabpanel">
+          <ProfessorExemplares :groups="groups" :erro="capturesIndisponiveis" />
+        </section>
+        <section role="tabpanel"><ProfessorGolpes :moves="moves" /></section>
       </div>
-    </header>
-    <nav class="detail__tabs" role="tablist" aria-label="Ficha do professor">
-      <button
-        v-for="(tab, index) in tabs"
-        :key="tab"
-        class="pixel"
-        :class="{ active: active === index }"
-        role="tab"
-        :aria-selected="active === index"
-        @click="selectTab(index)"
-        @keydown="onTabKey($event, index)"
-      >
-        {{ tab }}
-      </button>
-    </nav>
-    <div ref="panels" class="detail__panels" @scroll.passive="onScroll">
-      <section role="tabpanel">
-        <ProfessorIdentidade :description="description" :stats="stats" @open-ar="openAr" />
-      </section>
-      <section role="tabpanel">
-        <ProfessorExemplares :groups="groups" :erro="capturesIndisponiveis" />
-      </section>
-      <section role="tabpanel"><ProfessorGolpes :moves="moves" /></section>
-    </div>
-  </main>
+    </main>
+
+    <!-- A ficha era a ÚNICA tela alcançada pela navegação principal sem a
+         barra: ela sumia ao entrar e voltava ao sair, e era esse pisca que
+         fazia a coleção parecer outra tela na volta. -->
+    <BottomNav />
+  </div>
 </template>
 
 <style scoped>
@@ -172,6 +187,16 @@ function openAr() {
   flex-direction: column;
   background: var(--bg);
   color: var(--text);
+}
+/* A coluna que sobra depois da barra inferior. `min-height: 0` para os painéis
+   continuarem rolando por dentro em vez de esticar a ficha para fora da tela —
+   é o que mantém EXEMPLARES rolável em celular pequeno agora que a altura útil
+   encolheu pela altura da barra. */
+.detail__conteudo {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .detail__header {
   flex: 0 0 auto;
