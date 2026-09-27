@@ -15,8 +15,15 @@ export class ProfessorsService {
       // E nunca os RAROS: é este filtro que os tira do `X/Y` sem o front
       // precisar saber que eles existem. O raro tem rota própria (`rares`),
       // que devolve só a contagem e os que o aluno já capturou.
+      //
+      // O LENDÁRIO também fica fora, e por um motivo diferente do raro: ele
+      // ENTRA na dex depois de capturado, mas antes disso é uma silhueta que a
+      // rota da raid descreve (`GET /raid/status`). Se ele saísse por aqui, o
+      // nome e a arte do chefe estariam no DevTools de qualquer aluno no dia 1
+      // — e o gate da raid é a contagem desta mesma lista, então incluí-lo
+      // tornaria a Profdex impossível de fechar sem vencê-lo.
       this.prisma.professor.findMany({
-        where: { active: true, rare: false },
+        where: { active: true, rare: false, legendary: false },
         orderBy: { name: 'asc' },
         select: PUBLIC_PROFESSOR_SELECT,
       }),
@@ -61,15 +68,19 @@ export class ProfessorsService {
   async findOne(id: string, userId: string) {
     const professor = await this.prisma.professor.findUnique({
       where: { id },
-      select: { ...PUBLIC_PROFESSOR_SELECT, rare: true },
+      select: { ...PUBLIC_PROFESSOR_SELECT, rare: true, legendary: true },
     });
     if (!professor) throw new NotFoundException('Professor não encontrado.');
 
-    // `rare` é lido para decidir o acesso e fica FORA da resposta: ele não está
-    // na allowlist pública, e vazá-lo diria "este id é um raro" para quem o
-    // tivesse obtido de outro jeito.
-    const { rare, ...publico } = professor;
-    if (rare) {
+    // `rare` e `legendary` são lidos para decidir o acesso e ficam FORA da
+    // resposta: não estão na allowlist pública, e vazá-los diria "este id é um
+    // raro/o lendário" para quem os tivesse obtido de outro jeito.
+    //
+    // O lendário passa pela MESMA porta do raro: quem não o capturou recebe
+    // 404, não 403 — um 403 confirmaria que o id existe, que é metade do que a
+    // silhueta da Profdex existe para esconder.
+    const { rare, legendary, ...publico } = professor;
+    if (rare || legendary) {
       const capture = await this.prisma.capture.findFirst({
         where: { userId, professorId: id },
         select: { id: true },

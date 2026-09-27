@@ -57,7 +57,13 @@ const professores = ref([])
 // Formulário. `editando` guarda o professor em edição — null é cadastro novo.
 const editando = ref(null)
 const aberto = ref(false)
-const form = reactive({ name: '', types: [], pixelArt: false, rare: false })
+const form = reactive({
+  name: '',
+  types: [],
+  pixelArt: false,
+  rare: false,
+  legendary: false,
+})
 const arquivos = reactive({ spriteFront: null, spriteBack: null, model: null })
 const previews = reactive({ spriteFront: '', spriteBack: '', model: '' })
 const erroForm = ref('')
@@ -145,6 +151,7 @@ function abrirNovo() {
   form.types = []
   form.pixelArt = false
   form.rare = false
+  form.legendary = false
   limparPreviews()
   erroForm.value = ''
   aberto.value = true
@@ -155,8 +162,9 @@ function abrirEdicao(professor) {
   form.name = professor.name
   form.types = [...professor.types]
   form.pixelArt = professor.pixelArt
-  // Só para exibir: `rare` é imutável e o PATCH não o envia.
+  // Só para exibir: `rare` e `legendary` são imutáveis e o PATCH não os envia.
   form.rare = professor.rare
+  form.legendary = professor.legendary ?? false
   limparPreviews()
   erroForm.value = ''
   aberto.value = true
@@ -212,8 +220,11 @@ async function salvar() {
   corpo.append('name', form.name.trim())
   corpo.append('types', JSON.stringify(form.types))
   corpo.append('pixelArt', String(form.pixelArt))
-  // Só no cadastro: `rare` é imutável, e o servidor ignora o campo no PATCH.
-  if (!editandoUm.value) corpo.append('rare', String(form.rare))
+  // Só no cadastro: os dois são imutáveis, e o servidor ignora no PATCH.
+  if (!editandoUm.value) {
+    corpo.append('rare', String(form.rare))
+    corpo.append('legendary', String(form.legendary))
+  }
   for (const campo of CAMPOS_DE_ARTE) {
     if (arquivos[campo.key]) corpo.append(campo.key, arquivos[campo.key])
   }
@@ -425,6 +436,28 @@ onMounted(carregar)
           corrigir, desative este e cadastre outro.
         </p>
 
+        <!-- Lendário. Também só no cadastro, e excludente com o raro: são duas
+             vias de captura diferentes, e o servidor recusa as duas juntas. -->
+        <label
+          v-if="!editandoUm"
+          class="confirmacao confirmacao--lendario"
+          :class="{ 'confirmacao--travada': form.rare }"
+        >
+          <input v-model="form.legendary" type="checkbox" :disabled="form.rare" />
+          <span>
+            <strong>⚡ Professor lendário.</strong> O chefe da raid. Não sai em
+            ficha nenhuma — só vencendo a batalha, que abre apenas para quem
+            <strong>completou a Profdex</strong>. Conta na coleção depois de
+            capturado, e só pode haver <strong>um ativo</strong> por evento.
+            <em v-if="form.rare">Desmarque "raro": um professor é um ou outro.</em>
+            <em v-else>Escolha definitiva — não dá para mudar depois.</em>
+          </span>
+        </label>
+        <p v-else-if="editando.legendary" class="form__nota form__nota--lendario">
+          <strong>⚡ Professor lendário.</strong> Não muda na edição. Para
+          corrigir, desative este e cadastre outro.
+        </p>
+
         <p v-if="erroForm" class="aviso aviso--erro">{{ erroForm }}</p>
 
         <div v-if="enviando" class="progresso" role="status" aria-live="polite">
@@ -473,6 +506,12 @@ onMounted(carregar)
             <div class="linha__id">
               <strong class="linha__nome">
                 <span v-if="p.rare" class="selo-raro" title="Professor raro">✦</span>
+                <span
+                  v-else-if="p.legendary"
+                  class="selo-lendario"
+                  title="Professor lendário"
+                  >⚡</span
+                >
                 {{ p.name }}
               </strong>
               <span class="linha__slug">{{ p.slug }}</span>
@@ -722,6 +761,36 @@ onMounted(carregar)
 
 .form__nota--raro {
   color: var(--raro);
+}
+
+/* Lendário: dourado quente, distinto do dourado-raro, porque as duas caixas
+   aparecem uma embaixo da outra no mesmo formulário. */
+.confirmacao--lendario {
+  border-color: #ffd166;
+  background: color-mix(in srgb, #ffd166 10%, var(--bg-card));
+}
+
+.confirmacao--lendario em {
+  display: block;
+  margin-top: 4px;
+  color: #ffd166;
+  font-style: normal;
+  font-weight: 700;
+}
+
+/* Marcar "raro" desabilita esta: o servidor recusaria os dois, e descobrir
+   isso só no 409 obrigaria o admin a refazer o upload das três artes. */
+.confirmacao--travada {
+  opacity: 0.55;
+}
+
+.form__nota--lendario {
+  color: #ffd166;
+}
+
+.selo-lendario {
+  color: #ffd166;
+  font-size: 13px;
 }
 
 .selo-raro {

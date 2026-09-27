@@ -168,6 +168,18 @@ telas de arena só foram exercitados por teste de unidade e build.
   aplicações do tema** (configurável, 0 desliga). O filtro por aluno continua
   sendo **regra** e o global é só **preferência** — se os dois brigarem, vence
   não repetir para o mesmo aluno. Detalhes na tarefa 17.
+- **Raid do professor lendário (27/09/2026):** quem captura **todos os
+  professores comuns** destrava uma batalha contra o professor **lendário**,
+  jogado pelo servidor — até 3 exemplares do aluno contra um chefe de **4× a
+  vida** (configurável) e IV 15. Vencer **captura o lendário e completa a
+  Profdex**: ele é a entrada `Y+1`, aparece como silhueta `???` piscando
+  colorido e **só depois de destravar**. Raros **não** são exigidos. Tentativas
+  ilimitadas com **cooldown de 30 min** (configurável, contado do fim);
+  abandono consome, restart do servidor **não**. O exemplar ganho tem **IV 15
+  nos quatro** e joga no PvP normalmente. O destravamento é **permanente** —
+  cadastrar professor novo não tira a raid de quem já fechou. Quem capturou
+  **primeiro** sai em `/admin/metrics` → **Raid ⚡**, nunca no app durante o
+  evento. Detalhes na tarefa 18.
 - **Matrícula é corrigível pelo próprio aluno (26/09/2026):** troca no Perfil,
   **ilimitada**, exigindo a **senha atual** (é credencial de login) e reassinando
   a sessão. **Sem validação de formato.** Detalhes na tarefa 17.
@@ -177,11 +189,11 @@ telas de arena só foram exercitados por teste de unidade e build.
 Defeitos encontrados de passagem, que **não** foram corrigidos junto com a
 tarefa que os revelou — misturá-los ao mesmo commit confunde a revisão.
 
-- **`collection_completed` não filtra `active`** (achado na tarefa 15.6).
-  O `professor.count()` de `CapturesService.registrarMetricas` passou a excluir
-  os raros, mas continua contando os professores **desativados**. Como
-  desativado sai da Profdex do aluno e do sorteio, ele nunca poderá ser
-  capturado — e a coleção fica incompletável para todo mundo a partir do
-  primeiro "remover" no painel. É **pré-existente** e independente do raro.
-  A correção é acrescentar `active: true` ao mesmo `where`, mas ela merece
-  commit e teste próprios: muda quando um evento de 200 pontos dispara.
+- ~~**`collection_completed` não filtra `active`**~~ (achado na tarefa 15.6,
+  **corrigido na tarefa 18** em 27/09/2026). O `professor.count()` de
+  `CapturesService.registrarMetricas` contava os professores **desativados**, e
+  desativado nunca pode ser capturado — a coleção ficava incompletável para
+  todo mundo a partir do primeiro "remover" no painel. Foi corrigido junto com
+  a raid porque virou pré-requisito dela: é a MESMA contagem que destrava o
+  lendário, e com o bug a raid seria inalcançável pelo mesmo motivo. O `where`
+  agora é `{ rare: false, legendary: false, active: true }` nos dois lados.

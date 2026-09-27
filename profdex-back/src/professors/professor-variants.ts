@@ -14,7 +14,7 @@ type Db = Pick<PrismaClient, 'professor' | 'professorVariant' | 'capture'>;
  * variante nenhuma — ou seja, fora do sorteio de captura, sem nada indicando o
  * motivo.
  *
- * **Raro é exceção: UMA variante, a combinação completa.** O raro tem arte
+ * **Raro e LENDÁRIO são exceção: UMA variante, a combinação completa.** O raro tem arte
  * própria e pilha de papel própria, e cada variante a mais seria outra ficha a
  * imprimir e outra entrada a explicar na mesa. Ele também não passa pelo
  * sorteio (a ficha aponta direto para a variante), então as combinações
@@ -23,8 +23,12 @@ type Db = Pick<PrismaClient, 'professor' | 'professorVariant' | 'capture'>;
 export function variantsForProfessor(professor: {
   types: string[];
   rare?: boolean;
+  legendary?: boolean;
 }): { typeKey: string; types: string[] }[] {
-  if (professor.rare) {
+  // O lendário entra na mesma exceção e pela mesma razão: ele não passa pelo
+  // sorteio (a raid entrega a variante completa) e não tem pilha de papel, de
+  // modo que combinações parciais nasceriam órfãs.
+  if (professor.rare || professor.legendary) {
     // Sem tipo não há combinação completa para materializar. Não acontece pelo
     // painel (o DTO exige ao menos um), mas o bootstrap varre o banco inteiro.
     if (!professor.types.length) return [];
@@ -52,10 +56,13 @@ export async function ensureVariantsForProfessor(
   db: Pick<Db, 'professorVariant'>,
   professorId: string,
   types: string[],
-  { rare = false }: { rare?: boolean } = {},
+  {
+    rare = false,
+    legendary = false,
+  }: { rare?: boolean; legendary?: boolean } = {},
 ): Promise<number> {
   let criadas = 0;
-  for (const variant of variantsForProfessor({ types, rare })) {
+  for (const variant of variantsForProfessor({ types, rare, legendary })) {
     const { count } = await db.professorVariant.createMany({
       data: { professorId, ...variant },
       skipDuplicates: true,

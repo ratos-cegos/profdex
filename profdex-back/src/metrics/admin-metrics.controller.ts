@@ -87,4 +87,15 @@ export class AdminMetricsController {
   rares() {
     return this.metrics.rares();
   }
+
+  /**
+   * A raid do lendário. Mesma justificativa da seção de raros para viver só
+   * aqui — e uma a mais: a ordem de quem capturou primeiro vale um prêmio
+   * físico, e publicá-la no app durante o evento desmotivaria todo mundo que
+   * ainda não venceu (tarefa 18, decisão 20).
+   */
+  @Get('raid')
+  raid() {
+    return this.metrics.raid();
+  }
 }

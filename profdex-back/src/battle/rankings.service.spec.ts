@@ -126,10 +126,12 @@ describe('RankingsService — ladders de coleção', () => {
     const ladder = await service.dexLeaderboard('ana', 1);
 
     expect(prisma.capture.groupBy).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { professor: { rare: false } } }),
+      expect.objectContaining({
+        where: { professor: { rare: false, legendary: false } },
+      }),
     );
     expect(prisma.professor.count).toHaveBeenCalledWith({
-      where: { rare: false },
+      where: { rare: false, legendary: false },
     });
     expect(ladder.dexTotal).toBe(14);
   });

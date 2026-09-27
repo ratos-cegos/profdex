@@ -25,6 +25,8 @@ export const EVENT_TYPES = [
   'quiz_practice_answered',
   'rare_unlocked',
   'rare_captured',
+  'raid_started',
+  'legendary_captured',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -64,6 +66,11 @@ const SERVER_ONLY_EVENTS: ReadonlySet<EventType> = new Set([
   // vale 140 pontos, o que faria dele o alvo óbvio de quem abrir o DevTools.
   'rare_unlocked',
   'rare_captured',
+  // Os dois da raid. `legendary_captured` vale 200 e é o evento mais caro do
+  // catálogo — exatamente o alvo de quem abrir o DevTools. Ele nasce no fim da
+  // batalha, no servidor, onde o resultado é conhecido.
+  'raid_started',
+  'legendary_captured',
 ]);
 
 /** O app pode declarar este evento? */
@@ -102,6 +109,19 @@ export const ENGAGEMENT_POINTS: Record<EventType, number> = {
    * premiar aqui não desequilibra nada: o Elo não passa por este número.
    */
   rare_captured: 140,
+  // Tentar não pontua: a raid é ilimitada (com cooldown) e sem supervisão, e
+  // qualquer valor aqui faria o placar medir quem insistiu, não quem venceu.
+  raid_started: 0,
+  /**
+   * 200, somados aos 70 da captura inédita = **270** — acima do raro (210),
+   * que é o que faz sentido: o lendário exige a Profdex INTEIRA antes de a
+   * primeira tentativa ser possível.
+   *
+   * Não redispara `collection_completed`: aquele evento já pagou 200 quando o
+   * aluno fechou os comuns, e é ele que destrava a raid. Pagar de novo seria
+   * contar a mesma conquista duas vezes.
+   */
+  legendary_captured: 200,
 };
 
 /** Bônus por iniciar a primeira sessão do dia. */
@@ -156,6 +176,12 @@ export const INTERACTION_WEIGHTS: Record<EventType, number> = {
   // `quiz_answered`, e a captura do raro como um `professor_captured`.
   rare_unlocked: 0,
   rare_captured: 0,
+  // A tentativa conta como atividade real: são minutos de batalha, como uma
+  // `battle_finished` — e é o número que mostra o esforço de quem não passou.
+  raid_started: 20,
+  // Zero: o gesto já foi contado como `professor_captured` (15) e como a
+  // tentativa que o produziu.
+  legendary_captured: 0,
 };
 
 /** Tamanho do bloco de tempo de uso convertido em interações. */
@@ -192,4 +218,6 @@ export const INTERACTION_SOURCE_LABELS: Record<EventType, string> = {
   quiz_practice_answered: 'Quiz de treino respondido',
   rare_unlocked: 'Temas destravados',
   rare_captured: 'Professores raros capturados',
+  raid_started: 'Raids iniciadas',
+  legendary_captured: 'Lendários capturados',
 };

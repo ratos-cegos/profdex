@@ -171,12 +171,20 @@ export class RankingsService {
       // completar a Profdex (tarefa 15, decisão 14), e contá-los só no
       // numerador faria o ladder passar de 100% para quem pegou um; só no
       // denominador, tornaria os 100% inalcançáveis sem 100 min de bancada.
+      //
+      // O LENDÁRIO sai dos dois lados pelo mesmo argumento. Ele conta para
+      // completar a Profdex do aluno, mas aqui a fração compara ALUNOS entre
+      // si: com ele no numerador, quem venceu a raid passaria de 100%; com ele
+      // no denominador, ninguém fecha o ladder sem vencer a raid. A régua do
+      // ranking de coleção continua sendo a coleção comum, igual para todos.
       this.prisma.capture.groupBy({
         by: ['userId', 'professorId'],
-        where: { professor: { rare: false } },
+        where: { professor: { rare: false, legendary: false } },
         _max: { capturedAt: true },
       }),
-      this.prisma.professor.count({ where: { rare: false } }),
+      this.prisma.professor.count({
+        where: { rare: false, legendary: false },
+      }),
     ]);
 
     const porAluno = new Map<string, CollectionRow>();

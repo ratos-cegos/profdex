@@ -541,7 +541,7 @@ describe('AdminCaptureTokensService', () => {
       await service.inventory();
 
       expect(filtrosDeVariante[0]).toEqual({
-        professor: { active: true, rare: false },
+        professor: { active: true, rare: false, legendary: false },
       });
     });
 

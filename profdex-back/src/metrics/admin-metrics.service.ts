@@ -411,6 +411,74 @@ export class AdminMetricsService {
     };
   }
 
+  /**
+   * A raid do lendário: quem venceu, em que ordem, e como está o funil.
+   *
+   * `clears` é a razão de esta seção existir. O prêmio do evento vai para quem
+   * capturou PRIMEIRO, e essa ordem precisa ser uma consulta, não uma
+   * arqueologia de logs feita com a fila esperando — por isso `raid_clears`
+   * tem linha por aluno, `clearedAt` do relógio do SERVIDOR e a matrícula
+   * viaja junto: sem ela você tem um nome e mil alunos.
+   *
+   * Fica no painel e não no app (decisão 20): anunciar ao vivo que o primeiro
+   * lugar já saiu tira o motivo de os outros tentarem.
+   */
+  async raid() {
+    const lendario = await this.prisma.professor.findFirst({
+      where: { legendary: true, active: true },
+      orderBy: { id: 'asc' },
+      select: { id: true, name: true, types: true },
+    });
+
+    // Estado vazio explícito: a seção abre sem lendário cadastrado, sem erro.
+    if (!lendario) {
+      return { lendario: null, clears: [], funil: null, desbloqueios: 0 };
+    }
+
+    const [clears, tentativas, vencedores, desbloqueios] = await Promise.all([
+      this.prisma.raidClear.findMany({
+        // Ordem de chegada, do primeiro para o último: é literalmente a fila
+        // do prêmio, e o `take` existe porque premiar o 51º não é um plano.
+        orderBy: { clearedAt: 'asc' },
+        take: 50,
+        select: {
+          clearedAt: true,
+          attempts: true,
+          user: { select: { name: true, matricula: true } },
+        },
+      }),
+      this.prisma.raidAttempt.count({
+        // `anulada` fora da conta: restart e desistência na preparação não são
+        // tentativas do aluno, e contá-las faria o funil culpar o jogador por
+        // um deploy nosso.
+        where: { result: { not: 'anulada' } },
+      }),
+      this.prisma.raidAttempt.count({ where: { result: 'vitoria' } }),
+      this.prisma.raidUnlock.count(),
+    ]);
+
+    return {
+      lendario: { name: lendario.name, types: lendario.types },
+      clears: clears.map((c, i) => ({
+        posicao: i + 1,
+        name: c.user.name,
+        matricula: c.user.matricula,
+        clearedAt: c.clearedAt,
+        attempts: c.attempts,
+      })),
+      // A taxa é o número que decide se o 4× ficou justo — e é o que você
+      // olha na primeira hora, enquanto `raid.hp_multiplier` ainda dá para
+      // mexer sem deploy.
+      funil: {
+        desbloqueios,
+        tentativas,
+        vitorias: vencedores,
+        taxa: tentativas ? Math.round((vencedores / tentativas) * 100) : null,
+      },
+      desbloqueios,
+    };
+  }
+
   async retentionD1() {
     const startToday = new Date();
     startToday.setHours(0, 0, 0, 0);

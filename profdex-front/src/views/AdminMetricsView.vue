@@ -16,6 +16,13 @@ const interacoes = ref(null)
 // bancada não ter aviso prévio (tarefa 15, decisão 16).
 const raros = ref({ capturas: [], porRaro: [], aUmAcerto: [] })
 
+// Raid do lendário. `clears` é a FILA DO PRÊMIO, em ordem de chegada: é a
+// única fonte da resposta "quem capturou primeiro?", e ela vale um prêmio
+// físico. Não aparece no app durante o evento de propósito (tarefa 18,
+// decisão 20) — anunciar que o primeiro lugar já saiu tira o motivo de os
+// outros tentarem.
+const raid = ref({ lendario: null, clears: [], funil: null, desbloqueios: 0 })
+
 // Hora e dia curtos: a pergunta do painel é "quando foi", e o evento dura dias.
 const horaLegivel = (iso) =>
   new Date(iso).toLocaleString('pt-BR', {
@@ -58,13 +65,14 @@ async function carregarSerie() {
 
 onMounted(async () => {
   try {
-    const [o, f, e, r, i, raro] = await Promise.all([
+    const [o, f, e, r, i, raro, raidData] = await Promise.all([
       api.get('/admin/metrics/overview'),
       api.get('/admin/metrics/funnel'),
       api.get('/admin/metrics/engagement', { params: { limit: 20 } }),
       api.get('/admin/metrics/retention'),
       api.get('/admin/metrics/interactions'),
       api.get('/admin/metrics/rares'),
+      api.get('/admin/metrics/raid'),
     ])
     overview.value = o.data
     funnel.value = f.data
@@ -72,6 +80,7 @@ onMounted(async () => {
     retention.value = r.data
     interacoes.value = i.data
     raros.value = raro.data
+    raid.value = raidData.data
     await carregarSerie()
   } catch (e) {
     error.value =
@@ -310,6 +319,74 @@ const labelSerie = computed(
                 <span class="linha__extra">{{ c.matricula }}</span>
                 <span class="linha__extra linha__extra--raro">✦ {{ c.professor }}</span>
                 <span class="linha__extra">{{ horaLegivel(c.capturedAt) }}</span>
+              </li>
+            </ul>
+          </template>
+        </section>
+
+        <!-- Raid ⚡.
+             Duas leituras, e a segunda é a que decide uma AÇÃO: a taxa de
+             vitória diz se o 4× ficou justo, e ela é acionável enquanto
+             `raid.hp_multiplier` ainda dá para mexer em /admin/configuracoes,
+             sem deploy. A primeira, a fila, é o prêmio. -->
+        <section class="bloco bloco--raid" aria-label="Raid do lendário">
+          <span class="pixel bloco__titulo">RAID ⚡</span>
+
+          <p v-if="!raid.lendario" class="hint">
+            Nenhum professor lendário cadastrado.
+          </p>
+
+          <template v-else>
+            <ul class="lista">
+              <li class="linha">
+                <span class="linha__nome linha__nome--raid">
+                  ⚡ {{ raid.lendario.name }}
+                </span>
+                <span class="linha__extra">{{ raid.lendario.types.join(' · ') }}</span>
+              </li>
+            </ul>
+
+            <span class="pixel bloco__sub">FUNIL</span>
+            <ul class="lista">
+              <li class="linha">
+                <span class="linha__nome">Destravaram a raid</span>
+                <span class="linha__extra">{{ raid.funil.desbloqueios }}</span>
+              </li>
+              <li class="linha">
+                <span class="linha__nome">Tentativas</span>
+                <span class="linha__extra">{{ raid.funil.tentativas }}</span>
+              </li>
+              <li class="linha">
+                <span class="linha__nome">Vitórias</span>
+                <span class="linha__extra">{{ raid.funil.vitorias }}</span>
+              </li>
+              <li class="linha">
+                <span class="linha__nome">Taxa de vitória</span>
+                <span class="linha__extra">
+                  {{ raid.funil.taxa === null ? '—' : `${raid.funil.taxa}%` }}
+                </span>
+              </li>
+            </ul>
+
+            <span class="pixel bloco__sub">FILA DO PRÊMIO</span>
+            <p v-if="!raid.clears.length" class="hint">
+              Ninguém capturou o lendário ainda.
+            </p>
+            <ul v-else class="lista">
+              <li
+                v-for="c in raid.clears"
+                :key="c.matricula"
+                class="linha"
+                :class="{ 'linha--primeiro': c.posicao === 1 }"
+              >
+                <span class="linha__nome linha__nome--raid">
+                  {{ c.posicao }}º {{ c.name }}
+                </span>
+                <span class="linha__extra">{{ c.matricula }}</span>
+                <span class="linha__extra">{{ horaLegivel(c.clearedAt) }}</span>
+                <span class="linha__extra">
+                  {{ c.attempts }}ª tentativa
+                </span>
               </li>
             </ul>
           </template>
@@ -635,6 +712,23 @@ const labelSerie = computed(
 .linha__nome--raro,
 .linha__extra--raro {
   color: var(--raro);
+}
+
+/* ── Raid ⚡ ────────────────────────────────────────────────────────────── */
+.bloco--raid {
+  border-color: color-mix(in srgb, #ffd166 40%, var(--border));
+}
+
+.bloco--raid .bloco__titulo,
+.linha__nome--raid {
+  color: #ffd166;
+}
+
+/* O primeiro colocado é a razão de a tabela existir: ele ganha destaque para
+   não ser confundido na hora de chamar o nome. */
+.linha--primeiro {
+  background: color-mix(in srgb, #ffd166 12%, transparent);
+  border-radius: 6px;
 }
 
 /* Pilha no fim: quem destravar a partir daqui não recebe nada. */

@@ -82,6 +82,32 @@ export class SettingsService {
     return (await this.get('battlePairCooldownHours')) * 60 * 60_000;
   }
 
+  /** O cooldown entre tentativas de raid, em milissegundos. */
+  async raidCooldownMs(): Promise<number> {
+    return (await this.get('raidCooldownMinutes')) * 60_000;
+  }
+
+  /**
+   * Os três dials da raid, lidos de uma vez.
+   *
+   * Juntos porque são lidos juntos, no nascimento da sala, e porque congelá-los
+   * no mesmo instante é o que faz a promessa do painel ser verdade: mexer no
+   * multiplicador no meio de uma raid não pode mudar a vida do chefe com o
+   * aluno já lutando. A sala guarda o que leu aqui e nunca mais consulta.
+   */
+  async raidRules(): Promise<{
+    hpMultiplier: number;
+    legendaryIv: number;
+    turnCap: number;
+  }> {
+    const valores = await this.all();
+    return {
+      hpMultiplier: valores.raidHpMultiplier,
+      legendaryIv: valores.raidLegendaryIv,
+      turnCap: valores.raidTurnCap,
+    };
+  }
+
   /**
    * Como a bancada entrega o QR do acerto: papel da pilha ou QR na tela.
    *

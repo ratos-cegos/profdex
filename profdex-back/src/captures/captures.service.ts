@@ -308,9 +308,13 @@ export class CapturesService {
         // Faixa 1 do sorteio (professor inédito), que é a PREFERENCIAL — o raro
         // seria o resultado mais provável de uma ficha comum, e a via do quiz
         // deixaria de existir na prática.
+        // `legendary: false` pelo mesmo motivo, e com um agravante: o lendário
+        // CONTA para completar a dex, então sair numa ficha comum não só
+        // atropelaria a raid — entregaria de graça a última entrada da Profdex
+        // para quem escaneou um papel qualquer.
         where: {
           types: { has: type },
-          professor: { active: true, rare: false },
+          professor: { active: true, rare: false, legendary: false },
         },
         select: { id: true, professorId: true, types: true },
       }),
@@ -383,13 +387,22 @@ export class CapturesService {
       // Os RAROS ficam fora dos dois lados da conta: eles não contam para
       // completar a Profdex (decisão 14), e sem o filtro no total ninguém
       // fecharia a coleção sem antes passar 100 min na bancada.
+      //
+      // O LENDÁRIO também, e por uma razão mais dura: é esta contagem que
+      // destrava a raid dele. Incluí-lo tornaria o gate circular — só
+      // destravaria a raid quem já tivesse vencido a raid.
+      //
+      // E `active: true` nos DOIS lados: sem ele, desativar um professor no
+      // painel deixava a dex impossível de fechar (o total continuava contando
+      // quem saiu da Profdex). Era o bug anotado em docs/tasks/INDEX.md.
+      const comuns = { rare: false, legendary: false, active: true };
       const [capturados, total] = await Promise.all([
         this.prisma.capture.findMany({
-          where: { userId, professor: { rare: false } },
+          where: { userId, professor: comuns },
           select: { professorId: true },
           distinct: ['professorId'],
         }),
-        this.prisma.professor.count({ where: { rare: false } }),
+        this.prisma.professor.count({ where: comuns }),
       ]);
       if (total > 0 && capturados.length >= total) {
         eventos.push({ type: 'collection_completed', occurredAt });

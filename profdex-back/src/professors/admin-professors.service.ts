@@ -35,6 +35,7 @@ const ADMIN_PROFESSOR_SELECT = {
   pixelArt: true,
   active: true,
   rare: true,
+  legendary: true,
 } satisfies Prisma.ProfessorSelect;
 
 /**
@@ -44,6 +45,21 @@ const ADMIN_PROFESSOR_SELECT = {
  * ambiguidade (tarefa 15, decisão 8). Código e não texto — ver CODE_STYLE.
  */
 export const TEMA_JA_TEM_RARO = 'TEMA_JA_TEM_RARO';
+
+/**
+ * Erro de domínio estável: já existe um lendário ATIVO.
+ *
+ * Só um por evento (tarefa 18, decisão 3). A Profdex desenha UM card na
+ * posição `Y+1`, e o gate da raid pergunta "qual é o lendário?" no singular —
+ * dois ativos criariam um estado que nenhuma das duas telas sabe representar.
+ *
+ * Validado contra os ATIVOS, como o raro: desativar o atual e cadastrar outro
+ * continua sendo o caminho de troca no meio do evento.
+ */
+export const JA_EXISTE_LENDARIO = 'JA_EXISTE_LENDARIO';
+
+/** Erro de domínio estável: marcaram raro e lendário no mesmo cadastro. */
+export const RARO_E_LENDARIO = 'RARO_E_LENDARIO';
 
 /**
  * Cadastro de professores pelo painel.
@@ -102,9 +118,24 @@ export class AdminProfessorsService {
   async create(dto: ProfessorFormDto, files: UploadedAssets) {
     const slug = this.slugOuErro(dto.name);
     const rare = dto.rare ?? false;
+    const legendary = dto.legendary ?? false;
+
+    // As duas vias de aquisição são excludentes: o raro sai de ficha após 5
+    // acertos por tema, o lendário sai de uma raid após a dex fechada. Um
+    // professor que exigisse os dois não é regra que alguém explica na fila.
+    if (rare && legendary) {
+      throw new ConflictException({
+        code: RARO_E_LENDARIO,
+        message:
+          'Um professor é raro OU lendário, nunca os dois: são vias de ' +
+          'captura diferentes. Escolha uma.',
+      });
+    }
+
     // ANTES da arte e da transação: um 409 aqui não pode ter escrito arquivo
     // nenhum no volume de uploads nem consumido um slug.
     if (rare) await this.assertTemasLivres(dto.types);
+    if (legendary) await this.assertSemLendario();
     const arte = this.validarArte(files, { exigirTodos: true });
 
     const versao = Date.now();
@@ -125,6 +156,10 @@ export class AdminProfessorsService {
         // Fechar de verdade exigiria constraint de exclusão sobre `unnest`,
         // que o Prisma não gera — e o painel tem meia dúzia de usuários.
         if (rare) await this.assertTemasLivres(dto.types, tx);
+        // Mesma história do raro, e pelo mesmo motivo de ordem: depois do
+        // `create` esta consulta enxergaria a própria linha e nenhum lendário
+        // nasceria nunca.
+        if (legendary) await this.assertSemLendario(tx);
 
         const criado = await tx.professor.create({
           data: {
@@ -133,6 +168,7 @@ export class AdminProfessorsService {
             types: dto.types,
             pixelArt: dto.pixelArt ?? false,
             rare,
+            legendary,
             spriteFrontUrl: assetUrl(slug, 'spriteFront', versao),
             spriteBackUrl: assetUrl(slug, 'spriteBack', versao),
             modelUrl: assetUrl(slug, 'model', versao),
@@ -141,9 +177,10 @@ export class AdminProfessorsService {
         });
 
         // Mesma transação: professor sem variante é professor fora do sorteio.
-        // O raro ganha UMA variante, a dupla — ver professor-variants.ts.
+        // Raro e lendário ganham UMA variante — ver professor-variants.ts.
         await ensureVariantsForProfessor(tx, criado.id, criado.types, {
           rare: criado.rare,
+          legendary: criado.legendary,
         });
         return criado;
       })
@@ -167,6 +204,8 @@ export class AdminProfessorsService {
         audit: 'professor_created',
         slug,
         types: professor.types,
+        rare,
+        legendary,
       }),
     );
     return { ...professor, capturedCount: 0 };
@@ -214,6 +253,7 @@ export class AdminProfessorsService {
       // mantém o raro com UMA variante mesmo depois de uma troca de tipos.
       await ensureVariantsForProfessor(tx, salvo.id, salvo.types, {
         rare: salvo.rare,
+        legendary: salvo.legendary,
       });
       return salvo;
     });
@@ -294,6 +334,29 @@ export class AdminProfessorsService {
         `(${ocupados.map((p) => p.name).join(', ')}). ` +
         'Cada tema comporta um raro — desative o atual ou escolha outro tema.',
       temas: conflitos,
+    });
+  }
+
+  /**
+   * No máximo UM lendário ativo (decisão 3).
+   *
+   * Sem filtro de tema, ao contrário do raro: o lendário não tem gate por tema
+   * — o gate dele é a Profdex inteira, que é uma só.
+   */
+  private async assertSemLendario(
+    db: Pick<PrismaService, 'professor'> = this.prisma,
+  ): Promise<void> {
+    const atual = await db.professor.findFirst({
+      where: { legendary: true, active: true },
+      select: { name: true },
+    });
+    if (!atual) return;
+
+    throw new ConflictException({
+      code: JA_EXISTE_LENDARIO,
+      message:
+        `Já existe um professor lendário ativo: ${atual.name}. ` +
+        'Só pode haver um por evento — desative o atual para cadastrar outro.',
     });
   }
 

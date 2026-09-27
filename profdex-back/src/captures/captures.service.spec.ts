@@ -364,9 +364,10 @@ describe('CapturesService', () => {
 
       // Professor desativado não pode sair numa ficha que já está impressa.
       // Raro tampouco: ele só sai pela ficha própria (tarefa 15, decisão 10).
+      // E o LENDÁRIO menos ainda: ele só sai vencendo a raid (tarefa 18).
       expect(filtros[0]).toEqual({
         types: { has: 'ia' },
-        professor: { active: true, rare: false },
+        professor: { active: true, rare: false, legendary: false },
       });
     });
 
@@ -632,7 +633,11 @@ describe('CapturesService', () => {
       await build(prisma).captureByToken('user-1', token);
 
       expect(filtros).toHaveLength(1);
-      expect(filtros[0].professor).toEqual({ active: true, rare: false });
+      expect(filtros[0].professor).toEqual({
+        active: true,
+        rare: false,
+        legendary: false,
+      });
     });
 
     it('a ficha comum não passa pelo porteiro do raro', async () => {

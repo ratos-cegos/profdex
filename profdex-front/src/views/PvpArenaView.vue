@@ -118,7 +118,13 @@ async function trocarPara(membro) {
   if (!canAct.value) return
   trocaAberta.value = false
   const ack = await battle.switchTo(membro.captureId)
-  if (ack.ok) message.value = pvp.value?.foeMoved ? 'Resolvendo…' : 'Aguardando o rival…'
+  if (ack.ok) {
+    message.value = naRaid.value
+      ? 'Resolvendo…' // na raid o chefe já agiu: nunca há por quem esperar
+      : pvp.value?.foeMoved
+        ? 'Resolvendo…'
+        : 'Aguardando o rival…'
+  }
 }
 
 async function entrarCom(membro) {
@@ -175,12 +181,47 @@ const mensagemExibida = computed(() => {
   return message.value
 })
 
+// A raid usa esta mesma tela, mas o vocabulário é outro: não há rival, não há
+// Elo, e vencer significa CAPTURAR. Ver tarefa 18, decisão 17.
+const naRaid = computed(() => pvp.value?.mode === 'raid')
+
 const resultText = computed(() => {
   const r = pvp.value?.result
   if (!r) return ''
-  if (r.result === 'win') return 'VOCÊ VENCEU!'
+  if (r.result === 'win') {
+    // `captured: false` numa vitória é o caso raro de quem venceu duas vezes
+    // (duas abas): o servidor recusa o segundo exemplar e a tela não pode
+    // prometer o que não entregou.
+    if (naRaid.value) return r.captured ? 'LENDÁRIO CAPTURADO!' : 'VOCÊ VENCEU!'
+    return 'VOCÊ VENCEU!'
+  }
   if (r.result === 'loss') return 'VOCÊ FOI DERROTADO'
   return 'EMPATE!'
+})
+
+/** O texto abaixo do título: como a batalha terminou, em português. */
+const resultReason = computed(() => {
+  const r = pvp.value?.result
+  if (!r) return ''
+  if (r.reason === 'abandono') return 'Por abandono'
+  if (r.reason === 'limite_de_turnos') {
+    return naRaid.value ? 'O lendário resistiu ao tempo' : 'Por limite de turnos'
+  }
+  if (naRaid.value && r.result === 'win') {
+    return r.captured
+      ? 'Ele entra na sua Profdex com atributos perfeitos.'
+      : 'Você já tinha capturado este lendário.'
+  }
+  if (naRaid.value) return 'Seu time caiu'
+  return 'Por nocaute'
+})
+
+/** Quando a próxima tentativa de raid libera — só existe na derrota. */
+const retryText = computed(() => {
+  const retryAt = pvp.value?.result?.retryAt
+  if (!naRaid.value || !Number.isFinite(retryAt)) return ''
+  const minutos = Math.max(1, Math.ceil((retryAt - Date.now()) / 60000))
+  return `Você pode tentar de novo em ${minutos} min.`
 })
 
 const resultKind = computed(() => pvp.value?.result?.result ?? '')
@@ -302,8 +343,12 @@ async function useMove(move) {
 }
 
 function backToLobby() {
+  const eraRaid = naRaid.value
   battle.leaveBattle()
-  router.push({ name: 'batalha' })
+  // A raid nasceu na Profdex e é lá que o resultado dela aparece (o card vira
+  // capturado, ou o cooldown começa a correr). Voltar para o lobby do PvP
+  // largaria o aluno numa tela que ele não pediu e que não mudou.
+  router.push({ name: eraRaid ? 'profdex' : 'batalha' })
 }
 
 // Novas rodadas chegam pelo store; anima assim que houver fila.
@@ -344,7 +389,9 @@ onMounted(() => {
   // `picking` e `preview` são as duas etapas da tela de seleção — chegar na
   // arena em qualquer uma delas é deep link ou F5 fora de hora.
   if (!pvp.value || pvp.value.phase === 'picking' || pvp.value.phase === 'preview') {
-    router.replace({ name: pvp.value ? 'pvp-pick' : 'batalha' })
+    router.replace({
+      name: pvp.value ? 'pvp-pick' : naRaid.value ? 'profdex' : 'batalha',
+    })
     return
   }
   syncFromServer()
@@ -490,9 +537,8 @@ onUnmounted(() => clock && clearInterval(clock))
         }"
       >
         <p class="pixel pvp-result__title">{{ resultText }}</p>
-        <p class="pvp-result__reason">
-          {{ pvp.result?.reason === 'abandono' ? 'Por abandono' : 'Por nocaute' }}
-        </p>
+        <p class="pvp-result__reason">{{ resultReason }}</p>
+        <p v-if="retryText" class="pvp-result__reason">{{ retryText }}</p>
         <p v-if="pvp.result?.rating" class="pixel pvp-result__rating">
           {{ ratingDeltaText }}
         </p>
@@ -500,7 +546,7 @@ onUnmounted(() => clock && clearInterval(clock))
           Novo Elo: {{ pvp.result.rating.rating }} · {{ pvp.result.rating.tier }}
         </p>
         <button class="pixel pvp-result__btn" type="button" @click="backToLobby">
-          VOLTAR AO LOBBY
+          {{ naRaid ? 'VOLTAR À PROFDEX' : 'VOLTAR AO LOBBY' }}
         </button>
       </div>
     </div>

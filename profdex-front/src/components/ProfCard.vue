@@ -21,6 +21,16 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  /**
+   * Professor LENDÁRIO capturado (tarefa 18). Também cosmético — selo ⚡ e
+   * moldura colorida —, mas por um motivo diferente do raro: aqui o exemplar
+   * é de fato especial (IV 15 nos quatro), e a moldura é o que mostra isso
+   * sem mentir que ele tem regra de combate própria. Ele não tem.
+   */
+  legendary: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['details'])
@@ -43,6 +53,7 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
       'prof-card--discovered': professor.discovered && !professor.captured,
       'prof-card--unknown': !professor.discovered,
       'prof-card--rare': rare,
+      'prof-card--legendary': legendary,
     }"
     :type="professor.captured ? 'button' : undefined"
     :aria-label="professor.captured ? `Ver ficha de ${professor.name}` : undefined"
@@ -51,6 +62,12 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
     <div class="prof-card__inner">
       <div class="prof-card__num pixel">
         <span v-if="rare" class="prof-card__selo" title="Professor raro">✦</span>
+        <span
+          v-else-if="legendary"
+          class="prof-card__selo prof-card__selo--lendario"
+          title="Professor lendário"
+          >⚡</span
+        >
         <template v-else>#{{ String(index + 1).padStart(3, '0') }}</template>
       </div>
 
@@ -127,6 +144,20 @@ const cartoonSrc = computed(() => spriteFrenteDe(props.professor))
 .prof-card__selo {
   color: var(--raro);
   font-size: 11px;
+}
+
+/* Lendário: moldura colorida, que vence a dourada do raro e a verde do
+   capturado. Estática aqui, ao contrário da silhueta que pisca na Profdex —
+   o card já conquistado não precisa chamar atenção para si todo segundo. */
+.prof-card--legendary {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--bg-card), var(--bg-card)) padding-box,
+    linear-gradient(120deg, #ffd166, #ef476f, #7b61ff, #06d6a0) border-box;
+}
+
+.prof-card__selo--lendario {
+  color: #ffd166;
 }
 
 .prof-card__inner {

@@ -52,6 +52,7 @@ as que ficaram órfãs de um restart do servidor.
 | Coleção completa | 200 |
 | Quiz respondido na bancada | 10 |
 | Quiz acertado | +25 |
+| **Lendário capturado** | **200** |
 
 Definidos em `src/metrics/engagement.ts`.
 
@@ -79,6 +80,8 @@ em que o fato acontece:
 | `quiz_answered`, `quiz_correct` | `quiz.service.ts` |
 | `rare_unlocked` | `quiz.service.ts` (o 5º acerto no tema) |
 | `rare_captured` | `captures.service.ts` (a ficha rara validada) |
+| `raid_started` | `raid.service.ts` (a sala da raid nasceu) |
+| `legendary_captured` | `raid.service.ts` (a raid vencida e o exemplar criado) |
 
 O que o app ainda declara: `screen_view`, `scan_open`, `ranking_viewed`,
 `guide_opened`, `quiz_practice_answered` — volume de navegação e treino, que não
@@ -109,6 +112,34 @@ nunca lê `app_events`.
 (`rollup.service.ts`). Um aluno que só treina conta como ativo, mesmo somando 0
 ponto e 0 interação. Isso já valia para `screen_view`, disparado em toda
 navegação — o treino não muda o comportamento, só amplia quem cai nele.
+
+### `raid_started` e `legendary_captured` — a raid
+
+Os dois são **server-only**, e o segundo é hoje o evento mais valioso do
+catálogo:
+
+| Evento | Pontos | Interações | Rótulo |
+|---|---|---|---|
+| `raid_started` | **0** | 20 | Raids iniciadas |
+| `legendary_captured` | **200** | 0 | Lendários capturados |
+
+Somado aos 70 da captura inédita (`professor_discovered` 20 +
+`professor_captured` 50), o lendário vale **270** — acima dos 210 do raro, e
+essa ordem é deliberada: o raro custa ~50 min de bancada por tema, o lendário
+exige a **Profdex inteira** antes de a primeira tentativa ser possível.
+
+Dois detalhes que explicam os zeros:
+
+- **Tentar vale 0 ponto, mas 20 interações.** A raid é ilimitada (com cooldown)
+  e sem supervisão, então pontuar a tentativa faria o placar medir quem
+  insistiu. Mas ela **é** atividade real — são minutos de batalha, como uma
+  `battle_finished` —, e é o número que mostra o esforço de quem não passou.
+- **`legendary_captured` não gera interação**: o gesto já foi contado pelo
+  `professor_captured` (15) e pela tentativa que o produziu.
+
+**`collection_completed` NÃO redispara** ao capturar o lendário. Aquele evento
+já pagou 200 quando o aluno fechou os comuns — e é justamente ele que destrava
+a raid. Pagar de novo contaria a mesma conquista duas vezes.
 
 ### `rare_unlocked` e `rare_captured` — o professor raro
 
