@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { io } from 'socket.io-client'
 import router from '../router'
@@ -153,11 +153,16 @@ export const useBattleStore = defineStore('battle', () => {
 
     // ── Batalha PvP ─────────────────────────────────────────────────────────
 
-    socket.on('battle:start', ({ battleId, pickDeadline, opponent }) => {
+    // `mode` distingue o ranqueado da RAID contra o lendário. Vem do servidor
+    // em `battle:start`/`preview`/`begin` e atravessa os estados seguintes: as
+    // telas são as mesmas, mas o texto ("rival" vs "o lendário"), a saída e o
+    // fim mudam. Ausente = 'pvp', que é o que o ranqueado continua mandando.
+    socket.on('battle:start', ({ battleId, mode, pickDeadline, opponent }) => {
       outgoingInvite.value = null
       incomingInvites.value = []
       pvp.value = {
         battleId,
+        mode: mode ?? 'pvp',
         opponent,
         phase: 'picking',
         pickDeadline,
@@ -176,16 +181,20 @@ export const useBattleStore = defineStore('battle', () => {
     // Os dois confirmaram o time: agora os dois se veem. O preview acontece
     // DEPOIS da confirmação — é o que impede que ele devolva o counter-pick que
     // a seleção às cegas existe para eliminar.
-    socket.on('battle:preview', ({ battleId, deadline, you, foe }) => {
+    socket.on('battle:preview', ({ battleId, mode, deadline, you, foe }) => {
+      const modo = mode ?? pvp.value?.mode ?? 'pvp'
       pvp.value = {
         ...(pvp.value ?? { battleId }),
         battleId,
+        mode: modo,
         phase: 'preview',
         pickDeadline: deadline,
         you,
         foe,
         youPicked: false, // volta a significar "já escolhi o lead?"
-        foePicked: false,
+        // Na raid o chefe nunca está "escolhendo": sem isto a tela ficaria em
+        // "AGUARDANDO O RIVAL…" para sempre depois de escolher o lead.
+        foePicked: modo === 'raid',
         pendingEvents: [],
         result: null,
       }
@@ -200,19 +209,29 @@ export const useBattleStore = defineStore('battle', () => {
     // e `byYou` diz de que lado: quem clicou em "sair" não precisa de aviso
     // nenhum, quem ficou precisa saber por que a tela voltou.
     socket.on('battle:cancelled', ({ reason, byYou } = {}) => {
+      const eraRaid = pvp.value?.mode === 'raid'
       pvp.value = null
       if (reason === 'left') {
         if (!byYou) lastError.value = 'O rival saiu da seleção.'
+      } else if (reason === 'server_shutdown') {
+        lastError.value = eraRaid
+          ? 'O servidor reiniciou — a tentativa não contou.'
+          : 'O servidor reiniciou — a batalha foi anulada.'
       } else {
-        lastError.value = 'A seleção expirou — batalha cancelada.'
+        lastError.value = eraRaid
+          ? 'A preparação expirou — a tentativa não contou.'
+          : 'A seleção expirou — batalha cancelada.'
       }
-      router.push({ name: 'batalha' })
+      // A raid nasce na Profdex e volta para lá: mandar quem desistiu dela
+      // para o lobby do PvP o largaria numa tela que ele não pediu.
+      router.push({ name: eraRaid ? 'profdex' : 'batalha' })
     })
 
-    socket.on('battle:begin', ({ battleId, turn, deadline, you, foe }) => {
+    socket.on('battle:begin', ({ battleId, mode, turn, deadline, you, foe }) => {
       pvp.value = {
         ...(pvp.value ?? { battleId }),
         battleId,
+        mode: mode ?? pvp.value?.mode ?? 'pvp',
         phase: 'active',
         turn,
         deadline,
@@ -265,18 +284,22 @@ export const useBattleStore = defineStore('battle', () => {
       }
     })
 
-    socket.on('battle:end', ({ events, result, reason, rating, you, foe }) => {
-      if (!pvp.value) return
-      pvp.value = {
-        ...pvp.value,
-        phase: 'done',
-        you: { ...pvp.value.you, ...you },
-        foe: { ...pvp.value.foe, ...foe },
-        pendingEvents: events,
-        // rating: { delta, rating, tier } — null quando a batalha não pontuou
-        result: { result, reason, rating },
-      }
-    })
+    socket.on(
+      'battle:end',
+      ({ events, result, reason, rating, you, foe, captured, retryAt }) => {
+        if (!pvp.value) return
+        pvp.value = {
+          ...pvp.value,
+          phase: 'done',
+          you: { ...pvp.value.you, ...you },
+          foe: { ...pvp.value.foe, ...foe },
+          pendingEvents: events,
+          // `rating` é sempre null na raid (PvE não ranqueia); `captured` e
+          // `retryAt` só existem nela.
+          result: { result, reason, rating, captured, retryAt },
+        }
+      },
+    )
 
     // Reconexão: o servidor manda o snapshot e a UI se reconstrói na tela
     // certa. Chega a cada conexão, a pedido (requestResync) e na volta do app
@@ -515,6 +538,50 @@ export const useBattleStore = defineStore('battle', () => {
   }
 
   /**
+   * Abre a raid contra o lendário.
+   *
+   * Todas as recusas (dex incompleta, já capturou, cooldown) são do SERVIDOR —
+   * o botão na Profdex é só um pedido, e a mensagem que o aluno vê vem de lá.
+   * Quando dá certo, o `battle:start` que chega em seguida já empurra a tela
+   * para a seleção de time, como no PvP.
+   *
+   * Conecta antes de pedir: a Profdex não abre socket sozinha (ela lê o estado
+   * da raid por REST), então o primeiro clique costuma ser com o socket frio.
+   */
+  async function startRaid() {
+    connect()
+    // `connect()` não é síncrono e a Profdex não mantém socket aberto — sem a
+    // espera, o primeiro clique sempre caía em "Sem conexão com o lobby",
+    // e o segundo funcionava. Um segundo é folga suficiente para o handshake
+    // (que reusa o cookie já presente) e curto o bastante para não parecer
+    // travamento se a rede estiver fora.
+    if (!(await esperarConexao(1000))) {
+      lastError.value = 'Sem conexão com o servidor. Tente de novo.'
+      return { ok: false, message: lastError.value }
+    }
+    const ack = await command('raid:start')
+    if (!ack.ok) lastError.value = ack.message
+    return ack
+  }
+
+  /** Resolve true assim que o socket conectar, ou false no estouro do prazo. */
+  function esperarConexao(timeoutMs) {
+    if (socket?.connected) return Promise.resolve(true)
+    return new Promise((resolve) => {
+      const fim = setTimeout(() => {
+        parar()
+        resolve(false)
+      }, timeoutMs)
+      const parar = watch(connected, (valor) => {
+        if (!valor) return
+        clearTimeout(fim)
+        parar()
+        resolve(true)
+      })
+    })
+  }
+
+  /**
    * Pede o snapshot da batalha ao servidor (handler `battle:resync` do gateway).
    * É a rede de segurança da arena: se o prazo do turno passou e nada chegou,
    * o estado é reconstruído a partir da autoridade em vez de deixar o jogador
@@ -562,6 +629,7 @@ export const useBattleStore = defineStore('battle', () => {
     acceptInvite,
     declineInvite,
     refreshInvites,
+    startRaid,
     pickTeam,
     chooseLead,
     leaveSelection,

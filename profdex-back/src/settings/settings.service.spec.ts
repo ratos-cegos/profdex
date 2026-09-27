@@ -28,6 +28,10 @@ describe('SettingsService', () => {
       themeCooldownMinutes: 10,
       quizGlobalRepeatWindow: 10,
       battlePairCooldownHours: 12,
+      raidHpMultiplier: 4,
+      raidLegendaryIv: 15,
+      raidTurnCap: 60,
+      raidCooldownMinutes: 30,
       captureQrMode: 'ficha',
     });
   });
@@ -82,6 +86,10 @@ describe('SettingsService', () => {
       themeCooldownMinutes: 5,
       quizGlobalRepeatWindow: 10,
       battlePairCooldownHours: 12,
+      raidHpMultiplier: 4,
+      raidLegendaryIv: 15,
+      raidTurnCap: 60,
+      raidCooldownMinutes: 30,
       captureQrMode: 'ficha',
     });
   });

@@ -62,6 +62,11 @@ model User {
   // Temas destravados para professor raro (ver tarefa 15).
   rareUnlocks RareUnlock[]
 
+  // Raid do lendário (ver tarefa 18).
+  raidUnlock   RaidUnlock?
+  raidAttempts RaidAttempt[]
+  raidClear    RaidClear?
+
   // QRs de captura gerados na tela da bancada para esta conta (ver tarefa 17).
   captureTokens CaptureToken[] @relation("CaptureTokenDoAluno")
 
@@ -440,6 +445,19 @@ model Professor {
   /// contagem da dex de todo mundo e deixaria as 3 variantes dele órfãs.
   rare Boolean @default(false)
 
+  /// Professor LENDÁRIO: o chefe da raid. Não sai em ficha nenhuma (nem comum
+  /// nem rara), não entra no sorteio e **não conta no gate da própria raid** —
+  /// senão só destravaria a raid quem já tivesse o lendário, que é circular.
+  ///
+  /// Ao contrário do raro, ele CONTA para completar a Profdex: quem destrava a
+  /// raid passa a ver o total em `Y+1`, e fechar a dex passa a exigir vencê-lo
+  /// (tarefa 18, decisão 15).
+  ///
+  /// Definido na CRIAÇÃO e imutável, pelo mesmo motivo de `rare`. Só um pode
+  /// estar ativo por vez — quem impõe é o cadastro, porque a Profdex desenha um
+  /// card no singular e não sabe o que fazer com dois.
+  legendary Boolean @default(false)
+
   // Legado da AR por marcador: colunas obrigatórias que o front nunca leu
   // (nenhuma referência em profdex-front/src). Ganharam default para não
   // travarem migration nem cadastro, e ficam FORA do formulário.
@@ -450,8 +468,85 @@ model Professor {
   captures    Capture[]
   variants    ProfessorVariant[]
   battleSlots BattleSlot[]
+  raidClears  RaidClear[]
 
   @@map("professors")
+}
+
+/// A raid destravada por um aluno: fechou a Profdex, e vale para sempre.
+///
+/// Gravado no instante em que a dex fecha e NUNCA recalculado — é o mesmo
+/// princípio de `RareUnlock`. Sem esta linha, o gate seria avaliado ao vivo
+/// contra o total atual, e cadastrar um professor novo às 15h tiraria a raid de
+/// quem tinha fechado a coleção às 14h (tarefa 18, decisão 6).
+model RaidUnlock {
+  id         String   @id @default(uuid())
+  userId     String   @unique @map("user_id")
+  /// Quantos professores existiam quando ele fechou. Só auditoria: responde
+  /// "ele destravou com a dex de qual tamanho?" quando alguém contestar.
+  dexSize    Int      @map("dex_size")
+  unlockedAt DateTime @default(now()) @map("unlocked_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([unlockedAt])
+  @@map("raid_unlocks")
+}
+
+/// Uma tentativa de raid. É ela que sustenta o cooldown entre tentativas, do
+/// mesmo jeito que `quiz_attempts` sustenta o cooldown da bancada.
+///
+/// `endedAt` é o que o cooldown lê — o relógio conta do FIM, não do início:
+/// contar do início transformaria uma raid longa em cooldown de graça.
+///
+/// `result` nulo = tentativa em andamento (ou órfã de um restart do servidor,
+/// que o próprio boot varre). `anulada` NÃO consome cooldown: a culpa é nossa.
+model RaidAttempt {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  professorId String    @map("professor_id")
+  startedAt   DateTime  @default(now()) @map("started_at")
+  endedAt     DateTime? @map("ended_at")
+  /// vitoria | derrota | abandono | limite_de_turnos | anulada
+  result      String?
+  turns       Int       @default(0)
+
+  user User @relation(fields: [userId], references: [id])
+
+  // Cooldown e contagem de tentativas: as do aluno, mais recentes primeiro.
+  @@index([userId, endedAt(sort: Desc)])
+  // Funil do painel ("quantos tentaram, quantos passaram").
+  @@index([result, endedAt])
+  @@map("raid_attempts")
+}
+
+/// A captura do lendário — uma linha por aluno, para sempre.
+///
+/// Existe SEPARADA de `captures` por uma razão só: a pergunta "quem foi o
+/// primeiro?" vale um prêmio físico, e ela não pode depender de um `ORDER BY`
+/// sobre uma tabela que tem várias linhas por aluno e nasceu para outra coisa.
+/// Aqui a ordem é `clearedAt` e o `@@unique` no aluno garante que ninguém
+/// aparece duas vezes na fila do prêmio.
+///
+/// `attempts` é quantas tentativas ele gastou até vencer: é a história que o
+/// painel conta ao lado do nome, e ela se perde se não for congelada aqui.
+model RaidClear {
+  id          String   @id @default(uuid())
+  userId      String   @unique @map("user_id")
+  professorId String   @map("professor_id")
+  /// O exemplar que nasceu da vitória. Sem FK para `captures` de propósito:
+  /// o registro de quem venceu primeiro não pode sumir junto com um exemplar.
+  captureId   String?  @map("capture_id")
+  attemptId   String?  @map("attempt_id")
+  attempts    Int      @default(1)
+  clearedAt   DateTime @default(now()) @map("cleared_at")
+
+  user      User      @relation(fields: [userId], references: [id])
+  professor Professor @relation(fields: [professorId], references: [id])
+
+  // A fila do prêmio: quem venceu primeiro, em ordem.
+  @@index([clearedAt])
+  @@map("raid_clears")
 }
 
 // Uma combinação de tipos com que o professor pode aparecer. Um professor de

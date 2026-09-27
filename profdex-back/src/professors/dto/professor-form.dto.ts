@@ -86,6 +86,25 @@ export class ProfessorFormDto {
   @Transform(({ value }) => parseBooleano(value))
   @IsBoolean()
   rare?: boolean;
+
+  /**
+   * Professor LENDÁRIO (tarefa 18): o chefe da raid. Não sai em ficha nenhuma
+   * e só é capturável vencendo a raid, que por sua vez só abre para quem
+   * completou a Profdex.
+   *
+   * Imutável pelo mesmo motivo de `rare`, e com um agravante: ele CONTA para
+   * completar a dex depois de capturado. Promover um professor comum a
+   * lendário tiraria da coleção de todo mundo um professor que já está em
+   * circulação, e a dex de quem o tinha passaria a nunca fechar.
+   *
+   * Marcar os dois (`rare` e `legendary`) é recusado no serviço: são duas vias
+   * de aquisição excludentes, e um professor que exige quiz E raid não é uma
+   * regra que alguém explica de pé, na fila.
+   */
+  @IsOptional()
+  @Transform(({ value }) => parseBooleano(value))
+  @IsBoolean()
+  legendary?: boolean;
 }
 
 /**

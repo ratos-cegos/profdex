@@ -95,6 +95,9 @@ escreve SQL, é o da coluna da direita que vale:
 | `QuizQuestion` | `quiz_questions` | Banco de questões do quiz |
 | `QuizAttempt` | `quiz_attempts` | Tentativas na bancada |
 | `RareUnlock` | `rare_unlocks` | Temas que um aluno destravou (5 acertos), para professor raro |
+| `RaidUnlock` | `raid_unlocks` | Quem fechou a Profdex e destravou a raid (permanente) |
+| `RaidAttempt` | `raid_attempts` | Tentativas de raid — sustenta o cooldown e o funil |
+| `RaidClear` | `raid_clears` | Quem capturou o lendário, **em ordem de chegada** |
 | `AppSetting` | `app_settings` | Ajustes de operação editáveis no painel (cooldowns) |
 | `PasswordResetToken` | `password_reset_tokens` | Hashes de link de redefinição |
 | `Battle` | `battles` | Histórico de batalhas PvP |
@@ -192,6 +195,49 @@ JOIN professors p ON p.id = v.professor_id
 WHERE p.rare
 GROUP BY p.name;
 ```
+
+### `professors.legendary` e as três tabelas da raid
+
+O **lendário** é o chefe da raid (ver `docs/tasks/18-raid-lendario.md`). Ele não
+sai em ficha nenhuma: a única forma de capturá-lo é vencer a batalha, que só
+abre para quem completou a Profdex.
+
+Três diferenças em relação ao raro, que explicam por que ele tem coluna própria
+e não reusa `rare`:
+
+| | `rare` | `legendary` |
+|---|---|---|
+| Gate | 5 acertos em cada tema no quiz | Profdex completa |
+| Aquisição | Ficha de papel própria | Vencer a raid |
+| Conta na dex? | **Não** | **Sim**, depois de capturado |
+
+```sql
+-- Quem é o lendário do evento
+SELECT name, types FROM professors WHERE legendary AND active;
+
+-- ⭐ A FILA DO PRÊMIO: quem capturou primeiro
+SELECT c.cleared_at, u.name, u.matricula, c.attempts
+FROM raid_clears c JOIN users u ON u.id = c.user_id
+ORDER BY c.cleared_at ASC;
+
+-- O funil: destravaram → tentaram → venceram.
+-- `anulada` fora da conta: é restart do servidor ou desistência na
+-- preparação, não tentativa do aluno.
+SELECT
+  (SELECT COUNT(*) FROM raid_unlocks)                                AS destravaram,
+  (SELECT COUNT(*) FROM raid_attempts WHERE result <> 'anulada')     AS tentativas,
+  (SELECT COUNT(*) FROM raid_attempts WHERE result = 'vitoria')      AS vitorias;
+
+-- Quem está em cooldown agora (30 min por padrão, contado do FIM)
+SELECT u.matricula, a.ended_at
+FROM raid_attempts a JOIN users u ON u.id = a.user_id
+WHERE a.result IN ('derrota','abandono','limite_de_turnos')
+  AND a.ended_at > now() - interval '30 minutes';
+```
+
+> A mesma leitura está em `/admin/metrics` → seção **Raid ⚡**, que é o caminho
+> normal. O SQL acima serve para quando o painel estiver fora do ar no momento
+> em que alguém precisar chamar o nome do vencedor.
 
 ## Por que não dá para simplesmente apagar `users`
 

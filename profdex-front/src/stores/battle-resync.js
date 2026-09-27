@@ -22,13 +22,17 @@ export function applyResync(snap, atual) {
     // apagá-la aqui tiraria do jogador o placar que ele ainda não leu.
     const presoEmBatalhaMorta = !!atual && atual.phase !== 'done'
     if (!presoEmBatalhaMorta) return { pvp: atual ?? null, rota: null, aviso: null }
-    return { pvp: null, rota: 'batalha', aviso: AVISO_SEM_SALA }
+    return { pvp: null, rota: rotaDeSaida(atual), aviso: AVISO_SEM_SALA }
   }
 
   // `syncedAt` marca cada snapshot: como ele não traz fila de eventos para
   // animar, é o sinal que a arena usa para realinhar as barras de HP.
   const base = {
     battleId: snap.battleId,
+    // Sem isto, um F5 no meio da raid a devolvia como se fosse ranqueada: a
+    // arena voltaria a chamar o lendário de "rival" e a saída cairia no lobby
+    // do PvP. O servidor manda `mode` em todos os snapshots de raid.
+    mode: snap.mode ?? atual?.mode ?? 'pvp',
     opponent: snap.opponent,
     phase: snap.phase,
     pendingEvents: [],
@@ -72,5 +76,10 @@ export function applyResync(snap, atual) {
 
   // Fase desconhecida (servidor mais novo que o app): não dá para desenhar,
   // mas também não dá para fingir que a batalha continua.
-  return { pvp: null, rota: 'batalha', aviso: AVISO_SEM_SALA }
+  return { pvp: null, rota: rotaDeSaida(atual), aviso: AVISO_SEM_SALA }
+}
+
+/** Para onde voltar quando não há mais sala: a raid nasceu na Profdex. */
+function rotaDeSaida(atual) {
+  return atual?.mode === 'raid' ? 'profdex' : 'batalha'
 }

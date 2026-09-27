@@ -33,7 +33,7 @@ describe('ProfessorsService', () => {
     const result = await service.findAll('user-1');
 
     expect(prisma.professor.findMany).toHaveBeenCalledWith({
-      where: { active: true, rare: false },
+      where: { active: true, rare: false, legendary: false },
       orderBy: { name: 'asc' },
       select: PUBLIC_PROFESSOR_SELECT,
     });
@@ -59,7 +59,9 @@ describe('ProfessorsService', () => {
     await service.findAll('user-1');
 
     expect(prisma.professor.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { active: true, rare: false } }),
+      expect.objectContaining({
+        where: { active: true, rare: false, legendary: false },
+      }),
     );
   });
 
@@ -103,7 +105,7 @@ describe('ProfessorsService', () => {
     // `rare` é lido para decidir o acesso, mas NÃO atravessa a fronteira.
     expect(prisma.professor.findUnique).toHaveBeenCalledWith({
       where: { id: professor.id },
-      select: { ...PUBLIC_PROFESSOR_SELECT, rare: true },
+      select: { ...PUBLIC_PROFESSOR_SELECT, rare: true, legendary: true },
     });
   });
 

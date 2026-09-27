@@ -113,6 +113,92 @@ export const SETTINGS = {
       'jogar com mais ninguém. Não afeta batalhar com outras pessoas.',
   },
   /**
+   * O corpo do lendário, em múltiplos dos 120 de HP de um professor normal.
+   *
+   * Este é o dial de dificuldade da raid inteira. A conta: o aluno leva até 3
+   * exemplares (~375 de HP somado), então 2× ele passa quase sempre, 3× é moeda
+   * justa e 4× exige tipo favorável e jogar bem.
+   *
+   * Ele tensiona a regra do topo deste arquivo — é regra de jogo, não só de
+   * operação. Entra assim mesmo, e o motivo é datado: ninguém sabe se 4× é
+   * justo até ver os vinte primeiros alunos tentarem, e a alternativa seria
+   * descobrir que errou e precisar de um deploy no meio do evento para
+   * consertar. O que continua sendo constante de código é o que muda o
+   * SIGNIFICADO do resultado (quem vence no teto, o que consome cooldown).
+   */
+  raidHpMultiplier: {
+    kind: 'number',
+    key: 'raid.hp_multiplier',
+    default: 4,
+    min: 1,
+    max: 10,
+    label: 'Vida do lendário',
+    unit: '× a vida de um professor',
+    help:
+      'Quantas vezes a vida de um professor normal (120) o lendário tem. ' +
+      'O aluno leva até 3 exemplares, então 2× ele passa fácil, 3× é ' +
+      'equilibrado e 4× exige jogar bem. Vale só para a próxima tentativa: ' +
+      'raid já em andamento mantém o valor com que começou.',
+  },
+  /**
+   * Os IVs do lendário na raid, iguais nos quatro atributos.
+   *
+   * Separado do multiplicador de propósito: HP e atributos são dois eixos de
+   * dificuldade diferentes. Baixar os IVs deixa o chefe mais fraco sem encurtar
+   * a luta; baixar o HP encurta a luta sem enfraquecê-lo.
+   *
+   * O teto é 15 porque é a escala do banco (o motor reescala para 0–5).
+   */
+  raidLegendaryIv: {
+    kind: 'number',
+    key: 'raid.legendary_iv',
+    default: 15,
+    min: 0,
+    max: 15,
+    label: 'Atributos do lendário',
+    unit: 'de 15 em cada atributo',
+    help:
+      'Os IVs do chefe na raid, iguais nos quatro atributos. 15 é o máximo. ' +
+      'Não mexe no exemplar que o aluno leva ao vencer, que é sempre 15.',
+  },
+  /**
+   * Teto de turnos da raid. Maior que o do PvP (40) porque um chefe de 480 de
+   * HP leva ~35 turnos para cair numa luta honesta — com o teto do PvP, o
+   * relógio decidiria raids que o jogo ainda não tinha decidido.
+   */
+  raidTurnCap: {
+    kind: 'number',
+    key: 'raid.turn_cap',
+    default: 60,
+    min: 20,
+    max: 200,
+    label: 'Teto de turnos da raid',
+    unit: 'turnos',
+    help:
+      'Quantos turnos a raid pode durar. No teto, o LENDÁRIO vence — ele ' +
+      'resistiu. Suba se as raids estiverem acabando no relógio em vez de no ' +
+      'nocaute.',
+  },
+  /**
+   * Espera entre tentativas de raid, por aluno.
+   *
+   * `min: 0` é o interruptor de emergência, como na janela do quiz: se a fila
+   * da raid estiver vazia e você quiser que os alunos insistam, zere isto.
+   */
+  raidCooldownMinutes: {
+    kind: 'number',
+    key: 'raid.cooldown_minutes',
+    default: 30,
+    min: 0,
+    max: 240,
+    label: 'Cooldown entre tentativas de raid',
+    unit: 'minutos',
+    help:
+      'Quanto o aluno espera depois de PERDER uma raid. Conta do fim da ' +
+      'tentativa. Vitória não gera espera (não há segunda captura), e queda ' +
+      'de rede ou restart do servidor não consomem. 0 desliga.',
+  },
+  /**
    * Como a ficha de QR chega ao aluno que acertou.
    *
    * O padrão é `ficha`, que é o comportamento histórico: a mesa entrega o papel

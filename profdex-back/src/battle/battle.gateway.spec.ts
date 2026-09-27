@@ -7,6 +7,7 @@ import { BattleRoomService } from './battle-room.service';
 import { CooldownService } from './cooldown.service';
 import { InviteService } from './invite.service';
 import { PresenceService } from './presence.service';
+import { RaidRoomService } from './raid-room.service';
 import { RatingService } from './rating.service';
 
 /**
@@ -107,6 +108,14 @@ describe('BattleGateway', () => {
         battlePairCooldownMs: () => Promise.resolve(12 * 60 * 60 * 1000),
       } as never),
       rooms,
+      // A sala da raid entra como dublê vazia: estes testes cobrem o lobby e o
+      // PvP, e `hasActiveRoom: false` é o que faz o gateway despachar tudo
+      // para `rooms`, como fazia antes de a raid existir.
+      {
+        configure: jest.fn(),
+        hasActiveRoom: () => false,
+        resync: () => null,
+      } as unknown as RaidRoomService,
       prisma,
     );
     gateway.server = {

@@ -154,7 +154,12 @@ export class AdminCaptureTokensService {
           // comum. Sem o filtro, o painel diria que Matemática tem 4
           // professores quando só 3 são alcançáveis por ficha comum — e a
           // decisão de imprimir sairia de um número errado.
-          where: { professor: { active: true, rare: false } },
+          // `legendary: false` pela mesma razão: o chefe da raid não sai em
+          // ficha nenhuma, e contá-lo aqui inflaria o "alcançáveis por tipo"
+          // com um professor que o papel nunca entrega.
+          where: {
+            professor: { active: true, rare: false, legendary: false },
+          },
           select: { professorId: true, types: true },
         }),
       ]);

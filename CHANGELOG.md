@@ -6,6 +6,57 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 `Adicionado` para novidades, `Alterado` para mudanças de comportamento existente,
 `Corrigido` para defeitos e `Removido` para o que saiu.
 
+## [Não publicado] — raid do professor lendário
+
+### Adicionado
+
+- **Raid do professor lendário.** Quem captura todos os professores comuns
+  destrava uma batalha contra o professor **lendário**, controlado pelo
+  servidor: até 3 exemplares do aluno contra um chefe com **4× a vida** de um
+  professor normal e IV máximo. Vencer **captura o lendário e completa a
+  Profdex** — ele é a entrada `Y+1`, que até lá aparece como silhueta `???`
+  piscando colorido, com um botão CAPTURAR.
+
+  Não exige os raros e é opcional. Tentativas são **ilimitadas**, com cooldown
+  de 30 min entre elas; o exemplar ganho tem **IV 15 nos quatro atributos** e
+  joga no PvP como qualquer outro. O card só aparece **depois** de destravar:
+  quem não fechou a coleção não sabe que existe uma entrada a mais.
+
+  A batalha roda no **servidor**, numa sala irmã da do PvP
+  (`RaidRoomService`), reusando o motor e as regras de time — o `battle-room`
+  ranqueado não foi tocado. As telas de seleção e de arena são as mesmas,
+  em modo raid.
+
+- **Ajustes ao vivo da raid** em `/admin/configuracoes`: vida do chefe
+  (`raid.hp_multiplier`, padrão 4×), atributos (`raid.legendary_iv`, 15), teto
+  de turnos (`raid.turn_cap`, 60) e cooldown (`raid.cooldown_minutes`, 30). Os
+  três primeiros são congelados no nascimento de cada sala, então mexer no
+  painel não muda a vida do chefe com um aluno já lutando.
+
+- **Seção `Raid ⚡` em `/admin/metrics`**, com a **fila do prêmio** (posição,
+  nome, matrícula, horário e número de tentativas de quem capturou, em ordem de
+  chegada) e o funil de destravamentos → tentativas → vitórias. A ordem de
+  quem capturou primeiro **não** aparece no app durante o evento: anunciar que
+  o primeiro lugar já saiu tira o motivo de os outros tentarem.
+
+- **Cadastro do lendário** no painel de professores, com as mesmas travas do
+  raro: imutável depois de criado, **um ativo por vez**, variante única, e
+  recusado se marcado junto com "raro" — são vias de captura excludentes.
+
+- `npm run db:seed-dex-completa` cria uma conta com a Profdex inteira (a única
+  forma de abrir a tela da raid sem escanear uma ficha por professor), e
+  `npm run raid:smoke` percorre o fluxo completo pela rede.
+
+### Corrigido
+
+- **`collection_completed` voltou a ser alcançável.** A contagem de "coleção
+  completa" incluía professores **desativados**, que nunca podem ser
+  capturados: a partir do primeiro "remover" no painel, ninguém mais fecharia a
+  Profdex nem ganharia os 200 pontos do evento. Era um achado em aberto desde a
+  tarefa 15 e virou pré-requisito da raid, porque é a **mesma** contagem que
+  destrava o lendário. O filtro agora é `{ rare: false, legendary: false,
+  active: true }` nos dois lados da conta.
+
 ## [Não publicado] — banco de questões do quiz
 
 ### Corrigido

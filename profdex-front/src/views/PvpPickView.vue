@@ -102,6 +102,11 @@ function typesOf(professor) {
 }
 
 const emPreview = computed(() => battle.pvp?.phase === 'preview')
+
+// Esta tela serve às duas batalhas. Na RAID não há rival: o adversário é um
+// chefe conhecido, ele não "escolhe ao mesmo tempo" e não há nada às cegas —
+// manter o texto do PvP aqui faria a tela mentir sobre o que está esperando.
+const naRaid = computed(() => battle.pvp?.mode === 'raid')
 const timeCheio = computed(() => time.value.length >= slotsDisponiveis.value)
 const jaNoTime = (id) => time.value.some((e) => e.id === id)
 
@@ -186,7 +191,7 @@ async function escolherLead(membro) {
   <div v-if="battle.pvp" class="pick">
     <header class="pick__header">
       <div>
-        <span class="pixel pick__eyebrow">BATALHA CONTRA</span>
+        <span class="pixel pick__eyebrow">{{ naRaid ? 'RAID CONTRA' : 'BATALHA CONTRA' }}</span>
         <h1 class="pixel pick__title">{{ battle.pvp.opponent.name }}</h1>
       </div>
       <div class="pick__header-acoes">
@@ -260,7 +265,13 @@ async function escolherLead(membro) {
             {{ battle.pvp.youPicked ? 'PRIMEIRO ESCOLHIDO' : 'SELECIONE O PRIMEIRO' }}
           </h2>
           <p class="lead-chamada__sub">
-            <template v-if="battle.pvp.youPicked">Pronto. Agora é esperar o rival.</template>
+            <template v-if="battle.pvp.youPicked">
+              {{ naRaid ? 'Pronto. A raid vai começar.' : 'Pronto. Agora é esperar o rival.' }}
+            </template>
+            <template v-else-if="naRaid">
+              Toque no professor do seu time que encara o lendário primeiro. Os outros
+              entram quando ele cair.
+            </template>
             <template v-else>
               Toque no professor do seu time que começa a batalha. O rival escolhe ao mesmo tempo,
               sem ver o seu.
@@ -294,7 +305,9 @@ async function escolherLead(membro) {
         </section>
 
         <section class="preview preview--rival">
-          <h2 class="pixel preview__titulo">TIME DE {{ battle.pvp.foe?.name?.toUpperCase() }}</h2>
+          <h2 class="pixel preview__titulo">
+            {{ naRaid ? 'O LENDÁRIO' : `TIME DE ${battle.pvp.foe?.name?.toUpperCase()}` }}
+          </h2>
           <ul class="preview__lista">
             <li v-for="(m, i) in battle.pvp.foe?.team ?? []" :key="i" class="preview__foe">
               <ProfessorFace class="lead-card__face" :professor="m.professor" />
@@ -309,8 +322,14 @@ async function escolherLead(membro) {
       <template v-else-if="!aberto">
         <p v-if="!semExemplar" class="pick__hint">
           Monte seu time com até {{ slotsDisponiveis }}
-          {{ slotsDisponiveis === 1 ? 'professor' : 'professores' }}. Quanto mais levar, mais
-          chances de virar o jogo — o rival não vê sua escolha até os dois confirmarem.
+          {{ slotsDisponiveis === 1 ? 'professor' : 'professores' }}.
+          <template v-if="naRaid">
+            O lendário é um só, mas aguenta muito mais pancada — leve os três.
+          </template>
+          <template v-else>
+            Quanto mais levar, mais chances de virar o jogo — o rival não vê sua escolha
+            até os dois confirmarem.
+          </template>
         </p>
 
         <p v-if="captures.loading && !capturados.length" class="pick__empty">
@@ -399,7 +418,9 @@ async function escolherLead(membro) {
         <p v-if="battle.pvp.youPicked" class="pixel pick__waiting">
           {{ battle.pvp.foePicked ? 'COMEÇANDO…' : 'AGUARDANDO O RIVAL…' }}
         </p>
-        <p v-else-if="battle.pvp.foePicked" class="pick__foe-picked">
+        <!-- Na raid o chefe está sempre "pronto", e anunciar isso a cada etapa
+             seria ruído: o aviso só faz sentido quando há outra pessoa. -->
+        <p v-else-if="battle.pvp.foePicked && !naRaid" class="pick__foe-picked">
           {{ battle.pvp.opponent.name }} já escolheu!
         </p>
       </div>

@@ -1,0 +1,361 @@
+import { MetricsService } from '../metrics/metrics.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
+import {
+  RAID_BLOQUEADA,
+  RAID_EM_COOLDOWN,
+  RAID_JA_CAPTURADO,
+  RAID_SEM_LENDARIO,
+  RaidService,
+} from './raid.service';
+
+const LENDARIO = {
+  id: 'lendario-1',
+  name: 'Tânia',
+  slug: 'tania',
+  types: ['matematica'],
+  variants: [{ id: 'var-1', types: ['matematica'] }],
+};
+
+/**
+ * Banco dublê com os poucos métodos que o serviço toca. Montado à mão em vez
+ * de com um mock automático porque as ASSERÇÕES deste arquivo são sobre os
+ * filtros das consultas — é exatamente o `where` que precisa ficar visível.
+ */
+function criarPrisma(over: Record<string, unknown> = {}) {
+  const wheres: Record<string, unknown>[] = [];
+  return {
+    wheres,
+    professor: {
+      findFirst: jest.fn().mockResolvedValue(LENDARIO),
+      count: jest.fn(({ where }: { where: Record<string, unknown> }) => {
+        wheres.push(where);
+        return Promise.resolve(3);
+      }),
+    },
+    capture: {
+      findMany: jest.fn(({ where }: { where: Record<string, unknown> }) => {
+        wheres.push(where);
+        return Promise.resolve([
+          { professorId: 'a' },
+          { professorId: 'b' },
+          { professorId: 'c' },
+        ]);
+      }),
+      create: jest.fn().mockResolvedValue({ id: 'captura-1' }),
+    },
+    raidUnlock: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 'unlock-1' }),
+    },
+    raidClear: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 'clear-1' }),
+    },
+    raidAttempt: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn().mockResolvedValue({ id: 'tentativa-1' }),
+      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    professorVariant: { findFirst: jest.fn().mockResolvedValue(null) },
+    $transaction: jest.fn(),
+    ...over,
+  };
+}
+
+function criar(
+  prisma: ReturnType<typeof criarPrisma>,
+  cooldownMs = 30 * 60_000,
+) {
+  const metrics = { record: jest.fn() };
+  const settings = {
+    raidCooldownMs: jest.fn().mockResolvedValue(cooldownMs),
+  };
+  const service = new RaidService(
+    prisma as unknown as PrismaService,
+    metrics as unknown as MetricsService,
+    settings as unknown as SettingsService,
+  );
+  return { service, metrics, settings };
+}
+
+describe('RaidService — o gate da Profdex', () => {
+  /**
+   * Os três filtros da contagem. Cada um evita um jeito diferente de a raid
+   * ficar impossível (ou trivial) de destravar, e os três já foram bug em
+   * potencial em alguma consulta deste projeto.
+   */
+  it('conta só professores comuns, ativos, sem raro e sem lendário', async () => {
+    const prisma = criarPrisma();
+    const { service } = criar(prisma);
+
+    await service.dexProgress('ana');
+
+    const esperado = { rare: false, legendary: false, active: true };
+    expect(prisma.capture.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 'ana', professor: esperado },
+      }),
+    );
+    expect(prisma.professor.count).toHaveBeenCalledWith({ where: esperado });
+  });
+
+  it('não destrava com a dex incompleta', async () => {
+    const prisma = criarPrisma();
+    prisma.capture.findMany = jest
+      .fn()
+      .mockResolvedValue([{ professorId: 'a' }]);
+    const { service } = criar(prisma);
+
+    await expect(service.ensureUnlocked('ana')).resolves.toBe(false);
+    expect(prisma.raidUnlock.create).not.toHaveBeenCalled();
+  });
+
+  it('destrava e GRAVA quando a dex fecha', async () => {
+    const prisma = criarPrisma();
+    const { service } = criar(prisma);
+
+    await expect(service.ensureUnlocked('ana')).resolves.toBe(true);
+    expect(prisma.raidUnlock.create).toHaveBeenCalledWith({
+      data: { userId: 'ana', dexSize: 3 },
+    });
+  });
+
+  /**
+   * O coração da decisão 6. Com a linha gravada, o serviço NÃO recalcula — e é
+   * isso que impede que cadastrar um professor no meio do evento tire a raid
+   * de quem já tinha fechado a coleção.
+   */
+  it('quem já destravou não passa pela contagem de novo', async () => {
+    const prisma = criarPrisma();
+    prisma.raidUnlock.findUnique = jest.fn().mockResolvedValue({ id: 'u1' });
+    const { service } = criar(prisma);
+
+    await expect(service.ensureUnlocked('ana')).resolves.toBe(true);
+    expect(prisma.professor.count).not.toHaveBeenCalled();
+    expect(prisma.capture.findMany).not.toHaveBeenCalled();
+  });
+
+  it('dex vazia (nenhum professor cadastrado) não destrava ninguém', async () => {
+    const prisma = criarPrisma();
+    prisma.professor.count = jest.fn().mockResolvedValue(0);
+    prisma.capture.findMany = jest.fn().mockResolvedValue([]);
+    const { service } = criar(prisma);
+
+    await expect(service.ensureUnlocked('ana')).resolves.toBe(false);
+  });
+});
+
+describe('RaidService — cooldown', () => {
+  it('conta do FIM da tentativa, não do início', async () => {
+    const prisma = criarPrisma();
+    const dezMinAtras = new Date(Date.now() - 10 * 60_000);
+    prisma.raidAttempt.findFirst = jest
+      .fn()
+      .mockResolvedValue({ endedAt: dezMinAtras });
+    const { service } = criar(prisma);
+
+    const restante = await service.cooldownRemainingMs('ana');
+
+    // 30 de cooldown − 10 decorridos ≈ 20 min restantes.
+    expect(Math.round(restante / 60_000)).toBe(20);
+  });
+
+  /**
+   * `anulada` é o desfecho de um restart nosso ou de uma desistência na
+   * preparação. Fazer o aluno esperar 30 min por um deploy seria cobrar dele
+   * um erro que não é dele.
+   */
+  it('só olha para derrota, abandono e limite de turnos', async () => {
+    const prisma = criarPrisma();
+    const { service } = criar(prisma);
+
+    await service.cooldownRemainingMs('ana');
+
+    expect(prisma.raidAttempt.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          result: { in: ['derrota', 'abandono', 'limite_de_turnos'] },
+        }),
+      }),
+    );
+  });
+
+  it('cooldown zerado no painel libera na hora', async () => {
+    const prisma = criarPrisma();
+    prisma.raidAttempt.findFirst = jest
+      .fn()
+      .mockResolvedValue({ endedAt: new Date() });
+    const { service } = criar(prisma, 0);
+
+    await expect(service.cooldownRemainingMs('ana')).resolves.toBe(0);
+    // Nem consulta o banco: sem cooldown não há o que perguntar.
+    expect(prisma.raidAttempt.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('sem tentativa anterior, pode na hora', async () => {
+    const prisma = criarPrisma();
+    const { service } = criar(prisma);
+
+    await expect(service.cooldownRemainingMs('ana')).resolves.toBe(0);
+  });
+});
+
+describe('RaidService — canStart', () => {
+  it('recusa quando não há lendário cadastrado', async () => {
+    const prisma = criarPrisma();
+    prisma.professor.findFirst = jest.fn().mockResolvedValue(null);
+    const { service } = criar(prisma);
+
+    await expect(service.canStart('ana')).resolves.toMatchObject({
+      ok: false,
+      code: RAID_SEM_LENDARIO,
+    });
+  });
+
+  it('recusa quem não fechou a Profdex', async () => {
+    const prisma = criarPrisma();
+    prisma.capture.findMany = jest
+      .fn()
+      .mockResolvedValue([{ professorId: 'a' }]);
+    const { service } = criar(prisma);
+
+    await expect(service.canStart('ana')).resolves.toMatchObject({
+      ok: false,
+      code: RAID_BLOQUEADA,
+    });
+  });
+
+  it('recusa quem já capturou o lendário', async () => {
+    const prisma = criarPrisma();
+    prisma.raidClear.findUnique = jest.fn().mockResolvedValue({ id: 'c1' });
+    const { service } = criar(prisma);
+
+    await expect(service.canStart('ana')).resolves.toMatchObject({
+      ok: false,
+      code: RAID_JA_CAPTURADO,
+    });
+  });
+
+  it('recusa e diz QUANDO libera quando está em cooldown', async () => {
+    const prisma = criarPrisma();
+    prisma.raidAttempt.findFirst = jest
+      .fn()
+      .mockResolvedValue({ endedAt: new Date() });
+    const { service } = criar(prisma);
+
+    const resultado = await service.canStart('ana');
+
+    expect(resultado).toMatchObject({ ok: false, code: RAID_EM_COOLDOWN });
+    expect((resultado as { retryAt: number }).retryAt).toBeGreaterThan(
+      Date.now(),
+    );
+  });
+
+  it('libera quem fechou a dex, não capturou e está fora do cooldown', async () => {
+    const prisma = criarPrisma();
+    const { service } = criar(prisma);
+
+    await expect(service.canStart('ana')).resolves.toMatchObject({ ok: true });
+  });
+});
+
+describe('RaidService — o prêmio', () => {
+  /** Uma transação só: captura sem `RaidClear` deixaria o vencedor fora da
+   *  fila do prêmio, e o contrário daria prêmio sem exemplar. */
+  it('cria o exemplar com IV 15 nos quatro e a linha da fila do prêmio', async () => {
+    const prisma = criarPrisma();
+    const tx = {
+      capture: { create: jest.fn().mockResolvedValue({ id: 'captura-1' }) },
+      raidClear: { create: jest.fn().mockResolvedValue({}) },
+    };
+    prisma.$transaction = jest.fn((fn: (t: unknown) => unknown) => fn(tx));
+    const { service, metrics } = criar(prisma);
+
+    const resultado = await service.award(
+      'ana',
+      { id: 'lendario-1', types: ['matematica'] },
+      'var-1',
+      'tentativa-9',
+      4,
+    );
+
+    expect(resultado).toEqual({ captureId: 'captura-1' });
+    expect(tx.capture.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: 'ana',
+          professorId: 'lendario-1',
+          variantId: 'var-1',
+          ivHp: 15,
+          ivRigor: 15,
+          ivDidatica: 15,
+          ivRaciocinio: 15,
+        }),
+      }),
+    );
+    expect(tx.raidClear.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'ana',
+        captureId: 'captura-1',
+        attemptId: 'tentativa-9',
+        attempts: 4,
+      }),
+    });
+
+    // Os três eventos, server-only: descoberta + captura + o lendário.
+    const eventos = metrics.record.mock.calls[0][2] as { type: string }[];
+    expect(eventos.map((e) => e.type)).toEqual([
+      'professor_discovered',
+      'professor_captured',
+      'legendary_captured',
+    ]);
+  });
+
+  /**
+   * Duas abas vencendo ao mesmo tempo: o `@@unique` de `raid_clears.user_id`
+   * derruba a segunda. A vitória continua na tela; o segundo exemplar, não.
+   */
+  it('vitória repetida não cria um segundo exemplar', async () => {
+    const prisma = criarPrisma();
+    const duplicata = Object.assign(new Error('Unique constraint failed'), {
+      code: 'P2002',
+      clientVersion: '6',
+      name: 'PrismaClientKnownRequestError',
+    });
+    Object.setPrototypeOf(
+      duplicata,
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      (require('@prisma/client') as typeof import('@prisma/client')).Prisma
+        .PrismaClientKnownRequestError.prototype,
+    );
+    prisma.$transaction = jest.fn().mockRejectedValue(duplicata);
+    const { service } = criar(prisma);
+
+    await expect(
+      service.award('ana', { id: 'l1', types: ['ia'] }, null, 't1', 2),
+    ).resolves.toBeNull();
+  });
+});
+
+describe('RaidService — tentativas órfãs', () => {
+  /**
+   * Uma raid em andamento vive só em memória. Se o processo cai, a linha fica
+   * aberta para sempre e o funil do painel passa a mentir.
+   */
+  it('o boot anula as tentativas que ficaram abertas, sem cobrar cooldown', async () => {
+    const prisma = criarPrisma();
+    prisma.raidAttempt.updateMany = jest.fn().mockResolvedValue({ count: 2 });
+    const { service } = criar(prisma);
+
+    await expect(service.annulOrphanAttempts()).resolves.toBe(2);
+    expect(prisma.raidAttempt.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { endedAt: null },
+        data: expect.objectContaining({ result: 'anulada' }),
+      }),
+    );
+  });
+});

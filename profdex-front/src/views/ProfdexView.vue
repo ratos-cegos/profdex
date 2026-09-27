@@ -1,16 +1,18 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, useTemplateRef } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
 import EstadoErro from '../components/EstadoErro.vue'
 import ProfCard from '../components/ProfCard.vue'
 import VoucherSino from '../components/VoucherSino.vue'
 import { useAuthStore } from '../stores/auth.js'
+import { useBattleStore } from '../stores/battle.js'
 import { useProfessorsStore } from '../stores/professors.js'
 
 const router = useRouter()
 const auth = useAuthStore()
 const store = useProfessorsStore()
+const battle = useBattleStore()
 
 // Sinaliza falha ao buscar a lista (ex.: back-end fora do ar). Sem isso, um erro
 // de rede deixava a grade silenciosamente vazia — como se não houvesse nenhum
@@ -37,6 +39,7 @@ async function load(recarregar = false) {
 }
 
 onMounted(async () => {
+  relogio = setInterval(() => (agora.value = Date.now()), 1000)
   await load()
   // Depois da grade existir: `scrollTop` num elemento ainda vazio é engolido em
   // silêncio, e a coleção voltaria ao topo mesmo assim.
@@ -47,11 +50,79 @@ onMounted(async () => {
   store.dexScroll = 0
 })
 
+onUnmounted(() => {
+  if (relogio) clearInterval(relogio)
+  relogio = null
+})
+
 // O `X/Y` conta só os COMUNS. O raro fica fora dos dois números (tarefa 15,
 // decisão 14) — e nem chega nesta lista: o servidor filtra `rare: false` em
 // `GET /professors`, então não há como esquecer o filtro aqui.
-const captured = computed(() => store.professors.filter((p) => p.captured).length)
-const total = computed(() => store.professors.length)
+// ── Contagem ────────────────────────────────────────────────────────────────
+// O `X/Y` conta os COMUNS mais o lendário, e este só entra depois que a raid
+// destrava. É o que faz a barra parar a um passo do fim (`48/49`) no instante
+// em que o aluno fecha a coleção — o gancho da raid inteira — e é o que torna
+// verdade a frase "capturei o lendário e completei a Profdex".
+//
+// Antes de destravar, nada muda: quem não chegou lá vê o `X/Y` de sempre e não
+// tem como saber que existe uma entrada a mais.
+const captured = computed(
+  () =>
+    store.professors.filter((p) => p.captured).length +
+    (store.raid.captured ? 1 : 0),
+)
+const total = computed(
+  () => store.professors.length + (store.raid.unlocked ? 1 : 0),
+)
+
+// ── Raid do lendário ────────────────────────────────────────────────────────
+const raid = computed(() => store.raid)
+
+// Relógio vivo para o cooldown. Sem ele, quem perde e fica na tela vê "aguarde
+// 30 min" congelado e precisa dar F5 para descobrir que já pode tentar.
+const agora = ref(Date.now())
+let relogio = null
+
+const esperaRestante = computed(() => {
+  if (!raid.value.cooldownUntil) return 0
+  return Math.max(0, raid.value.cooldownUntil - agora.value)
+})
+
+const esperaTexto = computed(() => {
+  const ms = esperaRestante.value
+  if (ms <= 0) return ''
+  const minutos = Math.floor(ms / 60000)
+  const segundos = Math.floor((ms % 60000) / 1000)
+  if (minutos >= 1) return `${minutos}min ${String(segundos).padStart(2, '0')}s`
+  return `${segundos}s`
+})
+
+const podeDesafiar = computed(
+  () => raid.value.unlocked && !raid.value.captured && esperaRestante.value <= 0,
+)
+
+const iniciando = ref(false)
+const raidErro = ref(null)
+
+async function desafiarLendario() {
+  if (!podeDesafiar.value || iniciando.value) return
+  iniciando.value = true
+  raidErro.value = null
+  try {
+    const ack = await battle.startRaid()
+    // Sucesso não navega daqui: o `battle:start` que chega pelo socket é quem
+    // empurra a tela para a seleção de time, como no PvP. Navegar aqui também
+    // criaria uma corrida entre os dois caminhos.
+    if (!ack.ok) {
+      raidErro.value = ack.message
+      // O servidor é a autoridade sobre cooldown e elegibilidade: se ele
+      // recusou, o estado local está velho. Reler corrige o botão na hora.
+      await store.fetchRaid().catch(() => {})
+    }
+  } finally {
+    iniciando.value = false
+  }
+}
 
 // ── Raros ───────────────────────────────────────────────────────────────────
 // Contador PRÓPRIO, ao lado do da dex e nunca somado a ele.
@@ -144,7 +215,47 @@ function goDetails(prof) {
             :index="i"
             @details="goDetails"
           />
+
+          <!-- ⚡ O LENDÁRIO, na posição Y+1 da própria grade — ele faz parte
+               da coleção, diferente do raro, que tem seção separada abaixo.
+               Só existe aqui depois de a raid destravar. -->
+          <template v-if="raid.unlocked">
+            <!-- Capturado: card normal, com selo. A raid acabou para ele. -->
+            <ProfCard
+              v-if="raid.captured && raid.legendary"
+              :key="raid.legendary.id"
+              :professor="{
+                ...raid.legendary,
+                discovered: true,
+                captured: true,
+                capturedCount: 1,
+              }"
+              :index="store.professors.length"
+              legendary
+              @details="goDetails"
+            />
+
+            <!-- Ainda não: silhueta com `???` piscando colorido. Não há nome,
+                 tipo nem arte para mostrar — o servidor nunca os enviou. -->
+            <div v-else class="lendario" aria-label="Professor lendário — desafie a raid">
+              <span class="lendario__raio" aria-hidden="true">⚡</span>
+              <span class="lendario__texto">???</span>
+
+              <button
+                class="lendario__botao"
+                type="button"
+                :disabled="!podeDesafiar || iniciando"
+                @click="desafiarLendario"
+              >
+                <template v-if="iniciando">ABRINDO…</template>
+                <template v-else-if="esperaRestante > 0">{{ esperaTexto }}</template>
+                <template v-else>CAPTURAR</template>
+              </button>
+            </div>
+          </template>
         </div>
+
+        <p v-if="raidErro" class="raid-erro" role="alert">{{ raidErro }}</p>
 
         <!-- ✦ Raros. Seção separada e abaixo da coleção: eles não contam para
              completar a Profdex, então não podem dividir a grade com ela. -->
@@ -327,6 +438,99 @@ function goDetails(prof) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 12px;
+}
+
+/* ── Lendário ───────────────────────────────────────────────────────────────
+   Silhueta que PISCA COLORIDO: o brilho atravessa a roda de cores em vez de
+   pulsar numa cor só, que é o que diferencia "lendário" de "bloqueado" à
+   distância, sem precisar de legenda.
+
+   O card fica na grade principal e por isso herda a altura dos ProfCard. */
+.lendario {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 132px;
+  padding: 8px;
+  border-radius: var(--radius-lg);
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--bg-card), var(--bg-card)) padding-box,
+    linear-gradient(120deg, #ffd166, #ef476f, #7b61ff, #06d6a0, #ffd166)
+      border-box;
+  background-size: auto, 300% 300%;
+  animation: lendario-borda 4s linear infinite;
+}
+
+/* `prefers-reduced-motion` desliga a animação: um card piscando sem parar no
+   meio da coleção é exatamente o tipo de movimento que a preferência existe
+   para cortar. A borda colorida FICA — ela é a informação, o movimento não. */
+@media (prefers-reduced-motion: reduce) {
+  .lendario { animation: none; }
+  .lendario__raio { animation: none; }
+}
+
+@keyframes lendario-borda {
+  0% { background-position: auto, 0% 50%; }
+  50% { background-position: auto, 100% 50%; }
+  100% { background-position: auto, 0% 50%; }
+}
+
+.lendario__raio {
+  font-size: 22px;
+  animation: lendario-brilho 1.6s ease-in-out infinite;
+}
+
+@keyframes lendario-brilho {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.lendario__texto {
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+}
+
+.lendario__botao {
+  width: 100%;
+  min-height: 28px;
+  padding: 5px 6px;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--font-pixel);
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  color: var(--bg-deep);
+  background: var(--yellow);
+  cursor: pointer;
+}
+
+/* Desabilitado é o estado do COOLDOWN, e ele mostra o relógio correndo em vez
+   de sumir: o aluno precisa saber que vai poder de novo, e quando. */
+.lendario__botao:disabled {
+  background: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.lendario__botao:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 2px;
+}
+
+.raid-erro {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--red) 12%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
 }
 
 /* ── Raros ──────────────────────────────────────────────────────────────── */

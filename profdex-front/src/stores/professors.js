@@ -17,6 +17,22 @@ export const useProfessorsStore = defineStore('professors', () => {
   // bloqueados a partir daqui e não tem como revelar o que não recebeu.
   const rares = ref({ total: 0, owned: [] })
 
+  // A raid do lendário (tarefa 18). Estado próprio, ao lado do dos raros e
+  // pelo mesmo motivo: o servidor NUNCA manda nome nem arte do lendário antes
+  // da captura, então o que existe aqui até lá é só `unlocked` — o bastante
+  // para desenhar a silhueta `???` e o botão, e nada além disso.
+  //
+  // Depois de vencer, `legendary` vem preenchido e `captured` vira true: aí o
+  // card deixa de ser silhueta e passa a ser a última entrada da coleção.
+  const raid = ref({
+    unlocked: false,
+    captured: false,
+    legendary: null,
+    dex: { captured: 0, total: 0 },
+    cooldownUntil: null,
+    attempts: 0,
+  })
+
   // Onde a grade da coleção estava quando o aluno abriu a ficha de um professor.
   //
   // Mora aqui, e não no router: o scroll do app não é o da janela (o body tem
@@ -33,15 +49,33 @@ export const useProfessorsStore = defineStore('professors', () => {
   async function fetch() {
     loading.value = true
     try {
-      const [dex, raros] = await Promise.all([
+      const [dex, raros, raidStatus] = await Promise.all([
         api.get('/professors'),
         api.get('/professors/rares'),
+        // A raid não pode derrubar a Profdex: ela é um card a mais numa tela
+        // que existia antes dela. Backend antigo (rota 404) ou erro de rede
+        // deixam o estado como está, e a coleção carrega igual.
+        api.get('/raid/status').catch(() => null),
       ])
       professors.value = dex.data
       rares.value = raros.data
+      if (raidStatus) raid.value = raidStatus.data
     } finally {
       loading.value = false
     }
+  }
+
+  /**
+   * Relê só o estado da raid.
+   *
+   * Existe separado do `fetch` porque a volta da batalha precisa dele e não
+   * precisa recarregar a coleção inteira — e porque o cooldown é um relógio:
+   * quem perdeu e ficou na tela quer ver o botão reabrir sem dar F5.
+   */
+  async function fetchRaid() {
+    const { data } = await api.get('/raid/status')
+    raid.value = data
+    return data
   }
 
   // Garante a lista carregada antes de quem depende dela (ex.: /arena/:id
@@ -66,8 +100,14 @@ export const useProfessorsStore = defineStore('professors', () => {
     // Os raros POSSUÍDOS entram na busca: fora da contagem da dex eles são
     // exemplares como qualquer outro, e a arena e a ficha os resolvem por aqui.
     // Os não possuídos nem estão na memória do app — não há o que achar.
+    // O LENDÁRIO capturado entra na busca junto com os raros: depois da raid
+    // ele é um exemplar como outro qualquer, e a ficha e a arena o resolvem
+    // por aqui. Enquanto não capturado ele nem existe na memória do app.
+    const lendario = raid.value.captured && raid.value.legendary
+      ? [raid.value.legendary]
+      : []
     return (
-      [...professors.value, ...rares.value.owned].find(
+      [...professors.value, ...rares.value.owned, ...lendario].find(
         (p) =>
           String(p.id) === raw ||
           normalizeKey(p.slug) === wanted ||
@@ -87,6 +127,8 @@ export const useProfessorsStore = defineStore('professors', () => {
   return {
     professors,
     rares,
+    raid,
+    fetchRaid,
     loading,
     dexScroll,
     fetch,
