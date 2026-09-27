@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import TypeIcon from '../components/TypeIcon.vue'
 import { getType, legibleColor, TYPE_CYCLE } from '../data/types'
-import { spriteFrenteDe } from '../data/professorArte'
+import { spriteFrenteDe, temModeloProprio } from '../data/professorArte'
 import api from '../services/api'
 
 // Cadastro de professores.
@@ -87,6 +87,18 @@ const tiposVazios = computed(() => {
   }
   return TYPE_CYCLE.filter((t) => !comProfessor.has(t.id))
 })
+
+/**
+ * Professores ativos SEM modelo 3D próprio.
+ *
+ * Importa desde que a bancada revela o professor girando no modo `tela`: quem
+ * não tem GLB aparece pelo sprite, nunca pelo modelo de outro (decisão 17).
+ * Não é erro — é a lista do que ainda falta modelar, e a mesa precisa dela
+ * ANTES do evento, não descobrindo na frente da fila.
+ */
+const semModelo3D = computed(() =>
+  professores.value.filter((p) => p.active && !temModeloProprio(p)),
+)
 
 function mensagemDeErro(e, padrao) {
   return e?.response?.data?.message ?? padrao
@@ -293,6 +305,16 @@ onMounted(carregar)
         <strong>{{ tiposVazios.map((t) => t.label).join(', ') }}</strong>.
         Ficha desses tipos não captura nada — quem escanear recebe um aviso e a
         ficha <strong>não</strong> é consumida.
+      </p>
+
+      <!-- Aviso, não erro: o professor funciona sem GLB em toda parte. O que
+           muda é a revelação da bancada, que mostra o sprite dele no lugar do
+           3D — nunca o modelo de outro professor. -->
+      <p v-if="semModelo3D.length" class="aviso">
+        Sem modelo 3D:
+        <strong>{{ semModelo3D.map((p) => p.name).join(', ') }}</strong>.
+        Na bancada eles aparecem pelo <strong>sprite</strong> em vez de girando
+        em 3D. Não impede captura nem batalha.
       </p>
 
       <!-- Formulário -->

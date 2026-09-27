@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
 import EstadoErro from '../components/EstadoErro.vue'
@@ -16,17 +16,36 @@ const store = useProfessorsStore()
 // de rede deixava a grade silenciosamente vazia — como se não houvesse nenhum
 // professor cadastrado.
 const loadError = ref(false)
+const main = useTemplateRef('main')
 
-async function load() {
+/**
+ * `ensureLoaded` e não `fetch`: voltar da ficha de um professor remontava esta
+ * view e recarregava a lista inteira, com spinner e a grade sumindo por um
+ * instante. Era isso que fazia a volta parecer outra tela, e não a coleção de
+ * onde o aluno tinha acabado de sair.
+ *
+ * O botão de "tentar de novo" continua chamando `fetch` — recarregar é o que
+ * tentar de novo significa.
+ */
+async function load(recarregar = false) {
   loadError.value = false
   try {
-    await store.fetch()
+    await (recarregar ? store.fetch() : store.ensureLoaded())
   } catch {
     loadError.value = true
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  // Depois da grade existir: `scrollTop` num elemento ainda vazio é engolido em
+  // silêncio, e a coleção voltaria ao topo mesmo assim.
+  await nextTick()
+  if (main.value) main.value.scrollTop = store.dexScroll
+  // Consome: só o retorno IMEDIATO da ficha restaura a posição. Chegar aqui
+  // pela barra inferior, vindo de outra aba, começa do topo como sempre.
+  store.dexScroll = 0
+})
 
 // O `X/Y` conta só os COMUNS. O raro fica fora dos dois números (tarefa 15,
 // decisão 14) — e nem chega nesta lista: o servidor filtra `rare: false` em
@@ -63,6 +82,10 @@ const rarosBloqueados = computed(() =>
 )
 
 function goDetails(prof) {
+  // Antes do push: a view é desmontada na transição e o elemento some junto.
+  // Quem estava vendo o 40º professor não pode recomeçar do 1º por ter aberto
+  // uma ficha.
+  store.dexScroll = main.value?.scrollTop ?? 0
   router.push({
     name: 'professor',
     params: { id: prof.id },
@@ -104,13 +127,13 @@ function goDetails(prof) {
       </div>
     </header>
 
-    <main class="profdex__main page">
+    <main ref="main" class="profdex__main page">
       <div v-if="store.loading" class="loading-state">
         <div class="spinner-lg" />
         <span class="pixel" style="font-size: 8px">Carregando...</span>
       </div>
 
-      <EstadoErro v-else-if="loadError && !store.professors.length" message="Não foi possível carregar os professores. Verifique se o servidor está no ar." @retry="load" />
+      <EstadoErro v-else-if="loadError && !store.professors.length" message="Não foi possível carregar os professores. Verifique se o servidor está no ar." @retry="load(true)" />
 
       <template v-else>
         <div class="grid">

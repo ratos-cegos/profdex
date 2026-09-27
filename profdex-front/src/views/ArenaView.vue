@@ -437,10 +437,13 @@ function goBack() {
   left: 12px;
 }
 
-/* Logo abaixo da barra do jogador, que o palco ancora no mesmo token. */
+/* Logo ACIMA da barra do jogador, que o palco ancora no mesmo token.
+   Abaixo dela o chip cairia dentro da faixa de comandos — o mesmo defeito que
+   escondia a barra inteira no PvP. Empilhar é o que mantém os dois visíveis
+   sem nenhum `z-index` novo. */
 .arena__status--player {
   left: 12px;
-  bottom: calc(var(--palco-barra-jogador) - 24px);
+  bottom: calc(var(--palco-barra-jogador) + var(--palco-barra-altura));
 }
 
 /* Painel inferior: mensagem + grid 2x2 + fugir */

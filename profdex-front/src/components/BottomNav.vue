@@ -21,13 +21,22 @@ const ITENS = [
 
 const route = useRoute()
 
-// A rota de ranking vive "dentro" da área de batalha (chega-se a ela pela aba
-// superior), então o item Batalha continua destacado enquanto se está lá.
-const rotaAtiva = computed(() =>
-  ['ranking', 'treino', 'battle-guide', 'pvp-pick', 'pvp-arena', 'arena'].includes(route.name)
-    ? 'batalha'
-    : route.name,
-)
+// Rotas sem item próprio na barra e sob qual item elas vivem.
+//
+// O ranking e as telas de combate chegam pela aba Batalha; a ficha do professor
+// chega pela coleção. Sem este mapa a barra fica com nada aceso justamente nas
+// telas mais profundas, que é onde saber onde se está mais importa.
+const DENTRO_DE = {
+  ranking: 'batalha',
+  treino: 'batalha',
+  'battle-guide': 'batalha',
+  'pvp-pick': 'batalha',
+  'pvp-arena': 'batalha',
+  arena: 'batalha',
+  professor: 'profdex',
+}
+
+const rotaAtiva = computed(() => DENTRO_DE[route.name] ?? route.name)
 </script>
 
 <template>

@@ -4,6 +4,8 @@ import {
   SETTING_NAMES,
   SETTINGS,
   type SettingName,
+  type SettingValue,
+  type SettingValues,
   parseSetting,
 } from './settings';
 
@@ -30,13 +32,13 @@ const CACHE_TTL_MS = 10_000;
 export class SettingsService {
   private readonly logger = new Logger(SettingsService.name);
 
-  private cache: Record<SettingName, number> | null = null;
+  private cache: SettingValues | null = null;
   private expiraEm = 0;
 
   constructor(private prisma: PrismaService) {}
 
-  /** Todos os ajustes, já como número e dentro da faixa. */
-  async all(): Promise<Record<SettingName, number>> {
+  /** Todos os ajustes, já no tipo de cada um e dentro da faixa/das opções. */
+  async all(): Promise<SettingValues> {
     if (this.cache && Date.now() < this.expiraEm) return this.cache;
 
     const linhas = await this.prisma.appSetting
@@ -50,20 +52,23 @@ export class SettingsService {
       });
 
     const porChave = new Map(linhas.map((l) => [l.key, l.value]));
-    const valores = {} as Record<SettingName, number>;
-    for (const name of SETTING_NAMES) {
-      valores[name] = parseSetting(
+    // Montado de uma vez em vez de atribuído chave a chave: numa atribuição
+    // indexada o TS não relaciona a chave com o tipo do valor, e `SettingValues`
+    // tem tipos diferentes por ajuste desde que existe o enum. `parseSetting`
+    // é quem garante o par certo — a asserção só reconta isso ao compilador.
+    const valores = Object.fromEntries(
+      SETTING_NAMES.map((name) => [
         name,
-        porChave.get(SETTINGS[name].key) ?? null,
-      );
-    }
+        parseSetting(name, porChave.get(SETTINGS[name].key) ?? null),
+      ]),
+    ) as SettingValues;
 
     this.cache = valores;
     this.expiraEm = Date.now() + CACHE_TTL_MS;
     return valores;
   }
 
-  async get(name: SettingName): Promise<number> {
+  async get<N extends SettingName>(name: N): Promise<SettingValue<N>> {
     return (await this.all())[name];
   }
 
@@ -78,13 +83,24 @@ export class SettingsService {
   }
 
   /**
+   * Como a bancada entrega o QR do acerto: papel da pilha ou QR na tela.
+   *
+   * Lido a cada `answer`, como os cooldowns — trocar o modo no painel vale em
+   * no máximo 10 segundos, e a tentativa em andamento no tablet termina com o
+   * modo que valia quando ela foi respondida.
+   */
+  async captureQrMode(): Promise<SettingValue<'captureQrMode'>> {
+    return this.get('captureQrMode');
+  }
+
+  /**
    * Grava os ajustes recebidos. Só as chaves enviadas mudam — o painel manda
    * uma edição de cada vez, e um PATCH parcial não pode zerar o resto.
    */
   async update(
-    valores: Partial<Record<SettingName, number>>,
+    valores: Partial<SettingValues>,
     autorId: string,
-  ): Promise<Record<SettingName, number>> {
+  ): Promise<SettingValues> {
     const entradas = SETTING_NAMES.filter((n) => valores[n] !== undefined);
 
     for (const name of entradas) {

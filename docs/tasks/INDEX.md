@@ -37,10 +37,34 @@ inteiro como prompt para um agente de código.
 | 14 | [14-antitravamento-batalha.md](14-antitravamento-batalha.md) | Seis softlocks do fluxo de convite e batalha, incluindo P1/P2/P4 do BUG-BATALHA-TRAVANDO | Alta — independente |
 | 15 | [15-professores-raros.md](15-professores-raros.md) | Professor raro: 5 acertos por tema no quiz destravam uma ficha rara própria; fora da contagem da Profdex, com métrica de quem pega | Concluída (24/09/2026, branch `feat/professores-raros`) — falta só imprimir o papel. ⚠️ **A decisão 13 dela foi revertida pela tarefa 16** |
 | 16 | [16-arena-no-celular.md](16-arena-no-celular.md) | A arena do PvP no celular: palco compartilhado com o treino, sprite de costas, faixa de comandos que não pula. Mais o raro nascendo com 5 estrelas | Concluída (25/09/2026, branch `feat/arena-no-celular`) — checklist manual em celular real ainda não passado |
+| 17 | [17-qr-na-tela-e-navegacao.md](17-qr-na-tela-e-navegacao.md) | QR de captura gerado na tela e vinculado ao aluno que acertou (com o professor girando em 3D), questão que não repete na fila, trocar matrícula no perfil, barra de HP do jogador e a volta da ficha do professor | Concluída (26/09/2026, branch `feat/qr-na-tela-e-navegacao`) — os 8 itens entraram; checklist manual em tablet e celular reais ainda não passado |
 
 ## Ordem sugerida de execução
 
-### Rodada atual (24/09/2026) — tarefa 15
+### Rodada atual (26/09/2026) — tarefa 17 — **concluída**
+
+Os oito itens entraram na branch `feat/qr-na-tela-e-navegacao`, nesta ordem:
+
+1. **17.3** (barra de HP) e **17.4** (ficha do professor): CSS e navegação, sem
+   dependência, consertando regressão que já estava em produção.
+2. **17.5** (catálogo de ajustes ganha o tipo `enum` + `captureQrMode`) antes da
+   **17.1** (janela sem repetir na fila) — as duas mexem em `settings.ts`, e
+   fazer o refactor de tipo primeiro evitou conflito.
+3. **17.2** (trocar matrícula): `PATCH /users/me/matricula`, com `forwardRef`
+   entre `UsersModule` e `AuthModule` para reassinar a sessão sem duplicar o
+   registro do `JwtModule`.
+4. **17.6** (QR vinculado) → **17.7** (revelação 3D) → **17.8**
+   (contabilidade). A migração
+   `20260926000000_add_capture_token_assigned_to` **foi validada** contra um
+   Postgres 16 descartável: 17 migrations em sequência, coluna/índice/FK
+   conferidos e `migrate diff` acusando zero divergência nova (ver
+   *Limitações conhecidas* em `docs/QUIZ.md`).
+
+**O que falta:** o checklist manual da tarefa, em tablet (bancada) e celular
+reais. Nada dele foi passado — o `mode=tela` inteiro, a revelação 3D e as duas
+telas de arena só foram exercitados por teste de unidade e build.
+
+### Rodada 24/09/2026 — tarefa 15
 
 1. **Tarefa 15** (professores raros) — **concluída**. Entrou inteira na branch
    `feat/professores-raros`: schema + migração `20260924000000_add_professores_raros`
@@ -127,6 +151,26 @@ inteiro como prompt para um agente de código.
   consciente: o que a mitiga é o time de até 3 somado ao limite de 1 raro por
   conta, então ele é no máximo 1/3 de um time. **Sem retroatividade** — quem
   capturou antes fica com o sorteado. Detalhes na tarefa 16.
+
+- **Entrega do QR tem dois modos (26/09/2026):** o ajuste `captureQrMode`
+  (`/admin/configuracoes`) escolhe entre **ficha** — a pilha de papel de hoje — e
+  **tela**, em que o acerto gera na hora um QR **vinculado ao aluno que
+  acertou** (outra conta escaneando leva 403 sem consumir a ficha). **Papel já
+  impresso continua valendo nos dois modos.** O sorteio do professor **continua
+  no scan**: antecipá-lo abriria reroll infinito, então o 3D do professor
+  aparece girando na bancada **depois** do scan. O **raro** é a exceção — ficha
+  rara aponta a variante e não passa pelo sorteio, então o 3D dele sai junto com
+  o QR. QR de tela **morre** ao trocar de aluno ou de tema, e quem não escaneou
+  **perde** (no raro a pendência volta sozinha ao cartão do aluno). Detalhes na
+  tarefa 17.
+- **A questão não repete na fila (26/09/2026):** a bancada é uma e a fila
+  assiste, então uma questão sai do sorteio de **todos** pelas últimas **10
+  aplicações do tema** (configurável, 0 desliga). O filtro por aluno continua
+  sendo **regra** e o global é só **preferência** — se os dois brigarem, vence
+  não repetir para o mesmo aluno. Detalhes na tarefa 17.
+- **Matrícula é corrigível pelo próprio aluno (26/09/2026):** troca no Perfil,
+  **ilimitada**, exigindo a **senha atual** (é credencial de login) e reassinando
+  a sessão. **Sem validação de formato.** Detalhes na tarefa 17.
 
 ## Achados em aberto
 

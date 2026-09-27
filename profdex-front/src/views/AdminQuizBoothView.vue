@@ -15,11 +15,17 @@
  * O cronômetro daqui é conforto visual: quem decide se o tempo acabou é o
  * servidor, na hora de conferir a resposta.
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
 import TypeIcon from '../components/TypeIcon.vue'
 import { TYPE_CYCLE, getType, legibleColor } from '../data/types'
+import { spriteFrenteDe, temModeloProprio } from '../data/professorArte'
+
+// O 3D chega só quando aparece um professor para revelar. A bancada passa o dia
+// inteiro aberta e roda em modo `ficha` na maior parte do evento: carregar o
+// three.js no boot seria ~700KB que a maioria das rodadas nunca usa.
+const Stage3D = defineAsyncComponent(() => import('../components/Stage3D.vue'))
 
 const router = useRouter()
 
@@ -89,6 +95,71 @@ const raroPendente = computed(() => resultado.value?.raro?.pendente ?? null)
 const raroPendentesDoAluno = computed(() => aluno.value?.raroPendentes ?? [])
 
 const rotuloDoTema = (id) => getType(id)?.label ?? id
+
+// ── QR na tela ──────────────────────────────────────────────────────────────
+// No modo `tela` o servidor devolve, junto com o resultado, um QR vinculado ao
+// aluno que acertou. No modo `ficha` ele vem nulo e esta tela é exatamente a de
+// sempre — a mesa entrega o papel sorteado da pilha.
+const qr = computed(() => resultado.value?.qr ?? null)
+
+// Quem saiu no scan. Só existe depois do resgate: o professor COMUM é sorteado
+// no servidor no instante do scan, então antes dele não há professor nenhum
+// para mostrar (decisão 13 — antecipar abriria reroll infinito).
+const revelado = ref(null)
+let polling = null
+
+/**
+ * Pergunta de 2 em 2 segundos se o QR já foi escaneado.
+ *
+ * Quem espera a notícia é o OPERADOR — o celular do aluno já sabe o resultado,
+ * porque foi ele que capturou. Polling e não socket: é um tablet só, e o socket
+ * de batalha é autenticado por aluno.
+ */
+function iniciarPolling(tokenId) {
+  pararPolling()
+  polling = setInterval(async () => {
+    try {
+      const { data } = await api.get(`/admin/quiz/token/${tokenId}`)
+      if (!data.redeemed) return
+      revelado.value = data.professor
+      pararPolling()
+    } catch {
+      // Rede caindo no meio não pode quebrar a tela: fica no QR e o operador
+      // segue podendo avançar. A tentativa seguinte é daqui a 2s.
+    }
+  }, 2000)
+}
+
+function pararPolling() {
+  if (polling) clearInterval(polling)
+  polling = null
+}
+
+/**
+ * Mata o QR ao trocar de aluno ou de tema. `void` com `catch`: falhar em matar
+ * não pode travar a tela do operador — a trava de "um QR vivo por aluno" no
+ * servidor cobre o resto.
+ */
+function encerrarQr() {
+  const tokenId = qr.value?.id
+  pararPolling()
+  revelado.value = null
+  if (tokenId) void api.delete(`/admin/quiz/token/${tokenId}`).catch(() => {})
+}
+
+// Sem timer órfão, como o cronômetro da questão já trata.
+onBeforeUnmount(pararPolling)
+
+/** O que a revelação desenha: o modelo próprio, ou o sprite do professor certo. */
+const arteRevelada = computed(() => {
+  const p = revelado.value ?? raroLiberado.value
+  if (!p) return null
+  return temModeloProprio(p)
+    ? { tipo: '3d', modelPath: p.modelUrl }
+    : // NUNCA o GLB padrão: `modeloDe` cai no Gustavo, e mostrar o professor
+      // errado ao lado do QR é pior que não mostrar 3D (decisão 17).
+      { tipo: 'sprite', src: spriteFrenteDe(p), pixel: Boolean(p.pixelArt) }
+})
 
 // ── Cooldown dos temas, contando na tela ────────────────────────────────────
 // O servidor diz quantos segundos faltam NO MOMENTO da consulta; daí em diante
@@ -228,7 +299,10 @@ async function responder(indice) {
     if (indice !== null) corpo.answerIndex = indice
     const { data } = await api.post('/admin/quiz/answer', corpo)
     resultado.value = data
+    revelado.value = null
     etapa.value = 'resultado'
+    // Só no modo `tela`, e só no acerto: é quando existe um QR esperando scan.
+    if (data.qr) iniciarPolling(data.qr.id)
   } catch (e) {
     erro.value = mensagemDeErro(e, 'Não foi possível registrar a resposta.')
     etapa.value = 'tema'
@@ -240,6 +314,8 @@ async function responder(indice) {
 /** Volta ao início — é o botão que o operador mais usa no dia. */
 function proximoAluno() {
   pararCronometro()
+  // Antes de limpar `resultado`: é dele que sai o id do QR a matar.
+  encerrarQr()
   matricula.value = ''
   aluno.value = null
   sessao.value = null
@@ -251,6 +327,7 @@ function proximoAluno() {
 
 function voltarAosTemas() {
   pararCronometro()
+  encerrarQr()
   sessao.value = null
   resultado.value = null
   erro.value = ''
@@ -448,7 +525,51 @@ function formatarEspera(s) {
       <p class="raro__eyebrow">FICHA RARA</p>
       <h2 class="raro__nome">{{ raroLiberado.name }}</h2>
       <p class="raro__ordem">ENTREGUE A FICHA ✦ {{ raroLiberado.name.toUpperCase() }}</p>
-      <p class="raro__apoio">
+
+      <!-- No modo `tela` a ficha rara sai aqui mesmo, e o 3D vem JUNTO com o
+           QR, sem esperar scan: a ficha rara grava a variante e não passa pelo
+           sorteio, então não há reroll para antecipar (decisão 15). A arte
+           "vaza" para a fila, e é aceito — quem a vê é quem já está lendo
+           ENTREGUE A FICHA ✦ FULANO em caixa alta, no mesmo segundo. -->
+      <div v-if="qr" class="entrega entrega--raro">
+        <figure class="palco-revelacao">
+          <component
+            :is="Stage3D"
+            v-if="arteRevelada?.tipo === '3d'"
+            :config="{
+              modelPath: arteRevelada.modelPath,
+              clearColor: '#1b1408',
+              autoRotate: true,
+              interactive: false,
+            }"
+          />
+          <img
+            v-else-if="arteRevelada"
+            class="palco-revelacao__sprite"
+            :class="{ 'palco-revelacao__sprite--pixel': arteRevelada.pixel }"
+            :src="arteRevelada.src"
+            :alt="raroLiberado.name"
+          />
+        </figure>
+        <div class="entrega__qr">
+          <p class="entrega__dono">
+            <strong>{{ aluno?.name }}</strong>
+            <span>{{ aluno?.matricula }}</span>
+          </p>
+          <img
+            v-if="!revelado"
+            class="qr"
+            :src="qr.dataUrl"
+            alt="QR Code de captura do professor raro"
+          />
+          <!-- A cena dourada não some sozinha; só o QR dá lugar à confirmação,
+               para o operador saber que pode chamar o próximo. -->
+          <p v-if="revelado" class="entrega__capturado">✓ CAPTURADO</p>
+          <p v-else class="entrega__instrucao">Escaneie com o SEU celular</p>
+        </div>
+      </div>
+
+      <p v-else class="raro__apoio">
         {{ aluno?.name }} completou os 5 acertos em
         <strong>{{ raroLiberado.temas.map(rotuloDoTema).join(' e ') }}</strong
         >. Pegue a pilha com o nome dele.
@@ -494,13 +615,63 @@ function formatarEspera(s) {
            que ele precisa do número para contestar com o operador. -->
       <p class="codigo-questao">Questão #{{ resultado.code }}</p>
 
+      <!-- ── Modo `tela`: o QR, e depois a revelação ────────────────────
+           Enquanto ninguém escaneou, o QR sozinho é um quadrado preto e branco.
+           O momento que vale para a fila é ver QUEM saiu — e quem sai só existe
+           depois do scan, porque o sorteio do comum acontece lá. -->
+      <div v-if="qr && !revelado" class="entrega">
+        <div class="entrega__qr">
+          <!-- Nome e matrícula GRANDES, acima do código: é o último momento em
+               que um erro de digitação ainda é visível, e o aluno está olhando
+               a tela. Sem diálogo de confirmação — "tem certeza?" por rodada é
+               atrito no caminho que sempre dá certo (decisão 21). -->
+          <p class="entrega__dono">
+            <strong>{{ aluno?.name }}</strong>
+            <span>{{ aluno?.matricula }}</span>
+          </p>
+          <img class="qr" :src="qr.dataUrl" alt="QR Code de captura" />
+          <p class="entrega__instrucao">Escaneie com o SEU celular</p>
+        </div>
+      </div>
+
+      <div v-else-if="revelado" class="entrega entrega--revelada">
+        <figure class="palco-revelacao">
+          <component
+            :is="Stage3D"
+            v-if="arteRevelada?.tipo === '3d'"
+            :config="{
+              modelPath: arteRevelada.modelPath,
+              clearColor: '#10121a',
+              autoRotate: true,
+              interactive: false,
+            }"
+          />
+          <img
+            v-else-if="arteRevelada"
+            class="palco-revelacao__sprite"
+            :class="{ 'palco-revelacao__sprite--pixel': arteRevelada.pixel }"
+            :src="arteRevelada.src"
+            :alt="revelado.name"
+          />
+        </figure>
+        <div class="revelacao__ficha">
+          <p class="revelacao__eyebrow">CAPTURADO</p>
+          <h3 class="revelacao__nome">{{ revelado.name }}</h3>
+          <p class="revelacao__tipos">
+            <span v-for="t in revelado.types" :key="t" class="revelacao__tipo">
+              <TypeIcon :type="t" :size="18" /> {{ rotuloDoTema(t) }}
+            </span>
+          </p>
+        </div>
+      </div>
+
       <!-- Sem NOME de professor. Quem o aluno leva é sorteado no servidor, no
            instante do scan, e depende do que ele já tem — anunciar um nome aqui
            seria promessa que a captura não tem como cumprir. -->
-      <p v-if="resultado.correct" class="instrucao">
+      <p v-else-if="resultado.correct" class="instrucao">
         Agora escaneie o QR Code para capturar seu professor.
       </p>
-      <p v-else class="instrucao">
+      <p v-if="!resultado.correct" class="instrucao">
         Este tema libera de novo em {{ resultado.cooldownMinutos }}
         {{ resultado.cooldownMinutos === 1 ? 'minuto' : 'minutos' }}. Enquanto
         isso dá para tentar outro tema.
@@ -1111,5 +1282,146 @@ function formatarEspera(s) {
   gap: 14px;
   flex-wrap: wrap;
   justify-content: center;
+}
+
+/* ── Entrega do QR na tela (tarefa 17.6/17.7) ───────────────────────────────
+   O tablet fica DEITADO na mesa: as duas metades ficam lado a lado, e só em
+   tela estreita a coluna volta a empilhar. */
+.entrega {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(16px, 3vw, 48px);
+  flex-wrap: wrap;
+}
+
+.entrega__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Nome e matrícula GRANDES: é o último momento em que um erro de digitação
+   ainda é visível, e o aluno está olhando a tela (decisão 21). */
+.entrega__dono {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 1.15;
+}
+
+.entrega__dono strong {
+  font-size: clamp(20px, 2.6vw, 34px);
+  color: #fff;
+}
+
+.entrega__dono span {
+  font-family: var(--font-pixel);
+  font-size: clamp(11px, 1.4vw, 17px);
+  color: var(--unifil-gold);
+  letter-spacing: 1px;
+}
+
+/* Fundo branco sempre: o QR precisa de contraste para o scanner, e o quiosque
+   é escuro. */
+.qr {
+  width: clamp(200px, 30vh, 320px);
+  height: auto;
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.entrega__instrucao {
+  margin: 0;
+  font-size: clamp(13px, 1.6vw, 19px);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.entrega__capturado {
+  margin: 0;
+  font-family: var(--font-pixel);
+  font-size: clamp(14px, 2vw, 24px);
+  color: var(--success-text, #7bd88f);
+  letter-spacing: 2px;
+}
+
+/* O palco da revelação. Altura fixa porque o <TresCanvas> herda o tamanho do
+   pai — sem ela o canvas nasce com 0px e o professor não aparece. */
+.palco-revelacao {
+  margin: 0;
+  width: clamp(200px, 32vh, 340px);
+  height: clamp(200px, 32vh, 340px);
+  display: grid;
+  place-items: center;
+}
+
+.palco-revelacao__sprite {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  /* Balanço leve: sem 3D, é o que dá vida à revelação. */
+  animation: revelacao-balanco 2.4s ease-in-out infinite;
+}
+
+.palco-revelacao__sprite--pixel {
+  image-rendering: pixelated;
+}
+
+@keyframes revelacao-balanco {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1.5deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1.5deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .palco-revelacao__sprite {
+    animation: none;
+  }
+}
+
+.revelacao__ficha {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.revelacao__eyebrow {
+  margin: 0;
+  font-family: var(--font-pixel);
+  font-size: clamp(9px, 1.1vw, 13px);
+  color: var(--unifil-gold);
+  letter-spacing: 2px;
+}
+
+.revelacao__nome {
+  margin: 0;
+  font-size: clamp(26px, 4vw, 52px);
+  line-height: 1.05;
+  color: #fff;
+}
+
+.revelacao__tipos {
+  margin: 0;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.revelacao__tipo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: clamp(13px, 1.6vw, 19px);
+  color: rgba(255, 255, 255, 0.85);
 }
 </style>

@@ -1,9 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -63,6 +66,26 @@ export class QuizController {
   @HttpCode(HttpStatus.OK)
   answer(@Req() request: AuthedRequest, @Body() dto: AnswerQuizDto) {
     return this.quiz.answer(request.user.id, dto.sessionId, dto.answerIndex);
+  }
+
+  /**
+   * O QR de tela já foi escaneado? Chamada de 2 em 2 segundos enquanto o
+   * código está na tela.
+   *
+   * Polling e não socket: é um tablet só, a sessão do quiz já é de processo
+   * único, e o socket de batalha é autenticado por ALUNO — puxar a bancada
+   * para dentro dele acoplaria quiz a PvP sem ganho nenhum.
+   */
+  @Get('token/:id')
+  tokenStatus(@Param('id', ParseUUIDPipe) id: string) {
+    return this.quiz.statusDaFicha(id);
+  }
+
+  /** Mata o QR de tela: "PRÓXIMO ALUNO" e "OUTRO TEMA" chamam aqui. */
+  @Delete('token/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  encerrarToken(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.quiz.encerrarFicha(id);
   }
 
   @Get('attempts')

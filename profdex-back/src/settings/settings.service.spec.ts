@@ -26,7 +26,9 @@ describe('SettingsService', () => {
 
     await expect(service.all()).resolves.toEqual({
       themeCooldownMinutes: 10,
+      quizGlobalRepeatWindow: 10,
       battlePairCooldownHours: 12,
+      captureQrMode: 'ficha',
     });
   });
 
@@ -78,7 +80,9 @@ describe('SettingsService', () => {
     expect(prisma.appSetting.upsert).toHaveBeenCalledTimes(1);
     await expect(service.all()).resolves.toEqual({
       themeCooldownMinutes: 5,
+      quizGlobalRepeatWindow: 10,
       battlePairCooldownHours: 12,
+      captureQrMode: 'ficha',
     });
   });
 
@@ -100,5 +104,32 @@ describe('SettingsService', () => {
     );
 
     await expect(service.get('themeCooldownMinutes')).resolves.toBe(120);
+  });
+
+  /**
+   * O modo de entrega do QR é o primeiro ajuste não-numérico. Ele passa pelo
+   * mesmo cache e pela mesma invalidação — trocar de `ficha` para `tela` no
+   * painel tem de valer na bancada sem restart, como os cooldowns já valem.
+   */
+  it('lê e grava o modo de entrega do QR, invalidando o cache', async () => {
+    const prisma = criarPrisma();
+    const service = criar(prisma);
+
+    expect(await service.captureQrMode()).toBe('ficha');
+
+    await service.update({ captureQrMode: 'tela' }, 'admin-1');
+
+    expect(prisma.appSetting.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { key: 'capture.qr_mode' } }),
+    );
+    expect(await service.captureQrMode()).toBe('tela');
+  });
+
+  it('modo inválido gravado à mão cai em ficha', async () => {
+    const service = criar(
+      criarPrisma([{ key: 'capture.qr_mode', value: 'papel' }]),
+    );
+
+    await expect(service.captureQrMode()).resolves.toBe('ficha');
   });
 });

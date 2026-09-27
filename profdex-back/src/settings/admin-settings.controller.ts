@@ -28,24 +28,31 @@ export class AdminSettingsController {
   /**
    * Os valores atuais junto com a descrição de cada um.
    *
-   * O painel recebe faixa, unidade e texto de apoio do SERVIDOR em vez de
-   * repetir tudo no Vue: assim o formulário não pode discordar da validação,
+   * O painel recebe faixa, opções, unidade e texto de apoio do SERVIDOR em vez
+   * de repetir tudo no Vue: assim o formulário não pode discordar da validação,
    * e mudar um limite é mexer num lugar só.
+   *
+   * O que sai depende do `kind`, e é por isso que a tela sabe desenhar `select`
+   * ou `input[type=number]` sem conhecer nenhum ajuste pelo nome: ajuste com
+   * `options` é escolha, ajuste com `min`/`max` é número.
    */
   @Get()
   async list() {
     const valores = await this.settings.all();
     return {
-      settings: SETTING_NAMES.map((name) => ({
-        name,
-        value: valores[name],
-        default: SETTINGS[name].default,
-        min: SETTINGS[name].min,
-        max: SETTINGS[name].max,
-        label: SETTINGS[name].label,
-        unit: SETTINGS[name].unit,
-        help: SETTINGS[name].help,
-      })),
+      settings: SETTING_NAMES.map((name) => {
+        const spec = SETTINGS[name];
+        const comum = {
+          name,
+          value: valores[name],
+          default: spec.default,
+          label: spec.label,
+          help: spec.help,
+        };
+        return spec.kind === 'enum'
+          ? { ...comum, options: spec.options }
+          : { ...comum, min: spec.min, max: spec.max, unit: spec.unit };
+      }),
     };
   }
 

@@ -1,17 +1,34 @@
 <script setup>
+import { computed } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
 import SceneContent from '@/components/SceneContent.vue'
 
 // Mesmo padrão do ARViewer: um único prop `config` descreve a cena,
 // então esta camada 3D é reutilizável e a página só passa os dados.
-defineProps({
+const props = defineProps({
   config: {
     type: Object,
     default: () => ({}),
-    // config aceita: { modelPath?: string, clearColor?: string }
+    // config aceita:
+    //   modelPath?: string
+    //   clearColor?: string
+    //   autoRotate?: boolean   gira sozinho (bancada)
+    //   interactive?: boolean  arrastar/pinçar (padrão: true)
   },
 })
+
+// A rotação automática existe para a bancada: o tablet fica na mesa virado
+// para o aluno e ninguém vai arrastar a cena para ver o professor de outro
+// ângulo. Desligada por padrão — a tela de AR continua como era.
+//
+// `prefers-reduced-motion` para a rotação, como o resto do app já respeita.
+const semMovimento =
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+const autoRotate = computed(() => Boolean(props.config.autoRotate) && !semMovimento)
+const interativo = computed(() => props.config.interactive !== false)
 </script>
 
 <template>
@@ -25,7 +42,15 @@ defineProps({
 
       <!-- Controle de órbita touch/mouse (arrastar pra girar, pinça pra zoom).
            Vem pronto do @tresjs/cientos — nada de escrever na mão. -->
-      <OrbitControls :enable-damping="true" :target="[0, 0.6, 0]" />
+      <OrbitControls
+        :enable-damping="true"
+        :target="[0, 0.6, 0]"
+        :auto-rotate="autoRotate"
+        :auto-rotate-speed="1.8"
+        :enable-rotate="interativo"
+        :enable-zoom="interativo"
+        :enable-pan="interativo"
+      />
 
       <!-- Iluminação: uma ambiente suave + uma direcional que faz sombra -->
       <TresAmbientLight :intensity="0.6" />

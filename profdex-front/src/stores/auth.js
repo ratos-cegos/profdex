@@ -23,6 +23,22 @@ export const useAuthStore = defineStore('auth', () => {
     setSession(data)
   }
 
+  /**
+   * Corrige a matrícula do próprio aluno.
+   *
+   * O servidor reassina a sessão e reemite o cookie — a matrícula viaja no
+   * payload do JWT, e sem isso o perfil seguiria mostrando o valor velho até a
+   * sessão expirar. `setSession` é o mesmo caminho do login: quem acabou de
+   * trocar não precisa relogar, justamente com a credencial que mudou.
+   */
+  async function changeMatricula(matricula, currentPassword) {
+    const { data } = await api.patch('/users/me/matricula', {
+      matricula,
+      currentPassword,
+    })
+    setSession(data)
+  }
+
   function logout() {
     user.value = null
     hasRestoredSession.value = true
@@ -58,5 +74,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   window.addEventListener('auth:expired', expireSession)
 
-  return { user, isAuthenticated, register, login, logout, restoreSession }
+  return {
+    user,
+    isAuthenticated,
+    register,
+    login,
+    logout,
+    changeMatricula,
+    restoreSession,
+  }
 })

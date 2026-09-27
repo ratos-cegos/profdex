@@ -11,6 +11,9 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import { typeKeyOf } from '../battle/engine/types';
+import { hashCaptureToken } from '../captures/capture-token';
+import { generateCaptureToken, qrSvgDataUrl } from '../captures/capture-sheet';
 import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -46,6 +49,15 @@ interface QuizSession {
 const SWEEP_INTERVAL_MS = 60_000;
 
 /**
+ * Chave do balde GLOBAL dentro de `descartadas`, ao lado dos baldes por aluno.
+ *
+ * Um `userId` é UUID, então `*` nunca colide com um aluno de verdade. Ficar no
+ * mesmo mapa é o que dá ao descarte global a mesma varredura e o mesmo TTL do
+ * pessoal, sem uma segunda estrutura para manter viva.
+ */
+const DESCARTE_GLOBAL = '*';
+
+/**
  * NENHUMA rota da bancada devolve professor.
  *
  * Havia um `PROFESSOR_DO_TEMA_SELECT` alimentando `themes()` e `answer()` com
@@ -60,10 +72,45 @@ const SWEEP_INTERVAL_MS = 60_000;
 
 /** O raro que o acerto acabou de liberar, ou o que segue pendente de entrega. */
 export interface RaroNaResposta {
-  /** Gate fechado NESTE acerto: é a cena dourada da bancada. */
-  liberado?: { name: string; temas: string[] };
+  /**
+   * Gate fechado NESTE acerto: é a cena dourada da bancada.
+   *
+   * Carrega a arte porque o modo `tela` mostra o 3D do raro JUNTO com o QR,
+   * sem esperar scan (decisão 15): a ficha rara aponta a variante e não passa
+   * pelo sorteio, então não há reroll para antecipar — e a cena dourada já
+   * nomeia o professor em caixa alta no mesmo segundo.
+   */
+  liberado?: {
+    name: string;
+    temas: string[];
+    modelUrl: string | null;
+    spriteFrontUrl: string | null;
+    pixelArt: boolean;
+  };
   /** Gate já estava fechado e a ficha ainda não virou captura: é a tarja. */
   pendente?: { name: string; temas: string[] };
+}
+
+/**
+ * O QR que a bancada mostra no modo `tela`.
+ *
+ * Só o SVG e o id da linha atravessam a fronteira — o token em texto puro fica
+ * dentro do QR, e nunca num campo próprio da resposta nem no log. O `id` é o
+ * que a bancada usa para perguntar se já foi resgatado e para matar a ficha ao
+ * trocar de aluno.
+ */
+export interface QrNaResposta {
+  id: string;
+  dataUrl: string;
+  /** `true` quando a ficha é a do raro liberado agora. */
+  raro: boolean;
+}
+
+/** O que `resolverRaro` descobriu, para a resposta e para a ficha de tela. */
+interface RaroDoAcerto {
+  resposta: RaroNaResposta | null;
+  /** Variante do raro liberado NESTE acerto — a ficha aponta direto para ela. */
+  variantId: string | null;
 }
 
 /**
@@ -296,37 +343,59 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
 
     const acertou = escolha !== null && escolha === session.correctIndex;
 
-    const tentativa = await this.prisma.quizAttempt.create({
-      data: {
-        userId: session.userId,
-        questionId: session.questionId,
-        theme: session.theme,
-        difficulty: session.difficulty,
-        correct: acertou,
-        answerIndex: escolha,
-        // Limitado à janela: um tablet que ficou minutos com a tela aberta não
-        // pode registrar um tempo de resposta absurdo no relatório.
-        elapsedMs: Math.min(agora - session.startedAt, ANSWER_WINDOW_MS),
-        operatorId,
-      },
-      select: { id: true },
+    // Lido ANTES da transação: o modo pode ser trocado no painel a qualquer
+    // momento, e a rodada termina com o modo que valia quando foi respondida.
+    const modoQr = await this.settings.captureQrMode();
+
+    // Tentativa, destravamento do raro e ficha de tela numa transação só.
+    //
+    // Falhar ao gravar o token não pode deixar tentativa registrada sem QR (o
+    // aluno acertou e sai sem nada, com o cooldown correndo) nem QR sem
+    // tentativa (ficha de graça, sem prova de acerto).
+    const { raro, ficha } = await this.prisma.$transaction(async (tx) => {
+      const tentativa = await tx.quizAttempt.create({
+        data: {
+          userId: session.userId,
+          questionId: session.questionId,
+          theme: session.theme,
+          difficulty: session.difficulty,
+          correct: acertou,
+          answerIndex: escolha,
+          // Limitado à janela: um tablet que ficou minutos com a tela aberta
+          // não pode registrar um tempo de resposta absurdo no relatório.
+          elapsedMs: Math.min(agora - session.startedAt, ANSWER_WINDOW_MS),
+          operatorId,
+        },
+        select: { id: true },
+      });
+
+      // DEPOIS da tentativa e com o id dela: um destravamento sem a tentativa
+      // que o justifica é impossível de auditar (ver RareUnlock.attemptId).
+      const raro = await this.resolverRaro(
+        tx,
+        session.userId,
+        session.theme,
+        tentativa.id,
+        acertou,
+      );
+
+      const ficha =
+        modoQr === 'tela' && acertou
+          ? await this.emitirFichaDeTela(tx, session, raro.variantId)
+          : null;
+
+      return { raro, ficha };
     });
 
     this.registrarMetricas(session.userId, acertou);
 
-    // DEPOIS da tentativa e com o id dela: um destravamento sem a tentativa que
-    // o justifica é impossível de auditar (ver RareUnlock.attemptId).
-    const raro = await this.resolverRaro(
-      session.userId,
-      session.theme,
-      tentativa.id,
-      acertou,
-    );
-
     const cooldownMs = await this.settings.themeCooldownMs();
 
     return {
-      raro,
+      raro: raro.resposta,
+      // Só existe no modo `tela`. No modo `ficha` a resposta é IDÊNTICA à de
+      // sempre — nenhuma tela e nenhuma rota mudam.
+      qr: ficha ? await this.desenharQr(ficha) : null,
       correct: acertou,
       expired: esgotou,
       // Repetido no resultado para o aluno conseguir contestar depois de ver o
@@ -363,41 +432,92 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
    * raro" revelaria o tema para a fila inteira.
    */
   private async resolverRaro(
+    tx: Prisma.TransactionClient,
     userId: string,
     theme: string,
     attemptId: string,
     acertou: boolean,
-  ): Promise<RaroNaResposta | null> {
+  ): Promise<RaroDoAcerto> {
+    const nada: RaroDoAcerto = { resposta: null, variantId: null };
+
     const destravouAgora = acertou
-      ? await this.destravarTema(userId, theme, attemptId)
+      ? await this.destravarTema(tx, userId, theme, attemptId)
       : false;
 
     // No máximo um raro ativo por tema (decisão 8), então `findFirst` basta.
-    const raro = await this.prisma.professor.findFirst({
+    const raro = await tx.professor.findFirst({
       where: { rare: true, active: true, types: { has: theme } },
-      select: { id: true, name: true, types: true },
+      select: {
+        id: true,
+        name: true,
+        types: true,
+        // A arte alimenta a revelação 3D da bancada (17.7); as variantes,
+        // a ficha de tela do raro, que aponta a variante e não passa pelo
+        // sorteio.
+        modelUrl: true,
+        spriteFrontUrl: true,
+        pixelArt: true,
+        variants: { select: { id: true, typeKey: true } },
+      },
     });
-    if (!raro) return null;
+    if (!raro) return nada;
 
     // Já capturou: a ficha dele já virou exemplar, não há o que entregar.
-    const jaCapturou = await this.prisma.capture.findFirst({
+    const jaCapturou = await tx.capture.findFirst({
       where: { userId, professorId: raro.id },
       select: { id: true },
     });
-    if (jaCapturou) return null;
+    if (jaCapturou) return nada;
 
     // O gate são TODOS os tipos do raro — E, não OU (decisão 4).
-    const unlocks = await this.prisma.rareUnlock.findMany({
+    const unlocks = await tx.rareUnlock.findMany({
       where: { userId, theme: { in: raro.types } },
       select: { theme: true },
     });
     const destravados = new Set(unlocks.map((u) => u.theme));
-    if (!raro.types.every((t) => destravados.has(t))) return null;
+    if (!raro.types.every((t) => destravados.has(t))) return nada;
 
-    const dados = { name: raro.name, temas: raro.types };
     // `destravouAgora` é o que separa a cena cheia da tarja: só quem virou a
     // chave neste acerto vê a tela dourada.
-    return destravouAgora ? { liberado: dados } : { pendente: dados };
+    if (!destravouAgora) {
+      return {
+        resposta: { pendente: { name: raro.name, temas: raro.types } },
+        variantId: null,
+      };
+    }
+
+    return {
+      resposta: {
+        liberado: {
+          name: raro.name,
+          temas: raro.types,
+          modelUrl: raro.modelUrl,
+          spriteFrontUrl: raro.spriteFrontUrl,
+          pixelArt: raro.pixelArt,
+        },
+      },
+      variantId: this.varianteDoRaro(raro.types, raro.variants),
+    };
+  }
+
+  /**
+   * A variante que a ficha rara aponta — a COMPLETA, como na tiragem em papel
+   * (`generateRare`). Escolher pelo `typeKey` e não pela primeira da lista
+   * mantém a ficha correta num raro que tenha variantes antigas.
+   *
+   * Nulo quando o raro está sem variante. Nesse caso a bancada emite a ficha
+   * COMUM do tema, e a pendência do raro reaparece sozinha no cartão do aluno
+   * (ela é estado derivado) para o operador entregar o papel — é melhor que o
+   * aluno sair sem nenhuma ficha de um acerto que ele deu.
+   */
+  private varianteDoRaro(
+    types: string[],
+    variants: { id: string; typeKey: string }[],
+  ): string | null {
+    const typeKey = typeKeyOf(types);
+    return (
+      variants.find((v) => v.typeKey === typeKey)?.id ?? variants[0]?.id ?? null
+    );
   }
 
   /**
@@ -415,16 +535,17 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
    * segundo acerto do mesmo aluno.
    */
   private async destravarTema(
+    tx: Prisma.TransactionClient,
     userId: string,
     theme: string,
     attemptId: string,
   ): Promise<boolean> {
-    const acertos = await this.prisma.quizAttempt.count({
+    const acertos = await tx.quizAttempt.count({
       where: { userId, theme, correct: true, annulled: false },
     });
     if (acertos < RARE_UNLOCK_CORRECT_ANSWERS) return false;
 
-    const { count } = await this.prisma.rareUnlock.createMany({
+    const { count } = await tx.rareUnlock.createMany({
       data: { userId, theme, attemptId },
       skipDuplicates: true,
     });
@@ -480,6 +601,154 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
           r.types.every((t) => destravados.has(t)),
       )
       .map((r) => ({ name: r.name, temas: r.types }));
+  }
+
+  // ── QR na tela ────────────────────────────────────────────────────────────
+
+  /**
+   * Emite a ficha do acerto VINCULADA ao aluno, dentro da transação da
+   * tentativa.
+   *
+   * Todo token era anônimo até aqui, o que é correto para papel entregue na mão
+   * e errado para um código exibido numa tela virada para a fila: quem
+   * fotografasse levaria. `assignedToId` é o que fecha isso — qualquer outra
+   * conta leva 403 no scan, sem consumir a ficha.
+   *
+   * O sorteio do professor comum **não** acontece aqui (decisão 13). Antecipá-lo
+   * para o acerto abriria reroll infinito: quem não gostasse do resultado não
+   * escanearia, esperaria o cooldown e tentaria outro. A exceção é o raro, que
+   * aponta a variante e por isso não tem sorteio a antecipar.
+   */
+  private async emitirFichaDeTela(
+    tx: Prisma.TransactionClient,
+    session: QuizSession,
+    variantIdDoRaro: string | null,
+  ): Promise<{ id: string; token: string; raro: boolean }> {
+    // Um QR vivo por aluno (decisão 19): emitir um novo mata o anterior, que é
+    // a mesma regra de "um aluno por vez" que `start` já aplica à sessão. Sem
+    // isto, o tablet que recarregou deixaria dois QRs válidos na mão de quem
+    // acertou uma vez.
+    await tx.captureToken.deleteMany({
+      where: { assignedToId: session.userId, redeemedAt: null },
+    });
+
+    const token = generateCaptureToken();
+    const ficha = await tx.captureToken.create({
+      data: {
+        // Exatamente um dos dois, como toda ficha: a rara aponta a variante e
+        // pula o sorteio; a comum vale pelo tema da questão acertada.
+        ...(variantIdDoRaro
+          ? { variantId: variantIdDoRaro }
+          : { type: session.theme }),
+        assignedToId: session.userId,
+        tokenHash: hashCaptureToken(token),
+        batch: await this.tiragemDaBancada(tx),
+      },
+      select: { id: true },
+    });
+
+    return { id: ficha.id, token, raro: variantIdDoRaro !== null };
+  }
+
+  /**
+   * A tiragem sintética do dia: `bancada-AAAA-MM-DD`, `source: 'bancada'`.
+   *
+   * `/admin/fichas` conta por tiragem. Token emitido sem tiragem entraria no
+   * estoque vivo sem origem: o número mudaria sozinho e a "última tiragem"
+   * ficaria congelada em dias atrás, exatamente na tela que existe para decidir
+   * se é preciso imprimir mais.
+   *
+   * `upsert` com `increment`: a linha nasce na primeira emissão do dia e cresce
+   * de um em um. Dia sem nenhum QR de tela não cria tiragem vazia.
+   */
+  private async tiragemDaBancada(
+    tx: Prisma.TransactionClient,
+  ): Promise<string> {
+    const batch = `bancada-${new Date().toISOString().slice(0, 10)}`;
+    await tx.qrBatch.upsert({
+      where: { batch },
+      update: { total: { increment: 1 } },
+      // `copies: 1` é o número honesto: a bancada emite uma ficha por acerto,
+      // não uma pilha por tipo. `types: []` porque o tema varia a cada rodada —
+      // quem sabe o tipo de cada ficha é `capture_tokens`, que é de onde o
+      // estoque por tipo já sai.
+      create: { batch, source: 'bancada', copies: 1, total: 1, types: [] },
+    });
+    return batch;
+  }
+
+  /** O QR pronto para a tela. O token só existe dentro da imagem. */
+  private async desenharQr(ficha: {
+    id: string;
+    token: string;
+    raro: boolean;
+  }): Promise<QrNaResposta> {
+    return {
+      id: ficha.id,
+      // Mesmo payload das fichas de papel: o scanner do app não precisa saber
+      // de onde o QR veio.
+      dataUrl: await qrSvgDataUrl(`capture:${ficha.token}`),
+      raro: ficha.raro,
+    };
+  }
+
+  /**
+   * Mata o QR de tela ao trocar de aluno ou de tema.
+   *
+   * Só apaga o que ainda não foi resgatado: uma ficha já usada virou exemplar e
+   * tem `Capture` apontando para ela. Silencioso quando não acha nada — a
+   * bancada chama isto de passagem, e falhar em matar não pode travar a tela do
+   * operador (a trava de "um QR vivo por aluno" cobre o resto).
+   */
+  async encerrarFicha(tokenId: string): Promise<void> {
+    await this.prisma.captureToken.deleteMany({
+      where: { id: tokenId, redeemedAt: null, assignedToId: { not: null } },
+    });
+  }
+
+  /**
+   * O polling da bancada: já escanearam?
+   *
+   * Quem espera a notícia é o OPERADOR — o celular do aluno já sabe o
+   * resultado, porque foi ele que capturou. Enquanto não resgatada, devolve só
+   * `redeemed: false`: o professor comum é sorteado no scan, então antes dele
+   * não existe professor para mostrar.
+   */
+  async statusDaFicha(tokenId: string): Promise<{
+    redeemed: boolean;
+    professor: {
+      name: string;
+      types: string[];
+      modelUrl: string | null;
+      spriteFrontUrl: string | null;
+      pixelArt: boolean;
+    } | null;
+  }> {
+    const ficha = await this.prisma.captureToken.findUnique({
+      where: { id: tokenId },
+      select: {
+        redeemedAt: true,
+        capture: {
+          select: {
+            professor: {
+              select: {
+                name: true,
+                types: true,
+                modelUrl: true,
+                spriteFrontUrl: true,
+                pixelArt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Ficha encerrada (o operador avançou) some do banco. Para a bancada isso é
+    // o mesmo que "não resgatada": ela só precisa parar de esperar.
+    if (!ficha?.redeemedAt) return { redeemed: false, professor: null };
+
+    return { redeemed: true, professor: ficha.capture?.professor ?? null };
   }
 
   // ── Relatório ─────────────────────────────────────────────────────────────
@@ -631,19 +900,28 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Sorteia a questão que o aluno ainda não viu naquele tema.
+   * Sorteia a questão que o aluno ainda não viu naquele tema — e que a fila
+   * também não acabou de ver.
    *
-   * Enquanto houver inédita, ele NUNCA recebe uma repetida — o filtro é sobre
-   * tudo que ele já respondeu no tema, não sobre uma janela das últimas N.
-   * Esgotado o banco, repetir é melhor que recusar a tentativa, e aí a ordem é
-   * a da memória: primeiro o que ele viu há mais tempo.
+   * São dois filtros com pesos diferentes, e a ordem de preferência é o que
+   * separa um do outro:
+   *
+   * 1. inédita para o aluno **e** fora da janela global — o caso comum;
+   * 2. inédita para o aluno, mesmo dentro da janela global;
+   * 3. `maisAntigas(...)`, quando ele já viu todas do tema.
+   *
+   * O passo 2 é a decisão 2 encarnada: **o filtro pessoal é regra e nunca
+   * cede; o global é preferência**. Fazer o global eliminar zeraria o pool com
+   * o banco quase esgotado, e o aluno receberia justamente a questão que ele
+   * já respondeu — o inverso do que a regra pede. É um defeito invisível em
+   * teste feliz: só aparece no fim do dia de evento.
    */
   private async sortearQuestao(
     userId: string,
     theme: string,
     cooldownMs: number,
   ) {
-    const [respondidas, questoes] = await Promise.all([
+    const [respondidas, questoes, naFila] = await Promise.all([
       // `groupBy` em vez de listar as tentativas: o que interessa é o conjunto
       // de questões vistas e QUANDO cada uma foi vista pela última vez, não o
       // histórico inteiro do aluno naquele tema.
@@ -664,6 +942,7 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
           answer: true,
         },
       }),
+      this.janelaGlobal(theme),
     ]);
 
     if (!questoes.length) {
@@ -674,9 +953,67 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
 
     const vistaEm = this.montarVistas(userId, respondidas, cooldownMs);
     const ineditas = questoes.filter((q) => !vistaEm.has(q.id));
+    const frescas = ineditas.filter((q) => !naFila.has(q.id));
+
+    // A dificuldade continua sendo sorteada ANTES da questão, renormalizada
+    // entre as faixas que sobraram no pool escolhido aqui.
     return this.sortearPorDificuldade(
-      ineditas.length ? ineditas : maisAntigas(questoes, vistaEm),
+      frescas.length
+        ? frescas
+        : ineditas.length
+          ? ineditas
+          : maisAntigas(questoes, vistaEm),
     );
+  }
+
+  /**
+   * As questões que a FILA acabou de ver naquele tema.
+   *
+   * A bancada é uma só e quem está atrás lê o enunciado e as alternativas de
+   * quem está respondendo. O filtro por aluno (`montarVistas`) não alcança
+   * isso: sem esta janela, o próximo da fila pode receber minutos depois a
+   * mesma questão que acabou de ouvir em voz alta.
+   *
+   * Duas fontes, as mesmas do descarte pessoal:
+   *
+   * - as últimas K tentativas do tema, **sem filtro de aluno** — o índice
+   *   `[theme, createdAt]` de `quiz_attempts` já cobre a consulta;
+   * - as questões abertas e abandonadas por qualquer aluno, que não viram
+   *   linha em `quiz_attempts` (decisão 3).
+   *
+   * `annulled` NÃO filtra aqui, de propósito: a questão anulada por errata
+   * continua tendo sido lida em voz alta na frente da fila.
+   *
+   * A consulta é por TEMA, nunca global entre temas — contar as últimas 10
+   * aplicações de todos os temas juntos suprimiria questão de `redes` porque
+   * `humanas` andou.
+   */
+  private async janelaGlobal(theme: string): Promise<Set<string>> {
+    const janela = await this.settings.get('quizGlobalRepeatWindow');
+    // Zero é o interruptor de emergência do operador: com o banco esgotando no
+    // meio do evento, desligar aqui devolve exatamente o comportamento antigo,
+    // descarte global incluído.
+    if (janela <= 0) return new Set();
+
+    const recentes = await this.prisma.quizAttempt.findMany({
+      where: { theme },
+      orderBy: { createdAt: 'desc' },
+      take: janela,
+      select: { questionId: true },
+    });
+
+    const naFila = new Set(recentes.map((r) => r.questionId));
+
+    // O balde global é por questão, e cada questão pertence a um tema só —
+    // filtrar por tema aqui seria redundante.
+    const agora = Date.now();
+    for (const [questionId, expiraEm] of this.descartadas.get(
+      DESCARTE_GLOBAL,
+    ) ?? []) {
+      if (expiraEm > agora) naFila.add(questionId);
+    }
+
+    return naFila;
   }
 
   /**
@@ -739,15 +1076,24 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
     return itens[Math.floor(this.rng() * itens.length)];
   }
 
-  /** Registra uma questão exibida e abandonada. Ver `descartadas`. */
+  /**
+   * Registra uma questão exibida e abandonada, para o aluno E para a fila.
+   *
+   * A fila lê o enunciado mesmo quando ninguém responde (decisão 3): uma
+   * questão aberta na frente de todo mundo e abandonada sai do sorteio de quem
+   * vem atrás pelo tempo do cooldown. Ver `descartadas` e `DESCARTE_GLOBAL`.
+   */
   private marcarDescartada(
     userId: string,
     questionId: string,
     cooldownMs: number,
   ): void {
-    const doAluno = this.descartadas.get(userId) ?? new Map<string, number>();
-    doAluno.set(questionId, Date.now() + cooldownMs);
-    this.descartadas.set(userId, doAluno);
+    const expiraEm = Date.now() + cooldownMs;
+    for (const chave of [userId, DESCARTE_GLOBAL]) {
+      const balde = this.descartadas.get(chave) ?? new Map<string, number>();
+      balde.set(questionId, expiraEm);
+      this.descartadas.set(chave, balde);
+    }
   }
 
   /** Métrica de engajamento. Nunca derruba a resposta do quiz. */

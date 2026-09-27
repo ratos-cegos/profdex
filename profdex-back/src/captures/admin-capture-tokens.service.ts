@@ -31,6 +31,25 @@ export interface InventoryRow {
   redeemedTotal: number;
 }
 
+/**
+ * A tiragem sintética da bancada: as fichas que a própria tela gerou no modo
+ * `tela`, agrupadas por dia (`bancada-AAAA-MM-DD`).
+ *
+ * Fica SEPARADA da última tiragem de papel porque as duas respondem perguntas
+ * diferentes. "Preciso imprimir mais?" se decide pela pilha de papel; misturar
+ * as duas faria o estoque parecer crescer sozinho e congelaria a última
+ * tiragem impressa em dias atrás — exatamente na tela que existe para essa
+ * decisão.
+ */
+export interface BoothBatchRow {
+  batch: string;
+  createdAt: Date;
+  /** Fichas emitidas nesta tiragem (o contador que a bancada incrementa). */
+  total: number;
+  /** Quantas delas já viraram captura. */
+  redeemed: number;
+}
+
 export interface PlanLine {
   type: string;
   label: string;
@@ -81,10 +100,16 @@ export class AdminCaptureTokensService {
       copies: number;
       total: number;
     } | null;
+    booth: BoothBatchRow | null;
     types: InventoryRow[];
     rares: RareInventoryRow[];
   }> {
     const lastBatch = await this.prisma.qrBatch.findFirst({
+      // Só PAPEL. A bancada emite uma ficha por acerto e criaria uma tiragem
+      // nova todo dia de evento: sem este filtro, a "última tiragem" deixaria
+      // de ser a última que alguém IMPRIMIU, que é a única que ajuda a decidir
+      // se falta papel.
+      where: { source: { not: 'bancada' } },
       orderBy: { createdAt: 'desc' },
       select: {
         batch: true,
@@ -189,9 +214,31 @@ export class AdminCaptureTokensService {
             total: lastBatch.total,
           }
         : null,
+      booth: await this.tiragemDaBancada(),
       types,
       rares: await this.estoqueDeRaros(),
     };
+  }
+
+  /**
+   * A tiragem de TELA mais recente, com quantas já foram escaneadas.
+   *
+   * Nula até a bancada emitir o primeiro QR — dia sem nenhum não cria tiragem
+   * vazia, e uma instalação em modo `ficha` nunca vê esta linha.
+   */
+  private async tiragemDaBancada(): Promise<BoothBatchRow | null> {
+    const tiragem = await this.prisma.qrBatch.findFirst({
+      where: { source: 'bancada' },
+      orderBy: { createdAt: 'desc' },
+      select: { batch: true, createdAt: true, total: true },
+    });
+    if (!tiragem) return null;
+
+    const redeemed = await this.prisma.captureToken.count({
+      where: { batch: tiragem.batch, redeemedAt: { not: null } },
+    });
+
+    return { ...tiragem, redeemed };
   }
 
   /**

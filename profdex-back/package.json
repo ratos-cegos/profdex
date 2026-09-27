@@ -19,7 +19,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "qr:generate": "ts-node scripts/generate-capture-qr.ts",
+    "qr:generate": "ts-node --transpile-only scripts/generate-capture-qr.ts",
     "pvp:smoke": "node scripts/pvp-smoke.js",
     "db:reset-ranking": "node scripts/reset-battle-ranking.js",
     "db:up": "docker compose up -d --wait",
@@ -27,18 +27,18 @@
     "db:nuke": "docker compose down -v",
     "db:migrate": "prisma migrate dev",
     "db:reset": "node scripts/db-reset.js",
-    "db:seed": "ts-node prisma/seed.ts",
-    "db:seed-quiz": "ts-node prisma/quiz-seed.ts",
+    "db:seed": "ts-node --transpile-only prisma/seed.ts",
+    "db:seed-quiz": "ts-node --transpile-only prisma/quiz-seed.ts",
     "db:studio": "prisma studio",
     "db:set-admin": "node scripts/set-admin.js",
     "load:pvp": "artillery run scripts/loadtest/pvp-load.yml",
-    "db:seed-quiz-treino": "ts-node prisma/training-seed.ts",
+    "db:seed-quiz-treino": "ts-node --transpile-only prisma/training-seed.ts",
     "gen:quiz-treino": "ts-node scripts/gerar-questoes-treino.ts",
-    "db:seed-treinadores": "ts-node scripts/seed-dois-treinadores.ts",
+    "db:seed-treinadores": "ts-node --transpile-only scripts/seed-dois-treinadores.ts",
     "pvp:bot": "node scripts/bot-bia.js"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node --transpile-only prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
