@@ -20,7 +20,18 @@ const membro = (name: string, hp?: number): TeamMember => {
   if (hp !== undefined) combatant.hp = hp;
   return {
     captureId: `cap-${name}`,
-    professor: { id: `p-${name}`, slug: name, name },
+    professor: {
+      id: `p-${name}`,
+      slug: name,
+      name,
+      // A arte não muda nenhuma regra de time, mas é obrigatória no tipo de
+      // propósito: foi omiti-la que fez o chefe da raid aparecer com a sprite
+      // de outro professor (ver BattleProfessor).
+      spriteFrontUrl: `/uploads/${name}-frente.png`,
+      spriteBackUrl: `/uploads/${name}-costas.png`,
+      modelUrl: `/uploads/${name}.glb`,
+      pixelArt: false,
+    },
     types: ['algoritmos'],
     moves: combatant.moves,
     combatant,

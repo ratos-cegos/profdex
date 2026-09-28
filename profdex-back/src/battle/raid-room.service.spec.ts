@@ -9,6 +9,12 @@ const LENDARIO = {
   name: 'Tânia',
   slug: 'tania',
   types: ['matematica'],
+  // A arte, como `PUBLIC_PROFESSOR_SELECT` a entrega. Ela existe aqui para o
+  // teste de regressão lá embaixo poder conferir que ela ATRAVESSA até o front.
+  spriteFrontUrl: '/uploads/tania-frente.png?v=1',
+  spriteBackUrl: '/uploads/tania-costas.png?v=1',
+  modelUrl: '/uploads/tania.glb?v=1',
+  pixelArt: false,
   variants: [{ id: 'var-1', types: ['matematica'] }],
 };
 
@@ -162,6 +168,49 @@ describe('RaidRoomService — o corpo do chefe', () => {
     // Mexer no painel com a raid em andamento não pode mudar a vida do chefe
     // com o aluno já lutando.
     expect(ctx.settings.raidRules).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Regressão de 27/09/2026: o chefe chegava ao front sem arte.
+ *
+ * `openRoom` montava o professor do chefe à mão, com só `id`/`slug`/`name`. O
+ * front faz `professor?.spriteFrontUrl || SPRITE_PADRAO`, então o lendário
+ * recém-cadastrado aparecia na raid com a sprite padrão — a do Gustavo. A
+ * suspeita natural foi upload quebrado; a arte estava certa o tempo todo, e a
+ * consulta (`PUBLIC_PROFESSOR_SELECT`) já a trazia. Era o literal que a perdia.
+ */
+describe('RaidRoomService — a arte do chefe', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('manda a arte do lendário no battle:begin, não a sprite padrão', async () => {
+    const ctx = montar();
+
+    await atePrimeiroTurno(ctx);
+
+    expect(ctx.ultimo('battle:begin').foe.professor).toMatchObject({
+      id: 'lendario-1',
+      name: 'Tânia',
+      spriteFrontUrl: '/uploads/tania-frente.png?v=1',
+      spriteBackUrl: '/uploads/tania-costas.png?v=1',
+      modelUrl: '/uploads/tania.glb?v=1',
+    });
+  });
+
+  /**
+   * O front só cai na sprite padrão quando o campo é falsy. Um `undefined`
+   * aqui é indistinguível, na tela, de um professor sem arte cadastrada.
+   */
+  it('nenhum campo de arte chega indefinido', async () => {
+    const ctx = montar();
+
+    await atePrimeiroTurno(ctx);
+
+    const { professor } = ctx.ultimo('battle:begin').foe;
+    for (const campo of ['spriteFrontUrl', 'spriteBackUrl', 'modelUrl']) {
+      expect(professor[campo]).toBeTruthy();
+    }
   });
 });
 
