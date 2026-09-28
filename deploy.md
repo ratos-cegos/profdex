@@ -75,7 +75,7 @@ DATABASE_URL="postgresql://profdex:<senha>@db:5432/profdex"
 DIRECT_URL="postgresql://profdex:<senha>@db:5432/profdex"
 
 NODE_ENV=production
-JWT_SECRET=<chave longa e aleatória>
+JWT_SECRET=<gerar com: openssl rand -base64 32 — ver "Rotacionar o JWT_SECRET">
 CORS_ORIGINS=https://profdex.unifil.tech
 PORT=3000
 ADMIN_PASSWORD=<senha da conta admin do seed>
@@ -95,6 +95,59 @@ IMAGE_TAG=latest
 > `db` é o hostname do Postgres **na rede Docker interna** — nunca
 > `localhost` (dentro do container do Adminer ou do app, `localhost` é o
 > próprio container).
+
+### Rotacionar o JWT_SECRET
+
+**Por que ele é o segredo mais sensível do `.env`.** Quem o conhece não
+descobre sessões, ele as **fabrica**: um `jwt.sign({ sub, matricula, name,
+role }, JWT_SECRET)` vira um cookie `profdex_session` válido para qualquer
+aluno. E o ticket de cadastro do Google é assinado com
+`HMAC-SHA256(JWT_SECRET, 'google-onboarding-v1')` — derivação que está no
+repositório —, então dá para forjar um ticket com e-mail `@unifil.br` e
+`role: 'admin'` e entregá-lo em `POST /api/auth/google/complete`, uma rota sem
+guard (ela se autentica pelo próprio ticket) que existe mesmo sem o Google
+configurado. Sai daí uma conta `admin` **de verdade** no banco, e o
+`AdminGuard` — que confere o papel no banco justamente para não confiar no
+claim — passa a liberar errata, tiragem de fichas e as matrículas de todo mundo.
+
+**Conferir o que está em produção**, sem imprimir o valor no terminal:
+
+```bash
+# na EC2, em DEPLOY_REPO_PATH
+grep -c '^JWT_SECRET=troque-por-uma-chave' .env     # 1 = é o literal público
+awk -F= '/^JWT_SECRET=/{print length($2)" caracteres"}' .env
+```
+
+**Rotacionar:**
+
+```bash
+openssl rand -base64 32                       # gere e copie
+sed -i 's|^JWT_SECRET=.*|JWT_SECRET=<novo>|' .env
+docker compose -f docker-compose.yml -f docker-compose.github.yml up -d app
+docker compose logs --tail=30 app             # confirme que subiu
+```
+
+Todas as sessões abertas caem (é o efeito desejado: derruba junto qualquer
+sessão forjada com o valor antigo). Ninguém perde coleção nem ranking — só
+precisa entrar de novo.
+
+**Se o segredo antigo era o literal público, audite antes de respirar:**
+
+```sql
+-- Contas de administração. Qualquer nome/e-mail que você não reconheça aqui
+-- pode ter sido criada por um ticket forjado.
+select matricula, name, email, role, created_at
+from users where role = 'admin' order by created_at desc;
+
+-- Tiragens de ficha (criar direito de captura é a ação mais sensível do painel).
+select batch, source, created_by_id, created_at, total from qr_batches
+order by created_at desc limit 20;
+```
+
+**O app se recusa a subir em produção** com o literal do `.env.example` ou com
+menos de 32 caracteres (`profdex-back/src/config/jwt-secret.ts`). Essa checagem
+NÃO julga entropia: uma frase longa escrita à mão passa pelo teste de tamanho e
+continua sendo um segredo fraco. Use o `openssl`, não a criatividade.
 
 ## Rodando localmente
 

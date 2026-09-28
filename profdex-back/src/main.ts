@@ -7,10 +7,16 @@ import {
   getPort,
   securityHeaders,
 } from './config/http-security';
+import { assertUsableJwtSecret } from './config/jwt-secret';
 import { isDevSignupEnabled } from './auth/dev-signup';
 import { uploadsDir } from './professors/asset-storage';
 
 async function bootstrap() {
+  // Antes de QUALQUER coisa subir: um segredo de exemplar em produção deixa
+  // qualquer um forjar sessão e, por via do ticket do Google, criar uma conta
+  // de administrador. Ver config/jwt-secret.ts.
+  assertUsableJwtSecret(process.env);
+
   const app = await NestFactory.create(AppModule);
 
   // SIGTERM/SIGINT (deploy, Ctrl+C) disparam onModuleDestroy — o módulo de
