@@ -36,6 +36,7 @@
     "gen:quiz-treino": "ts-node scripts/gerar-questoes-treino.ts",
     "db:seed-treinadores": "ts-node --transpile-only scripts/seed-dois-treinadores.ts",
     "db:seed-dex-completa": "ts-node --transpile-only scripts/seed-dex-completa.ts",
+    "db:dar-capturas": "ts-node --transpile-only scripts/dar-capturas.ts",
     "raid:smoke": "node scripts/raid-smoke.js",
     "pvp:bot": "node scripts/bot-bia.js"
   },
