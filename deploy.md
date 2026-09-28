@@ -314,6 +314,30 @@ docker compose exec app npm run db:reset -- --yes    # APAGA TUDO e semeia do ze
 usuários, capturas e ranking. Depois dele **os QR impressos param de valer**:
 tire uma tiragem nova com `npm run qr:generate -- --copies=N --yes`.
 
+### Zerar o evento sem perder o cadastro
+
+Na véspera, o que se quer quase sempre **não** é o `db:reset`: é limpar o que os
+alunos produziram e manter professores, arte, questões e as contas de quem opera
+a mesa. Esse é o `db:limpar-evento`:
+
+```bash
+docker compose exec app npm run db:limpar-evento            # só mostra o que faria
+docker compose exec app npm run db:limpar-evento -- --yes   # aplica
+```
+
+Apaga ranking, Elo, capturas, Profdex, tentativas de quiz, errata, vouchers,
+raros destravados, raid e as contas de aluno. **Mantém** as contas com papel
+`admin` e e-mail `@unifil.br` — mais a conta local `admin` do seed, que é a
+única porta para o painel quando o login do Google não está configurado. O
+dry-run lista nome a nome quem fica, e o comando **recusa** rodar se ninguém
+sobraria.
+
+Ao contrário do `db:reset`, **as fichas de papel continuam valendo**: os tokens
+já resgatados voltam ao estoque, porque a captura que os consumiu deixou de
+existir e reimprimir a tiragem custa papel e tempo. Use `--manter-fichas` para
+não mexer nos tokens, quando a limpeza for no meio do evento e a pilha já
+estiver separada.
+
 ### A ficha passou a valer por tipo
 
 Na mesma virada, a ficha de QR deixou de apontar para um professor e passou a

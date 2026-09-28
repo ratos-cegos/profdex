@@ -22,6 +22,7 @@
     "qr:generate": "ts-node --transpile-only scripts/generate-capture-qr.ts",
     "pvp:smoke": "node scripts/pvp-smoke.js",
     "db:reset-ranking": "node scripts/reset-battle-ranking.js",
+    "db:limpar-evento": "node scripts/limpar-evento.js",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
     "db:nuke": "docker compose down -v",
