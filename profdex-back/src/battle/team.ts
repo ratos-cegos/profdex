@@ -15,10 +15,35 @@ import { Move } from './engine/moves';
 
 export const MAX_TEAM_SIZE = 3;
 
+/**
+ * O professor de um exemplar em batalha — **com a arte**.
+ *
+ * Os quatro campos de arte são obrigatórios, e a razão é um bug de 27/09/2026:
+ * a raid montava este objeto à mão com só `id`/`slug`/`name`, o front recebia
+ * um professor sem arte e caía na sprite padrão (`SPRITE_PADRAO`, que é o
+ * Gustavo). O chefe lendário aparecia com a cara de outro professor, e a
+ * primeira suspeita foi upload quebrado — a arte estava certa o tempo todo.
+ *
+ * Declarados aqui, omitir qualquer um deles deixa de compilar. É o que impede
+ * o próximo caminho de batalha de repetir o erro.
+ *
+ * Tipo estrutural em vez de `PublicProfessor` para este módulo continuar sem
+ * importar nada de Prisma — ver a nota no topo do arquivo.
+ */
+export interface BattleProfessor {
+  id: string;
+  slug: string;
+  name: string;
+  spriteFrontUrl: string | null;
+  spriteBackUrl: string | null;
+  modelUrl: string | null;
+  pixelArt: boolean;
+}
+
 /** Um exemplar levado para a batalha. O `combatant` sobrevive às trocas. */
 export interface TeamMember {
   captureId: string;
-  professor: { id: string; slug: string; name: string };
+  professor: BattleProfessor;
   types: string[];
   moves: Move[];
   ivs?: {

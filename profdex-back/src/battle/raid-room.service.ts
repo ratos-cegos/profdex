@@ -171,11 +171,12 @@ export class RaidRoomService implements OnModuleDestroy {
 
     const boss: TeamMember = {
       captureId: `boss:${legendary.id}`,
-      professor: {
-        id: legendary.id,
-        slug: legendary.slug,
-        name: legendary.name,
-      },
+      // O professor INTEIRO, como o PvP faz (`battle-room.service.ts`). Antes
+      // isto era um literal com só id/slug/name, e o chefe chegava ao front sem
+      // arte — que então caía na sprite padrão e mostrava o Gustavo no lugar do
+      // lendário. A consulta já trazia tudo (`PUBLIC_PROFESSOR_SELECT`); era o
+      // literal que jogava fora.
+      professor: legendary,
       types,
       moves,
       ivs: { ivHp: iv, ivRigor: iv, ivDidatica: iv, ivRaciocinio: iv },
