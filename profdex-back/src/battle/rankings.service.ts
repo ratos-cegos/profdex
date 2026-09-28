@@ -40,13 +40,38 @@ interface CollectionRow {
   ultimaEm: number;
 }
 
+/**
+ * Quem o ladder COMPARA.
+ *
+ * Administrador fica de fora dos três. A conta `@unifil.br` é de quem organiza
+ * o evento, e ela existe justamente para exercitar o app: dar a si mesmo a
+ * Profdex inteira para conferir a raid, a coleção e a arena é operação normal
+ * (ver `scripts/dar-capturas.ts`). Sem este filtro, a mesa apareceria em 1º no
+ * ranking de coleção no dia da feira, com uma dex que ninguém pode alcançar.
+ *
+ * É filtro de EXIBIÇÃO, não de gravação: as capturas do organizador continuam
+ * existindo, a Profdex dele continua completa, o Elo dele continua sendo
+ * calculado e as métricas do painel continuam contando tudo. O que muda é só
+ * quem entra na comparação entre alunos.
+ *
+ * `not: 'admin'` e não `equals: 'aluno'`: se um papel novo aparecer, o padrão
+ * seguro é ele CONTAR no ranking — esquecer de incluir alguém é visível, e
+ * esquecer de excluir passa despercebido até alguém reclamar do pódio.
+ */
+const SO_ALUNOS = { role: { not: 'admin' } };
+
 // Só entra no ladder quem já jogou — 1000 alunos parados em 1000 pontos não
 // são ranking, são cadastro.
 const PLAYED = {
-  OR: [
-    { battleWins: { gt: 0 } },
-    { battleLosses: { gt: 0 } },
-    { battleDraws: { gt: 0 } },
+  AND: [
+    SO_ALUNOS,
+    {
+      OR: [
+        { battleWins: { gt: 0 } },
+        { battleLosses: { gt: 0 } },
+        { battleDraws: { gt: 0 } },
+      ],
+    },
   ],
 };
 
@@ -89,6 +114,7 @@ export class RankingsService {
         select: {
           id: true,
           name: true,
+          role: true,
           battleRating: true,
           battleWins: true,
           battleLosses: true,
@@ -112,7 +138,12 @@ export class RankingsService {
     // Fora do ladder (nunca jogou) → position null.
     let me: (RankingEntry & { played: boolean }) | null = null;
     if (self) {
-      const played = self.battleWins + self.battleLosses + self.battleDraws > 0;
+      // O organizador não tem posição para mostrar, mesmo tendo batalhado: ele
+      // não está na lista acima, e um "você é o 3º" no rodapé apontaria para
+      // uma linha que não existe.
+      const played =
+        self.role !== 'admin' &&
+        self.battleWins + self.battleLosses + self.battleDraws > 0;
       const ahead = played
         ? await this.prisma.user.count({
             where: {
@@ -144,6 +175,7 @@ export class RankingsService {
   async capturesLeaderboard(userId: string, page: number) {
     const grupos = await this.prisma.capture.groupBy({
       by: ['userId'],
+      where: { user: SO_ALUNOS },
       _count: { _all: true },
       _max: { capturedAt: true },
     });
@@ -179,7 +211,7 @@ export class RankingsService {
       // ranking de coleção continua sendo a coleção comum, igual para todos.
       this.prisma.capture.groupBy({
         by: ['userId', 'professorId'],
-        where: { professor: { rare: false, legendary: false } },
+        where: { professor: { rare: false, legendary: false }, user: SO_ALUNOS },
         _max: { capturedAt: true },
       }),
       this.prisma.professor.count({

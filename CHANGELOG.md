@@ -8,7 +8,40 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 
 ## [Não publicado] — raid do professor lendário
 
+### Alterado
+
+- **Contas de administração saem dos três rankings.** Batalha, capturas e dex
+  passam a comparar só quem tem papel `aluno`. A conta `@unifil.br` é de quem
+  organiza o evento e existe para exercitar o app — dar a si mesmo a Profdex
+  inteira para conferir a raid é operação normal, e sem este filtro a mesa
+  lideraria o ranking de coleção com uma dex que ninguém pode alcançar.
+
+  É filtro de **exibição**: as capturas do organizador continuam existindo, a
+  Profdex dele continua completa, o Elo continua sendo calculado e o painel de
+  métricas continua contando tudo. Só a comparação entre alunos muda. No rodapé
+  do ranking, a conta admin aparece sem posição, como quem ainda não jogou.
+
 ### Adicionado
+
+- **`SLUGS=todos` no `db:dar-capturas`.** Dá o elenco ATIVO inteiro —
+  inclusive os raros e o lendário — a uma matrícula que já existe:
+
+  ```bash
+  MATRICULA=<sua> SLUGS=todos npm run db:dar-capturas
+  ```
+
+  Nesse modo o comando vira idempotente: quem a conta já tem é **pulado**, e
+  repetir depois de cadastrar um professor novo completa a coleção em vez de
+  duplicar as outras. Com lista de slugs o comportamento é o de sempre (uma
+  ficha, um exemplar). Avisa quando a matrícula **não** é `admin` — aí as
+  capturas contariam no ranking.
+
+- **Conferência no fim do `db:limpar-evento`.** Depois de aplicar, ele reconta
+  as onze tabelas que o painel de métricas lê (raid, raro, capturas, quiz,
+  eventos, sessões) e imprime o resultado. A pergunta seguinte era sempre "mas
+  o painel ainda mostra número na seção de raros", e a causa quase nunca é o
+  comando: é ter rodado sem `--yes`, ou contra outra `DATABASE_URL`. Agora o
+  comando também **imprime o banco alvo** antes de qualquer coisa.
 
 - **Tela de descanso na bancada.** Botão `☾ Tela de descanso` ao lado do
   `← Painel`, na cena da matrícula. Cobre o quiosque inteiro com a marca no

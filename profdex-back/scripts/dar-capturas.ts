@@ -1,7 +1,8 @@
 /**
- * Dá capturas de professores ESCOLHIDOS a uma conta, pela lógica real do jogo.
+ * Dá capturas de professores a uma conta, pela lógica real do jogo.
  *
  *   MATRICULA=201041039 SLUGS=eron,mario npm run db:dar-capturas
+ *   MATRICULA=201041039 SLUGS=todos      npm run db:dar-capturas
  *
  * Existe porque um `INSERT` direto em `captures` não serve: o deck sai de
  * `buildMoveset(variant.types)`, que é código com sorteio e não existe no
@@ -13,9 +14,26 @@
  * sobre uma matrícula que já existe e serve para montar um cenário de teste
  * específico ("quero esta conta com exatamente estes três").
  *
- * NÃO é idempotente de propósito: rodar duas vezes dá dois exemplares do mesmo
- * professor, que é exatamente o que o jogo permite (uma ficha, um exemplar).
- * Se você quer trocar a coleção, apague as capturas da conta antes.
+ * ## Os dois modos
+ *
+ * **Lista de slugs** — NÃO é idempotente, de propósito: rodar duas vezes dá
+ * dois exemplares do mesmo professor, que é exatamente o que o jogo permite
+ * (uma ficha, um exemplar). Para trocar a coleção, apague as capturas antes.
+ *
+ * **`SLUGS=todos`** — o elenco ATIVO inteiro, inclusive os raros e o lendário,
+ * e aí a regra se inverte: quem a conta já tem é PULADO. "Quero todos" é um
+ * estado desejado, não um lote a somar, e repetir o comando depois de cadastrar
+ * um professor novo precisa completar a coleção em vez de duplicar as outras 20.
+ *
+ * Raro e lendário entram aqui e não no `seed-dex-completa` porque os dois
+ * scripts respondem a perguntas diferentes: lá se testa o gate da raid, que
+ * exige uma dex de comuns exatamente como a do aluno; aqui se monta a conta de
+ * quem ORGANIZA, que precisa conseguir abrir qualquer tela do app.
+ *
+ * ⚠️ A conta que recebe tudo isto deve ser `admin` — é o papel que o
+ * `RankingsService` usa para manter o organizador fora dos ladders de coleção.
+ * Numa conta de aluno, estas capturas iriam direto para o topo do ranking. O
+ * script avisa quando a matrícula não é de administrador.
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -33,33 +51,83 @@ const SLUGS = (process.env.SLUGS ?? '')
 /** IV sorteado como no resgate real (0–15 por atributo). */
 const iv = () => Math.floor(Math.random() * 16);
 
+/** O elenco inteiro, e não uma lista de slugs. */
+const TODOS = SLUGS.length === 1 && ['todos', '*'].includes(SLUGS[0]);
+
+const SELECT_PROFESSOR = {
+  id: true,
+  name: true,
+  slug: true,
+  types: true,
+  rare: true,
+  legendary: true,
+  variants: { select: { id: true, typeKey: true, types: true } },
+} as const;
+
 async function main() {
   const user = await db.user.findUnique({
     where: { matricula: MATRICULA },
-    select: { id: true, name: true },
+    select: { id: true, name: true, role: true },
   });
   if (!user) throw new Error(`Matrícula "${MATRICULA}" não encontrada.`);
-  if (!SLUGS.length) throw new Error('Informe SLUGS separados por vírgula.');
+  if (!SLUGS.length) {
+    throw new Error('Informe SLUGS separados por vírgula, ou SLUGS=todos.');
+  }
 
-  const professores = await db.professor.findMany({
-    where: { slug: { in: SLUGS } },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      types: true,
-      variants: { select: { id: true, typeKey: true, types: true } },
-    },
+  let professores = await db.professor.findMany({
+    // `todos` respeita o `active`: professor desativado saiu do evento, e
+    // ressuscitá-lo numa coleção seria reintroduzi-lo pela porta dos fundos.
+    where: TODOS ? { active: true } : { slug: { in: SLUGS } },
+    orderBy: { name: 'asc' },
+    select: SELECT_PROFESSOR,
   });
 
-  // Valida TUDO antes de gravar: um slug errado no meio da lista deixaria a
-  // conta com metade do cenário montado, e aí não dá para repetir o comando
-  // sem duplicar o que já entrou.
-  const achados = new Set(professores.map((p) => p.slug));
-  const faltando = SLUGS.filter((s) => !achados.has(s));
-  if (faltando.length) {
-    throw new Error(`Slug inexistente: ${faltando.join(', ')}`);
+  if (!TODOS) {
+    // Valida TUDO antes de gravar: um slug errado no meio da lista deixaria a
+    // conta com metade do cenário montado, e aí não dá para repetir o comando
+    // sem duplicar o que já entrou.
+    const achados = new Set(professores.map((p) => p.slug));
+    const faltando = SLUGS.filter((s) => !achados.has(s));
+    if (faltando.length) {
+      throw new Error(`Slug inexistente: ${faltando.join(', ')}`);
+    }
+  } else {
+    // Modo "quero todos": o que a conta já tem não entra de novo.
+    const jaTem = await db.capture.findMany({
+      where: { userId: user.id },
+      select: { professorId: true },
+      distinct: ['professorId'],
+    });
+    const possuidos = new Set(jaTem.map((c) => c.professorId));
+    const antes = professores.length;
+    professores = professores.filter((p) => !possuidos.has(p.id));
+
+    const comuns = professores.filter((p) => !p.rare && !p.legendary).length;
+    const raros = professores.filter((p) => p.rare).length;
+    const lendarios = professores.filter((p) => p.legendary).length;
+
+    console.log(`Elenco ativo: ${antes} professor(es).`);
+    console.log(`Já na conta: ${antes - professores.length}, pulado(s).`);
+    console.log(
+      `A capturar: ${comuns} comum(ns), ${raros} raro(s), ${lendarios} lendário(s).\n`,
+    );
+
+    if (!professores.length) {
+      console.log(`${user.name} já tem o elenco inteiro. Nada a fazer.`);
+      return;
+    }
   }
+
+  if (user.role !== 'admin') {
+    console.log(
+      `⚠️  "${user.name}" tem papel "${user.role}", não "admin".\n` +
+        '   Estas capturas VÃO contar nos rankings de coleção e de dex.\n' +
+        '   Para deixar a conta fora dos ladders: npm run db:set-admin ' +
+        `${MATRICULA}\n`,
+    );
+  }
+
+  let criadas = 0;
 
   for (const p of professores) {
     // A variante da combinação COMPLETA — a mesma escolha do backfill de
@@ -92,10 +160,18 @@ async function main() {
       create: { userId: user.id, professorId: p.id },
     });
 
-    console.log(`+ ${p.name} (${variant.typeKey})`);
+    criadas += 1;
+    const selo = p.legendary ? ' ⚡lendário' : p.rare ? ' ✦raro' : '';
+    console.log(`+ ${p.name} (${variant.typeKey})${selo}`);
   }
 
-  console.log(`\n${professores.length} captura(s) para ${user.name}.`);
+  console.log(`\n${criadas} captura(s) para ${user.name}.`);
+  if (TODOS && user.role === 'admin') {
+    console.log(
+      'A conta é admin, então ela NÃO aparece nos rankings de coleção,\n' +
+        'dex e batalha — por mais capturas que receba.',
+    );
+  }
 }
 
 main()

@@ -127,7 +127,9 @@ describe('RankingsService — ladders de coleção', () => {
 
     expect(prisma.capture.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { professor: { rare: false, legendary: false } },
+        where: expect.objectContaining({
+          professor: { rare: false, legendary: false },
+        }),
       }),
     );
     expect(prisma.professor.count).toHaveBeenCalledWith({
@@ -163,5 +165,92 @@ describe('RankingsService — ladders de coleção', () => {
 
     expect(ladder.entries[0].percent).toBeNull();
     expect(ladder.dexTotal).toBeNull();
+  });
+});
+
+/**
+ * O organizador fora dos ladders.
+ *
+ * A conta `@unifil.br` recebe a Profdex inteira para testar o app (ver
+ * `scripts/dar-capturas.ts`). Sem estes filtros, a mesa lideraria o ranking de
+ * coleção no dia da feira com uma dex que ninguém pode alcançar.
+ */
+describe('RankingsService — administrador fora do ranking', () => {
+  const SO_ALUNOS = { role: { not: 'admin' } };
+
+  it('pede ao banco só as capturas de quem não é admin', async () => {
+    const { prisma, service } = createSubject();
+
+    await service.capturesLeaderboard('ana', 1);
+
+    expect(prisma.capture.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { user: SO_ALUNOS } }),
+    );
+  });
+
+  it('aplica o mesmo filtro no ladder de dex, junto do filtro de raros', async () => {
+    const { prisma, service } = createSubject();
+
+    await service.dexLeaderboard('ana', 1);
+
+    expect(prisma.capture.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          professor: { rare: false, legendary: false },
+          user: SO_ALUNOS,
+        },
+      }),
+    );
+  });
+
+  it('exclui o admin do ladder de batalha', async () => {
+    const { prisma, service } = createSubject();
+    prisma.user.findMany.mockResolvedValue([]);
+
+    await service.battleLeaderboard('gustavo', 1);
+
+    const where = prisma.user.findMany.mock.calls[0][0].where;
+    expect(where.AND[0]).toEqual(SO_ALUNOS);
+  });
+
+  /**
+   * O rodapé do ranking. Mesmo tendo batalhado, o organizador não está na
+   * lista acima — e um "você é o 3º" apontaria para uma linha que não existe.
+   */
+  it('não dá posição de batalha ao admin, mesmo com vitórias', async () => {
+    const { prisma, service } = createSubject();
+    prisma.user.findMany.mockResolvedValue([]);
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'gustavo',
+      name: 'Gustavo',
+      role: 'admin',
+      battleRating: 1400,
+      battleWins: 9,
+      battleLosses: 1,
+      battleDraws: 0,
+    });
+
+    const ladder = await service.battleLeaderboard('gustavo', 1);
+
+    expect(ladder.me).toMatchObject({ played: false, position: 0 });
+  });
+
+  it('o aluno com vitórias continua tendo posição', async () => {
+    const { prisma, service } = createSubject();
+    prisma.user.findMany.mockResolvedValue([]);
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'ana',
+      name: 'Ana',
+      role: 'aluno',
+      battleRating: 1200,
+      battleWins: 3,
+      battleLosses: 2,
+      battleDraws: 0,
+    });
+    prisma.user.count.mockResolvedValue(4);
+
+    const ladder = await service.battleLeaderboard('ana', 1);
+
+    expect(ladder.me).toMatchObject({ played: true, position: 5 });
   });
 });
