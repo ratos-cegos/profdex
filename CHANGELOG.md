@@ -10,6 +10,32 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 
 ### Adicionado
 
+- **Tela de descanso na bancada.** Botão `☾ Tela de descanso` ao lado do
+  `← Painel`, na cena da matrícula. Cobre o quiosque inteiro com a marca no
+  centro (eagle ball, `PROFDEX`, mote e assinatura UNIFIL) e o elenco
+  desfilando em três camadas de paralaxe — é o atrator para quando a fila
+  acaba e o tablet ficaria com o numpad parado.
+
+  **Raro e lendário passam como silhueta preta**, nunca com a arte de verdade:
+  a tela fica virada para a fila, e mostrar quem são entregaria de graça a
+  surpresa que o quiz e a raid existem para guardar. Um `?` dourado marca o
+  vulto — é ele que salva o caso da arte enviada sem transparência, que
+  viraria um retângulo preto liso.
+
+  Sai ao primeiro toque ou tecla. Pede tela cheia e segura a tela acesa
+  (`wakeLock`) quando o navegador deixa; recusa dos dois não impede nada.
+
+- **`npm run db:limpar-evento`.** Zera ranking, Elo, capturas e Profdex
+  mantendo o cadastro de pé: professores, arte, variantes, questões e ajustes
+  do painel ficam. **Mantém as contas `admin` com e-mail `@unifil.br`** (mais a
+  conta local `admin` do seed) e apaga o resto, junto de tudo que elas
+  produziram. Dry-run por padrão, `--yes` para aplicar, e recusa rodar se
+  nenhuma conta sobraria.
+
+  Diferente do `db:reset`, as **fichas de papel voltam a valer**: o token que
+  uma captura apagada havia consumido volta ao estoque. `--manter-fichas` pula
+  essa parte. Ver deploy.md.
+
 - **Raid do professor lendário.** Quem captura todos os professores comuns
   destrava uma batalha contra o professor **lendário**, controlado pelo
   servidor: até 3 exemplares do aluno contra um chefe com **4× a vida** de um

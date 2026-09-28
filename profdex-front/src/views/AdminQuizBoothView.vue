@@ -19,6 +19,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import { useRouter } from 'vue-router'
 import api from '../services/api'
 import TypeIcon from '../components/TypeIcon.vue'
+import TelaDeDescanso from '../components/TelaDeDescanso.vue'
 import { TYPE_CYCLE, getType, legibleColor } from '../data/types'
 import { spriteFrenteDe, temModeloProprio } from '../data/professorArte'
 
@@ -36,6 +37,21 @@ const erro = ref('')
 const matricula = ref('')
 const aluno = ref(null)
 const temas = ref([])
+
+// ── Tela de descanso ────────────────────────────────────────────────────────
+// Importada de forma ESTÁTICA, ao contrário do Stage3D: ela é o que o estande
+// mostra quando a fila acaba, e nesse momento o Wi-Fi da feira é exatamente o
+// que costuma falhar. Um chunk baixado sob demanda deixaria o operador com um
+// botão que não faz nada justamente na hora em que ele precisa.
+const descansando = ref(false)
+
+function entrarEmDescanso() {
+  // A matrícula meio digitada some junto: quem volta depois do intervalo não
+  // precisa adivinhar de quem são os dígitos que ficaram no visor.
+  matricula.value = ''
+  erro.value = ''
+  descansando.value = true
+}
 
 const sessao = ref(null)
 const resultado = ref(null)
@@ -352,9 +368,14 @@ function formatarEspera(s) {
   <div class="bancada" :style="{ '--tema': cor }">
     <!-- ── Matrícula ──────────────────────────────────────────────────── -->
     <section v-if="etapa === 'matricula'" class="cena cena--matricula">
-      <button class="sair" type="button" @click="router.push({ name: 'admin-quiz' })">
-        ← Painel
-      </button>
+      <div class="canto">
+        <button class="sair" type="button" @click="router.push({ name: 'admin-quiz' })">
+          ← Painel
+        </button>
+        <button class="sair" type="button" @click="entrarEmDescanso">
+          ☾ Tela de descanso
+        </button>
+      </div>
 
       <div class="identidade">
         <h1 class="pixel marca">QUIZ PROFDEX</h1>
@@ -428,7 +449,7 @@ function formatarEspera(s) {
         </div>
         <div class="topo__direita">
           <span class="topo__placar"> {{ aluno.acertos }}/{{ aluno.tentativas }} acertos </span>
-          <button class="sair sair--inline" type="button" @click="proximoAluno">
+          <button class="sair" type="button" @click="proximoAluno">
             Trocar aluno
           </button>
         </div>
@@ -684,6 +705,10 @@ function formatarEspera(s) {
         <button class="acao" type="button" @click="proximoAluno">PRÓXIMO ALUNO</button>
       </div>
     </section>
+
+    <!-- Por cima de tudo e fora das cenas: o descanso cobre o quiosque inteiro
+         e sai ao primeiro toque, sem mexer na etapa em que a bancada estava. -->
+    <TelaDeDescanso v-if="descansando" @fechar="descansando = false" />
   </div>
 </template>
 
@@ -720,10 +745,18 @@ function formatarEspera(s) {
   text-align: center;
 }
 
-.sair {
+/* Os controles de saída da cena da matrícula. Ficam num canto só para o
+   operador procurar em UM lugar — a tela é grande e ele está de pé. */
+.canto {
   position: absolute;
   top: 16px;
   left: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sair {
   min-height: 40px;
   padding: 0 14px;
   border-radius: 999px;
@@ -732,10 +765,6 @@ function formatarEspera(s) {
   border: 1px solid rgba(255, 255, 255, 0.18);
   font-size: 13px;
   cursor: pointer;
-}
-
-.sair--inline {
-  position: static;
 }
 
 .marca {
