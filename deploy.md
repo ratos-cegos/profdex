@@ -338,6 +338,30 @@ existir e reimprimir a tiragem custa papel e tempo. Use `--manter-fichas` para
 não mexer nos tokens, quando a limpeza for no meio do evento e a pilha já
 estiver separada.
 
+O comando imprime o **banco alvo** antes de tudo e, depois de aplicar, reconta
+as onze tabelas que `/admin/metrics` lê e mostra o resultado. Se a seção de
+raros ou de raid ainda aparecer com número no painel, compare o host impresso
+com o que o painel consulta — rodar contra a `DATABASE_URL` errada é a causa
+mais comum. As seções continuam **listando** os professores raros e o lendário
+mesmo zeradas: eles são cadastro, não progresso.
+
+### A conta do organizador com a coleção inteira
+
+Para conferir Profdex, raid e arena sem escanear ficha por ficha:
+
+```bash
+docker compose exec app env MATRICULA=<sua> SLUGS=todos npm run db:dar-capturas
+```
+
+Dá o elenco ativo inteiro (comuns, raros e o lendário) e pula o que a conta já
+tem, então dá para repetir depois de cadastrar alguém novo.
+
+**A conta precisa ser `admin`.** É o papel que mantém o organizador fora dos
+ranking de batalha, de capturas e de dex — numa conta de aluno, essas capturas
+iriam direto para o topo do ladder. Confira com `npm run db:set-admin` (sem
+argumento ele lista os administradores atuais); o `db:dar-capturas` avisa
+quando a matrícula não é de admin.
+
 ### A ficha passou a valer por tipo
 
 Na mesma virada, a ficha de QR deixou de apontar para um professor e passou a
