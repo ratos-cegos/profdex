@@ -46,9 +46,24 @@ const MATRICULAS_DE_OPERACAO = ['admin'];
 const aplicar = process.argv.includes('--yes');
 const manterFichas = process.argv.includes('--manter-fichas');
 
-const prisma = new PrismaClient({
-  datasources: { db: { url: requireDatabaseUrl() } },
-});
+const url = requireDatabaseUrl();
+
+const prisma = new PrismaClient({ datasources: { db: { url } } });
+
+/**
+ * Descreve o banco sem vazar a senha da string de conexão — este texto vai para
+ * o terminal e, com frequência, para um print colado num chat. Mesma função do
+ * `db-reset.js`, e pelo mesmo motivo: apagar o banco errado é o erro caro, e
+ * ler o host antes de digitar `--yes` é o que o evita.
+ */
+function descreverBanco(connectionUrl) {
+  try {
+    const parsed = new URL(connectionUrl);
+    return `${parsed.hostname}:${parsed.port || 5432}${parsed.pathname}`;
+  } catch {
+    return '(string de conexão ilegível)';
+  }
+}
 
 /**
  * Esta conta sobrevive?
@@ -71,6 +86,8 @@ function ehConservada(user) {
 }
 
 async function main() {
+  console.log(`Banco alvo: ${descreverBanco(url)}\n`);
+
   const usuarios = await prisma.user.findMany({
     select: { id: true, matricula: true, name: true, email: true, role: true },
     orderBy: { name: 'asc' },
@@ -215,6 +232,56 @@ async function main() {
   if (!manterFichas && fichasResgatadasNoPapel) {
     console.log(`   ${fichasResgatadasNoPapel} ficha(s) de papel voltaram a valer.`);
   }
+
+  await conferir();
+}
+
+/**
+ * Reconta as tabelas DEPOIS de aplicar e imprime o resultado.
+ *
+ * A pergunta que aparece logo em seguida é sempre "mas o painel ainda mostra
+ * número na seção de raros / de raid". Sem esta conferência, respondê-la exige
+ * abrir o psql — e quase sempre a causa não é o comando, e sim ter rodado sem
+ * `--yes`, ou contra uma `DATABASE_URL` que não é a que o painel lê.
+ *
+ * A lista é exatamente o que `AdminMetricsService` consulta. Se uma linha
+ * aparecer com número, o problema é do script e o nome da tabela já diz onde.
+ */
+async function conferir() {
+  const restos = Object.entries({
+    raid_clears: () => prisma.raidClear.count(),
+    raid_attempts: () => prisma.raidAttempt.count(),
+    raid_unlocks: () => prisma.raidUnlock.count(),
+    rare_unlocks: () => prisma.rareUnlock.count(),
+    captures: () => prisma.capture.count(),
+    discoveries: () => prisma.discovery.count(),
+    quiz_attempts: () => prisma.quizAttempt.count(),
+    battles: () => prisma.battle.count(),
+    app_events: () => prisma.appEvent.count(),
+    metrics_hourly: () => prisma.metricHourly.count(),
+    user_sessions: () => prisma.userSession.count(),
+  });
+
+  const contagens = await Promise.all(restos.map(([, ler]) => ler()));
+  const sobraram = restos
+    .map(([tabela], i) => [tabela, contagens[i]])
+    .filter(([, n]) => n > 0);
+
+  console.log('\nConferência (o painel de métricas lê exatamente estas):');
+  if (!sobraram.length) {
+    console.log('   todas zeradas ✅');
+    console.log(
+      '   O painel continua LISTANDO os professores raros e o lendário: eles\n' +
+        '   são cadastro, não progresso. Os contadores ao lado é que zeraram.',
+    );
+    return;
+  }
+
+  for (const [tabela, n] of sobraram) console.log(`   ⚠️  ${tabela}: ${n}`);
+  console.log(
+    '\n⚠️  Sobrou linha em tabela que deveria ter sido apagada. Confira se a\n' +
+      '   DATABASE_URL usada aqui é a mesma que o painel lê.',
+  );
 }
 
 main()
