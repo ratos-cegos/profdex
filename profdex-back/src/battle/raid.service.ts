@@ -2,8 +2,14 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { buildMoveset } from './engine/moves';
 import { IV_MAX } from '../captures/capture-ivs';
+import { MailService } from '../mail/mail.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  buildRaidFirstClearEmail,
+  buildRaidFirstClearFallbackEmail,
+  EMAIL_DO_PRIMEIRO,
+} from './raid-first-clear.mail';
 import {
   PUBLIC_PROFESSOR_SELECT,
   PublicProfessor,
@@ -34,7 +40,7 @@ export interface RaidStatus {
   captured: boolean;
   /** O lendário, mas só depois de capturado: antes é silhueta e `???`. */
   legendary: PublicProfessor | null;
-  /** Quantos professores comuns ele tem, de quantos existem. */
+  /** Quantos professores ele tem, de quantos existem — comuns e raros. */
   dex: { captured: number; total: number };
   /** Timestamp em que a próxima tentativa libera; null = pode agora. */
   cooldownUntil: number | null;
@@ -57,6 +63,7 @@ export class RaidService implements OnModuleInit {
     private prisma: PrismaService,
     private metrics: MetricsService,
     private settings: SettingsService,
+    private mail: MailService,
   ) {}
 
   /**
@@ -96,20 +103,27 @@ export class RaidService implements OnModuleInit {
   }
 
   /**
-   * Progresso da coleção COMUM — a conta que destrava a raid.
+   * Progresso da coleção INTEIRA — a conta que destrava a raid.
    *
-   * Os três filtros importam e cada um já foi um bug em potencial:
-   * - `rare: false` porque raro nunca contou para completar a dex (tarefa 15);
+   * Comuns **e raros**: fechar a Profdex exige os dois. O raro já não custa só
+   * escanear um papel — custa 5 acertos em cada tema dele na bancada —, então
+   * exigi-lo é o que faz o lendário valer a fila, e não só a sorte da tiragem.
+   *
+   * Os dois filtros que sobraram importam, e cada um já foi um bug em potencial:
    * - `legendary: false` porque incluir o chefe tornaria o gate circular (só
    *   destravaria a raid quem já tivesse vencido a raid);
    * - `active: true` porque desativar um professor no painel deixaria a dex
-   *   impossível de fechar — é o bug que o `collection_completed` tinha.
+   *   impossível de fechar — é o bug que o `collection_completed` tinha. Com o
+   *   raro na conta, este filtro virou também a VÁLVULA DE ESCAPE do evento:
+   *   raro cadastrado sem tiragem impressa, ou com tema que ninguém destrava,
+   *   trancaria a raid para todo mundo, e desativá-lo o tira da conta na hora,
+   *   sem deploy.
    */
   async dexProgress(userId: string): Promise<{
     captured: number;
     total: number;
   }> {
-    const where = { rare: false, legendary: false, active: true };
+    const where = { legendary: false, active: true };
     const [capturas, total] = await Promise.all([
       this.prisma.capture.findMany({
         where: { userId, professor: where },
@@ -327,6 +341,9 @@ export class RaidService implements OnModuleInit {
    * O `@@unique` de `RaidClear.userId` é o porteiro da regra "uma por conta":
    * duas vitórias simultâneas (duas abas) colidem no banco, e a segunda sai
    * por aqui sem criar um exemplar duplicado.
+   *
+   * É daqui também que sai o aviso por e-mail do PRIMEIRO vencedor do evento —
+   * ver `avisarPrimeiroVencedor`.
    */
   async award(
     userId: string,
@@ -347,7 +364,7 @@ export class RaidService implements OnModuleInit {
     };
 
     try {
-      const capture = await this.prisma.$transaction(async (tx) => {
+      const { capture, clear } = await this.prisma.$transaction(async (tx) => {
         const criada = await tx.capture.create({
           data: {
             userId,
@@ -358,7 +375,12 @@ export class RaidService implements OnModuleInit {
           },
           select: { id: true },
         });
-        await tx.raidClear.create({
+        // Quem já venceu ANTES desta linha existir. A ordem é decidida aqui
+        // dentro, e não depois, porque dois alunos vencendo no mesmo segundo
+        // veriam a tabela vazia nos dois `count` e o evento ganharia dois
+        // "primeiros" — e um prêmio só.
+        const anteriores = await tx.raidClear.count();
+        const criadoClear = await tx.raidClear.create({
           data: {
             userId,
             professorId: legendary.id,
@@ -366,9 +388,20 @@ export class RaidService implements OnModuleInit {
             attemptId,
             attempts,
           },
+          select: { clearedAt: true },
         });
-        return criada;
+        return {
+          capture: criada,
+          clear: { primeiro: anteriores === 0, em: criadoClear.clearedAt },
+        };
       });
+
+      // Fora da transação e sem `await`: a tela de vitória do aluno não pode
+      // esperar uma chamada HTTP para o serviço de e-mail, e uma falha dela não
+      // pode desfazer a captura que já está no banco.
+      if (clear.primeiro) {
+        void this.avisarPrimeiroVencedor(userId, clear.em, attempts);
+      }
 
       const occurredAt = new Date();
       this.metrics.record(userId, null, [
@@ -411,6 +444,128 @@ export class RaidService implements OnModuleInit {
       }
       throw erro;
     }
+  }
+
+  /**
+   * Avisa por e-mail que o PRIMEIRO aluno do evento venceu o lendário.
+   *
+   * Sai uma vez por evento: quem decide é o `count` dentro da transação do
+   * `award`, e `raid_clears` é esvaziado pelo `scripts/limpar-evento.js` — então
+   * "o primeiro do evento" é o primeiro da tabela, sem coluna de edição nenhuma.
+   *
+   * **Nunca lança.** É chamado sem `await` e uma exceção aqui viraria rejeição
+   * não tratada; pior, não há o que fazer com ela: a vitória está gravada, o
+   * aluno já viu a tela e o aviso é conveniência. Se o e-mail não sair, o que
+   * fica é a linha de auditoria com nome e matrícula — o bastante para achar o
+   * aluno pelo log, e o painel continua listando os vencedores.
+   */
+  private async avisarPrimeiroVencedor(
+    userId: string,
+    clearedAt: Date,
+    attempts: number,
+  ): Promise<void> {
+    try {
+      // As estatísticas são enfeite; o aviso, não. Se a coleta falhar, vai o
+      // corpo mínimo — perder o e-mail inteiro por causa de uma consulta seria
+      // trocar o aviso pelos detalhes dele.
+      const dados = await this.estatisticasDoVencedor(userId, attempts).catch(
+        (erro: unknown) => {
+          this.logger.error(
+            `Estatísticas do primeiro vencedor (${userId}) indisponíveis`,
+            erro as Error,
+          );
+          return null;
+        },
+      );
+
+      const { subject, html } = dados
+        ? buildRaidFirstClearEmail({ ...dados, clearedAt })
+        : buildRaidFirstClearFallbackEmail(userId, clearedAt);
+
+      const enviado = await this.mail.send(EMAIL_DO_PRIMEIRO, subject, html);
+
+      this.logger.log(
+        JSON.stringify({
+          audit: 'raid_first_clear_notified',
+          userId,
+          to: EMAIL_DO_PRIMEIRO,
+          sent: enviado,
+          // No log porque é o que permite chamar o aluno no palco quando o
+          // e-mail não sai (sem chave configurada, ou 403 do serviço).
+          name: dados?.name ?? null,
+          matricula: dados?.matricula ?? null,
+        }),
+      );
+
+      if (!enviado) {
+        this.logger.error(
+          `O aviso do PRIMEIRO vencedor da raid NÃO foi enviado para ` +
+            `${EMAIL_DO_PRIMEIRO}. Vencedor: ` +
+            `${dados?.name ?? userId} (${dados?.matricula ?? 'matrícula indisponível'}).`,
+        );
+      }
+    } catch (erro) {
+      // Chamado sem `await`: engolir aqui é o que impede uma rejeição não
+      // tratada derrubar o processo por causa de um e-mail.
+      this.logger.error(
+        `Falha avisando o primeiro vencedor (${userId})`,
+        erro as Error,
+      );
+    }
+  }
+
+  /**
+   * Os números que o e-mail do primeiro vencedor mostra ao lado do nome.
+   *
+   * `attempts` vem de fora, do mesmo valor gravado em `raid_clears`: recontar
+   * `raid_attempts` aqui daria um número parecido e ocasionalmente diferente do
+   * que o painel mostra, e "quantas tentativas ele gastou" é justamente a
+   * história que o e-mail conta.
+   */
+  private async estatisticasDoVencedor(userId: string, attempts: number) {
+    const [user, dex, raros, exemplares] = await Promise.all([
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: {
+          name: true,
+          matricula: true,
+          email: true,
+          battleRating: true,
+          battleWins: true,
+          battleLosses: true,
+          battleDraws: true,
+          engagementScore: true,
+        },
+      }),
+      // A mesma conta do gate: o lendário fica fora, então capturá-lo não mexe
+      // neste número e o e-mail mostra a dex que ele fechou para chegar aqui.
+      this.dexProgress(userId),
+      this.prisma.capture.findMany({
+        where: { userId, professor: { rare: true, active: true } },
+        select: { professorId: true },
+        distinct: ['professorId'],
+      }),
+      // Exemplares, não professores distintos: aqui o lendário recém-capturado
+      // ENTRA, e é isso que se quer — é o total no bolso dele.
+      this.prisma.capture.count({ where: { userId } }),
+    ]);
+
+    return {
+      name: user.name,
+      matricula: user.matricula,
+      email: user.email,
+      attempts,
+      dex,
+      rares: raros.length,
+      captures: exemplares,
+      battle: {
+        rating: user.battleRating,
+        wins: user.battleWins,
+        losses: user.battleLosses,
+        draws: user.battleDraws,
+      },
+      engagementScore: user.engagementScore,
+    };
   }
 
   /**

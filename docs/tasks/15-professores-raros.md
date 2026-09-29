@@ -65,6 +65,11 @@ Entra uma segunda via de aquisição, paralela e independente da captura comum:
 > Profdex, e só é capturável por quem **acertar 5 questões em cada tema dele**
 > no quiz de bancada. Capturável **uma vez por conta, para sempre**.
 
+> ⚠️ **Superado em 29/09/2026:** o raro **passou a contar** para completar a
+> Profdex — fechar a dex (e destravar a raid do lendário) exige comuns **e**
+> raros. O resto desta tarefa continua valendo, inclusive o gate dos 5 acertos
+> por tema. Ver a entrada de 29/09/2026 no `INDEX.md`.
+
 O aluno **não sabe em que tema existe raro** — ele descobre no instante em que
 destrava, ganhando. A Profdex anuncia que raros **existem** (entradas
 bloqueadas, estilo Pokédex), sem dizer quem nem de que tema.

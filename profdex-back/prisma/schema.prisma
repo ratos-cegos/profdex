@@ -436,22 +436,27 @@ model Professor {
   // verdade cascatearia em captures, discoveries e battle_slots.
   active Boolean @default(true)
 
-  /// Professor raro: não sai em ficha comum, não conta para completar a
-  /// Profdex e só é capturável por quem destravou TODOS os tipos dele no quiz
-  /// (5 acertos em cada). Os `types` fazem dois trabalhos no raro: gate e tipo
-  /// de batalha — ver tarefa 15, decisão 12.
+  /// Professor raro: não sai em ficha comum e só é capturável por quem
+  /// destravou TODOS os tipos dele no quiz (5 acertos em cada). Os `types`
+  /// fazem dois trabalhos no raro: gate e tipo de batalha — ver tarefa 15,
+  /// decisão 12.
   ///
-  /// Definido na CRIAÇÃO e imutável: virar raro depois tiraria o professor da
-  /// contagem da dex de todo mundo e deixaria as 3 variantes dele órfãs.
+  /// **CONTA para completar a Profdex**, junto com os comuns: é isso que faz a
+  /// raid do lendário exigir a bancada, e não só a sorte da tiragem. Um raro
+  /// que ninguém consegue pegar trancaria a dex do evento inteiro — desativá-lo
+  /// (`active: false`) é a saída, e ela não precisa de deploy.
+  ///
+  /// Definido na CRIAÇÃO e imutável: virar raro depois deixaria as 3 variantes
+  /// dele órfãs.
   rare Boolean @default(false)
 
   /// Professor LENDÁRIO: o chefe da raid. Não sai em ficha nenhuma (nem comum
   /// nem rara), não entra no sorteio e **não conta no gate da própria raid** —
   /// senão só destravaria a raid quem já tivesse o lendário, que é circular.
   ///
-  /// Ao contrário do raro, ele CONTA para completar a Profdex: quem destrava a
-  /// raid passa a ver o total em `Y+1`, e fechar a dex passa a exigir vencê-lo
-  /// (tarefa 18, decisão 15).
+  /// Ao contrário do raro, que conta desde sempre no gate, ele só entra na
+  /// Profdex DEPOIS de destravada a raid: quem destrava passa a ver o total em
+  /// `Y+1`, e fechar a dex passa a exigir vencê-lo (tarefa 18, decisão 15).
   ///
   /// Definido na CRIAÇÃO e imutável, pelo mesmo motivo de `rare`. Só um pode
   /// estar ativo por vez — quem impõe é o cadastro, porque a Profdex desenha um

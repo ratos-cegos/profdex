@@ -34,6 +34,44 @@ const horaLegivel = (iso) =>
 
 const numero = (v) => (v ?? 0).toLocaleString('pt-BR')
 
+// ── Relatório de 24h ────────────────────────────────────────────────────────
+const exportando = ref(false)
+const erroRelatorio = ref(null)
+
+/**
+ * Abre o relatório das últimas 24h numa aba nova, pronto para o "Salvar como
+ * PDF" do navegador. Mesmo caminho da folha de fichas (AdminFichasView).
+ *
+ * Blob em vez de apontar `window.open` para a URL: a rota é autenticada por
+ * cookie e o axios é quem trata o 401 do painel inteiro. Com a aba apontada
+ * para a URL crua, uma sessão expirada mostraria um JSON de erro em vez do
+ * aviso de "entre de novo" que o resto da tela dá.
+ */
+async function exportarRelatorio() {
+  if (exportando.value) return
+  exportando.value = true
+  erroRelatorio.value = null
+  let url = null
+  try {
+    const { data } = await api.get('/admin/metrics/report', {
+      responseType: 'blob',
+    })
+    url = URL.createObjectURL(data)
+    const aba = window.open(url, '_blank', 'noopener')
+    if (!aba) {
+      erroRelatorio.value =
+        'O navegador bloqueou a aba. Libere os pop-ups deste site e tente de novo.'
+    }
+  } catch {
+    erroRelatorio.value = 'Não foi possível gerar o relatório. Tente de novo.'
+  } finally {
+    // Só depois de a aba ter lido o blob. Revogar na hora deixaria a página em
+    // branco em parte dos navegadores.
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    exportando.value = false
+  }
+}
+
 // Série horária. O seletor troca a métrica sem recarregar o resto do painel.
 const SERIES = [
   { key: 'interactions', label: 'Interações' },
@@ -125,6 +163,26 @@ const labelSerie = computed(
       <p v-else-if="error" class="hint hint--error" role="alert">{{ error }}</p>
 
       <template v-else>
+        <!-- Relatório para levar impresso. Fica no topo porque é a ação que o
+             organizador procura com pressa, no fim do dia. -->
+        <section class="relatorio" aria-label="Relatório das últimas 24 horas">
+          <div class="relatorio__texto">
+            <strong>Relatório das últimas 24h</strong>
+            <span>Interações, bancada, capturas, batalhas e alunos — com gráficos.</span>
+          </div>
+          <button
+            type="button"
+            class="botao"
+            :disabled="exportando"
+            @click="exportarRelatorio"
+          >
+            {{ exportando ? 'Gerando…' : 'Exportar PDF' }}
+          </button>
+        </section>
+        <p v-if="erroRelatorio" class="hint hint--error" role="alert">
+          {{ erroRelatorio }}
+        </p>
+
         <!-- Número-síntese do evento: tudo que os alunos fizeram, na mesma
              régua. A quebra fica logo abaixo para o número não ser opaco. -->
         <section v-if="interacoes" class="destaque" aria-label="Total de interações">
@@ -420,6 +478,48 @@ const labelSerie = computed(
 
 .hint--error {
   color: var(--red-light);
+}
+
+/* Relatório de 24h */
+.relatorio {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+.relatorio__texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.relatorio__texto span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.botao {
+  padding: 9px 16px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--red);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.botao:disabled {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 /* Destaque de interações */

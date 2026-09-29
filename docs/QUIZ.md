@@ -426,9 +426,11 @@ e escreve `prisma/training-questions.ts`. Revise por amostragem antes de semear.
 
 ## Professor raro
 
-Um professor **raro** não sai em ficha comum e não conta para completar a
-Profdex. A única via para capturá-lo é a bancada: **5 acertos em cada tema
-dele**.
+Um professor **raro** não sai em ficha comum, e a única via para capturá-lo é a
+bancada: **5 acertos em cada tema dele**.
+
+Ele **conta para completar a Profdex**, junto com os comuns — quem quer desafiar
+o lendário precisa passar pela bancada, não só pelas fichas.
 
 Os temas exigidos **são os tipos do professor** — não há coluna separada. Um
 raro de dois tipos exige os 5 em **cada** um (10 acertos, e com o cooldown de

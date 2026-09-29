@@ -55,24 +55,35 @@ onUnmounted(() => {
   relogio = null
 })
 
-// O `X/Y` conta só os COMUNS. O raro fica fora dos dois números (tarefa 15,
-// decisão 14) — e nem chega nesta lista: o servidor filtra `rare: false` em
-// `GET /professors`, então não há como esquecer o filtro aqui.
 // ── Contagem ────────────────────────────────────────────────────────────────
-// O `X/Y` conta os COMUNS mais o lendário, e este só entra depois que a raid
-// destrava. É o que faz a barra parar a um passo do fim (`48/49`) no instante
-// em que o aluno fecha a coleção — o gancho da raid inteira — e é o que torna
-// verdade a frase "capturei o lendário e completei a Profdex".
+// O `X/Y` conta os COMUNS mais os RAROS, mais o lendário — e este só entra
+// depois que a raid destrava. É o que faz a barra parar a um passo do fim
+// (`48/49`) no instante em que o aluno fecha a coleção — o gancho da raid
+// inteira — e é o que torna verdade a frase "capturei o lendário e completei a
+// Profdex".
+//
+// Os raros entram porque é essa a conta que o SERVIDOR faz para destravar a
+// raid (`RaidService.dexProgress`). Contar só os comuns aqui deixaria o aluno
+// lendo `18/18` sem raid nenhuma na tela e sem nada explicando por quê.
+//
+// Eles vêm de `rares`, não de `professors`: o servidor nunca manda raro não
+// capturado, então o total do denominador é o único número que atravessa a
+// fronteira sobre os que faltam — e `owned.length` já é a contagem de
+// DISTINTOS (um exemplar por raro, por conta).
 //
 // Antes de destravar, nada muda: quem não chegou lá vê o `X/Y` de sempre e não
 // tem como saber que existe uma entrada a mais.
 const captured = computed(
   () =>
     store.professors.filter((p) => p.captured).length +
+    store.rares.owned.length +
     (store.raid.captured ? 1 : 0),
 )
 const total = computed(
-  () => store.professors.length + (store.raid.unlocked ? 1 : 0),
+  () =>
+    store.professors.length +
+    store.rares.total +
+    (store.raid.unlocked ? 1 : 0),
 )
 
 // ── Raid do lendário ────────────────────────────────────────────────────────
@@ -125,7 +136,10 @@ async function desafiarLendario() {
 }
 
 // ── Raros ───────────────────────────────────────────────────────────────────
-// Contador PRÓPRIO, ao lado do da dex e nunca somado a ele.
+// Contador próprio, que é um RECORTE do da dex e não uma conta paralela: os
+// raros também estão no `X/Y` lá de cima. Ele fica porque "faltam 2 raros" é a
+// informação que manda o aluno de volta para a bancada, e o `X/Y` sozinho não
+// diz de que tipo é o que falta.
 //
 // A rota devolve o professor cru; as flags de progresso são constantes aqui e
 // não vêm do servidor: estar nesta lista JÁ significa ter capturado, e o limite
@@ -257,8 +271,10 @@ function goDetails(prof) {
 
         <p v-if="raidErro" class="raid-erro" role="alert">{{ raidErro }}</p>
 
-        <!-- ✦ Raros. Seção separada e abaixo da coleção: eles não contam para
-             completar a Profdex, então não podem dividir a grade com ela. -->
+        <!-- ✦ Raros. Contam para completar a Profdex, mas ficam em seção
+             separada e abaixo da coleção: a arte do raro merece destaque, e o
+             servidor não manda os não capturados — a grade de cima sabe desenhar
+             um card, não uma ausência. -->
         <section v-if="rarosTotal" class="raros">
           <header class="raros__head">
             <h2 class="pixel raros__titulo">✦ RAROS</h2>
