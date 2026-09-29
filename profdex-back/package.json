@@ -39,7 +39,8 @@
     "db:seed-dex-completa": "ts-node --transpile-only scripts/seed-dex-completa.ts",
     "db:dar-capturas": "ts-node --transpile-only scripts/dar-capturas.ts",
     "raid:smoke": "node scripts/raid-smoke.js",
-    "pvp:bot": "node scripts/bot-bia.js"
+    "pvp:bot": "node scripts/bot-bia.js",
+    "metrics:rollup-full": "ts-node --transpile-only scripts/rollup-full.ts"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"

@@ -138,8 +138,9 @@ Dois detalhes que explicam os zeros:
   `professor_captured` (15) e pela tentativa que o produziu.
 
 **`collection_completed` NÃO redispara** ao capturar o lendário. Aquele evento
-já pagou 200 quando o aluno fechou os comuns — e é justamente ele que destrava
-a raid. Pagar de novo contaria a mesma conquista duas vezes.
+já pagou 200 quando o aluno fechou a coleção (comuns **e** raros) — e é
+justamente ela que destrava a raid. Pagar de novo contaria a mesma conquista
+duas vezes.
 
 ### `rare_unlocked` e `rare_captured` — o professor raro
 
@@ -188,9 +189,10 @@ equivale.
 | Convite de batalha | 2 |
 | Professor descoberto | 5 |
 | Batalha iniciada | 5 |
-| Quiz respondido | 10 |
+| **Turno de batalha** | **1** (PvP e raid, por jogador) |
 | **10 minutos ativos** | **5** |
 | **Professor capturado** | **15** |
+| **Quiz respondido na bancada** | **20** |
 | **Batalha concluída** | **25** (por jogador) |
 | Coleção completa | 50 |
 
@@ -199,9 +201,36 @@ evento de conclusão, e contar os dois faria a mesma batalha valer mais para um
 lado do que para o outro. `quiz_practice_answered` vale 0 por outro motivo — é
 treino livre, ver acima.
 
+### O turno de batalha (29/09/2026)
+
+A batalha vale 25 por lado como fato consumado, mas esse número é o mesmo para
+uma luta de 4 turnos e para uma de 38 — e a diferença entre as duas é
+exatamente a diferença de engajamento que o relatório precisa mostrar. Cada
+turno passou a valer **1**, como uma tela visitada: é um toque e alguns
+segundos de animação.
+
+As duas fontes já existiam no banco e **nenhuma exigiu evento novo**: o PvP
+grava `turns` no `metadata` do `battle_finished` (um por jogador, mantendo a
+simetria do "25 para cada lado") e a raid grava em `raid_attempts.turns`
+(inclusive as `anulada` — os turnos foram jogados). Sai como
+`interactions_turns` no rollup.
+
+### A bancada passou de 10 para 20 (29/09/2026)
+
+Uma rodada de bancada custa fila, um operador e minutos do aluno — é o gesto
+mais caro do evento, e valia **metade** de um professor inédito
+(`professor_discovered` 5 + `professor_captured` 15 = 20). Empatar com a
+captura é o mínimo defensável.
+
+> ⚠️ Mudar um peso muda a série INTEIRA, não só daqui para a frente. O rollup
+> recalcula as últimas **24h** a cada passada; o que for mais antigo que isso
+> se conserta com `npm run metrics:rollup-full`. Sem um dos dois, o gráfico
+> ganha um degrau no dia da mudança que não corresponde a evento nenhum.
+
 O total é somado pelo rollup (métrica `interactions`) e o painel só lê o
-agregado. Sai também `interactions_time` sozinha, para a tela mostrar quanto do
-total veio de tempo e não de ação — sem isso o número seria uma caixa preta.
+agregado. Saem também `interactions_time` e `interactions_turns` sozinhas, para
+a tela mostrar quanto do total veio de tempo e de turno, e não de ação — sem
+isso o número seria uma caixa preta.
 
 Duas consequências que valem saber ao ler o painel:
 
@@ -209,6 +238,38 @@ Duas consequências que valem saber ao ler o painel:
   hora do `ended_at`, igual a `active_minutes`. Quem está com o app aberto agora
   ainda não aparece nessa fatia.
 - **O número anda a cada 5 minutos**, no ritmo do rollup, não em tempo real.
+
+## Relatório de 24h (PDF)
+
+O botão **Exportar PDF** no topo de `/admin/metrics` abre
+`GET /admin/metrics/report` numa aba: interações, bancada (respondidas ×
+acertadas), professores capturados, batalhas e alunos no evento, com três
+gráficos por hora e a quebra das interações. `Ctrl+P` → "Salvar como PDF".
+
+É **HTML com `@media print`**, não PDF binário — o mesmo caminho das fichas de
+QR (`captures/capture-sheet.ts`). Gerar PDF de verdade exigiria Chromium
+(puppeteer) dentro da imagem Docker: centenas de MB e um processo a mais
+competindo com o PvP na mesma t3.micro, para produzir o mesmo papel. Os
+gráficos são **SVG inline**, sem biblioteca e sem script — um `<canvas>`
+desenhado por JavaScript sai em branco em parte das impressões.
+
+A janela são as 23 horas fechadas **mais a hora em curso** (24 baldes
+terminando agora). Cortar em `agora − 24h` cru deixaria a hora em andamento de
+fora — justamente a que se abre o relatório para ver.
+
+### Dois números que estavam errados
+
+Corrigidos junto com o relatório, em 29/09/2026:
+
+- **Batalhas vinham dobradas.** `battle_finished` é gravado uma vez **por
+  jogador**, e o card contava o evento. Passou a contar linhas de `battles`
+  (`status: 'finished'`), que tem uma por batalha. O peso de interação continua
+  contando os dois lados — lá a simetria é proposital.
+- **O DAU perdia a bancada.** O aluno responde no tablet do **operador**, então
+  o `quiz_answered` dele nasce com `sessionId: null`; se o app no bolso não
+  estava em primeiro plano (a varredura encerra a sessão em 3 min, menos que a
+  fila), ele não tinha linha em `user_sessions` e sumia da contagem. Agora é
+  `user_sessions` **UNION** `app_events`.
 
 ## Impacto em carga
 

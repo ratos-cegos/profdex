@@ -2,6 +2,7 @@ import {
   Controller,
   DefaultValuePipe,
   Get,
+  Header,
   ParseIntPipe,
   Query,
   UseGuards,
@@ -9,6 +10,7 @@ import {
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminMetricsService } from './admin-metrics.service';
+import { buildMetricsReport } from './metrics-report';
 
 /**
  * Painel administrativo — SOMENTE LEITURA.
@@ -44,6 +46,20 @@ export class AdminMetricsController {
   @Get('interactions')
   interactions() {
     return this.metrics.interactions();
+  }
+
+  /**
+   * Relatório das últimas 24h, em HTML pronto para o "Salvar como PDF" do
+   * navegador.
+   *
+   * `text/html` e não um PDF binário, no mesmo padrão da folha de fichas: ver a
+   * explicação inteira em `metrics-report.ts`. Continua atrás do `AdminGuard`,
+   * como todo o resto do painel — o relatório mostra o evento inteiro.
+   */
+  @Get('report')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async report(): Promise<string> {
+    return buildMetricsReport(await this.metrics.report24h());
   }
 
   @Get('funnel')
