@@ -12,12 +12,18 @@
  * `seed-dois-treinadores`: um exemplar inserido direto no banco não teria
  * variante, deck nem IVs, e a raid começaria com um time sem golpes.
  *
+ * Captura comuns E RAROS, porque fechar a dex exige os dois desde que o raro
+ * passou a contar no gate. Sem os raros aqui, esta conta nasce incompleta aos
+ * olhos do servidor e o card da raid não aparece — sem dizer por quê.
+ *
  * O que ele NÃO faz, de propósito:
  * - não cria a linha de `raid_unlocks`. O destravamento acontece pelo caminho
  *   real, na primeira leitura de `GET /raid/status` — se ele estiver quebrado,
  *   o seed precisa expor isso, não escondê-lo;
- * - não captura o lendário nem o raro. O lendário é o que se vai testar, e o
- *   raro nunca contou para fechar a dex.
+ * - não cria `rare_unlocks`. Aquela tabela é o gate de RESGATE do raro (5
+ *   acertos por tema na bancada), e este seed não passa pelo resgate: cria a
+ *   captura direto, como faz com o comum. O gate da raid não a lê;
+ * - não captura o lendário. Ele é justamente o que se vai testar.
  *
  * Idempotente: reexecutar apaga as capturas desta conta e cria de novo.
  */
@@ -40,25 +46,29 @@ const CONTA = { matricula: 'dex', name: 'Dex Completa' };
 const iv = () => Math.floor(Math.random() * 16);
 
 async function main() {
-  // Exatamente o mesmo filtro do gate da raid (`RaidService.dexProgress`). Se
-  // os dois divergirem, o seed cria uma conta que o servidor considera
-  // incompleta — e o card não aparece, sem dizer por quê.
-  const comuns = { rare: false, legendary: false, active: true };
+  // Exatamente o mesmo filtro do gate da raid (`RaidService.dexProgress`) —
+  // comuns e raros. Se os dois divergirem, o seed cria uma conta que o servidor
+  // considera incompleta — e o card não aparece, sem dizer por quê.
+  const naDex = { legendary: false, active: true };
 
   const professores = await db.professor.findMany({
-    where: comuns,
+    where: naDex,
     select: {
       id: true,
       name: true,
       slug: true,
-      variants: { select: { id: true, types: true }, orderBy: { typeKey: 'asc' } },
+      rare: true,
+      variants: {
+        select: { id: true, types: true },
+        orderBy: { typeKey: 'asc' },
+      },
     },
     orderBy: { slug: 'asc' },
   });
 
   if (!professores.length) {
     throw new Error(
-      'Nenhum professor comum ativo no banco — rode `npm run db:seed` ou ' +
+      'Nenhum professor ativo no banco — rode `npm run db:seed` ou ' +
         'cadastre professores em /admin/professores.',
     );
   }
@@ -117,6 +127,10 @@ async function main() {
         redeemedBy: user.id,
       },
     });
+    // O raro nasce com 15 nos quatro atributos no fluxo real (5 estrelas
+    // cheias, ver `rollCaptureIvs`). Sortear aqui daria ao time de teste um raro
+    // mais fraco do que qualquer aluno vai levar para a raid.
+    const atributo = professor.rare ? () => 15 : iv;
     await db.capture.create({
       data: {
         userId: user.id,
@@ -124,10 +138,10 @@ async function main() {
         variantId: variant.id,
         tokenId: ficha.id,
         moves: deck.map((m) => m.id),
-        ivHp: iv(),
-        ivRigor: iv(),
-        ivDidatica: iv(),
-        ivRaciocinio: iv(),
+        ivHp: atributo(),
+        ivRigor: atributo(),
+        ivDidatica: atributo(),
+        ivRaciocinio: atributo(),
       },
     });
     // A descoberta acompanha a captura no fluxo real; sem ela a Profdex
@@ -142,9 +156,11 @@ async function main() {
     select: { name: true },
   });
 
+  const raros = professores.filter((p) => p.rare).length;
   console.log(
     `\n✓ ${user.name} [${user.matricula} / ${SENHA}] → ` +
-      `${professores.length} professores capturados (dex completa).`,
+      `${professores.length} professores capturados (dex completa), ` +
+      `sendo ${raros} raro(s).`,
   );
   console.log(
     lendario

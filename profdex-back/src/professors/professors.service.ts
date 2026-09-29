@@ -12,9 +12,10 @@ export class ProfessorsService {
       // sorteio de captura. Quem já o capturou continua com o exemplar — a
       // coleção do aluno vem de `captures`, que não passa por este filtro.
       //
-      // E nunca os RAROS: é este filtro que os tira do `X/Y` sem o front
-      // precisar saber que eles existem. O raro tem rota própria (`rares`),
-      // que devolve só a contagem e os que o aluno já capturou.
+      // E nunca os RAROS por AQUI: eles contam para o `X/Y` (e para destravar a
+      // raid), mas saem pela rota própria (`rares`), que devolve a contagem e só
+      // os que o aluno já capturou. Mandá-los nesta lista revelaria nome e arte
+      // de raro que ninguém pegou ainda.
       //
       // O LENDÁRIO também fica fora, e por um motivo diferente do raro: ele
       // ENTRA na dex depois de capturado, mas antes disso é uma silhueta que a

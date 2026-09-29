@@ -10,11 +10,11 @@ export const useProfessorsStore = defineStore('professors', () => {
 
   // Professores raros: quantos existem e quais este aluno já capturou.
   //
-  // Lista SEPARADA de propósito. O raro não entra em `professors` porque não
-  // conta para completar a Profdex, e o servidor nunca manda os não
-  // capturados — de um raro que o aluno não tem só atravessa a fronteira o
-  // fato de que ele existe. O front desenha `total - owned.length` cards
-  // bloqueados a partir daqui e não tem como revelar o que não recebeu.
+  // Eles CONTAM para completar a Profdex (e para destravar a raid), mas vêm em
+  // lista SEPARADA de propósito: o servidor nunca manda um raro não capturado —
+  // de um raro que o aluno não tem só atravessa a fronteira o fato de que ele
+  // existe. O front desenha `total - owned.length` cards bloqueados a partir
+  // daqui e não tem como revelar o que não recebeu.
   const rares = ref({ total: 0, owned: [] })
 
   // A raid do lendário (tarefa 18). Estado próprio, ao lado do dos raros e

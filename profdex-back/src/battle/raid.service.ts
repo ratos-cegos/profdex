@@ -34,7 +34,7 @@ export interface RaidStatus {
   captured: boolean;
   /** O lendário, mas só depois de capturado: antes é silhueta e `???`. */
   legendary: PublicProfessor | null;
-  /** Quantos professores comuns ele tem, de quantos existem. */
+  /** Quantos professores ele tem, de quantos existem — comuns e raros. */
   dex: { captured: number; total: number };
   /** Timestamp em que a próxima tentativa libera; null = pode agora. */
   cooldownUntil: number | null;
@@ -96,20 +96,27 @@ export class RaidService implements OnModuleInit {
   }
 
   /**
-   * Progresso da coleção COMUM — a conta que destrava a raid.
+   * Progresso da coleção INTEIRA — a conta que destrava a raid.
    *
-   * Os três filtros importam e cada um já foi um bug em potencial:
-   * - `rare: false` porque raro nunca contou para completar a dex (tarefa 15);
+   * Comuns **e raros**: fechar a Profdex exige os dois. O raro já não custa só
+   * escanear um papel — custa 5 acertos em cada tema dele na bancada —, então
+   * exigi-lo é o que faz o lendário valer a fila, e não só a sorte da tiragem.
+   *
+   * Os dois filtros que sobraram importam, e cada um já foi um bug em potencial:
    * - `legendary: false` porque incluir o chefe tornaria o gate circular (só
    *   destravaria a raid quem já tivesse vencido a raid);
    * - `active: true` porque desativar um professor no painel deixaria a dex
-   *   impossível de fechar — é o bug que o `collection_completed` tinha.
+   *   impossível de fechar — é o bug que o `collection_completed` tinha. Com o
+   *   raro na conta, este filtro virou também a VÁLVULA DE ESCAPE do evento:
+   *   raro cadastrado sem tiragem impressa, ou com tema que ninguém destrava,
+   *   trancaria a raid para todo mundo, e desativá-lo o tira da conta na hora,
+   *   sem deploy.
    */
   async dexProgress(userId: string): Promise<{
     captured: number;
     total: number;
   }> {
-    const where = { rare: false, legendary: false, active: true };
+    const where = { legendary: false, active: true };
     const [capturas, total] = await Promise.all([
       this.prisma.capture.findMany({
         where: { userId, professor: where },

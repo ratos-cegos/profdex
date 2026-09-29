@@ -384,25 +384,28 @@ export class CapturesService {
       // Professores DISTINTOS: com vários exemplares do mesmo professor, contar
       // linhas de `captures` completaria a coleção sem ela estar completa.
       //
-      // Os RAROS ficam fora dos dois lados da conta: eles não contam para
-      // completar a Profdex (decisão 14), e sem o filtro no total ninguém
-      // fecharia a coleção sem antes passar 100 min na bancada.
+      // Os RAROS entram nos dois lados da conta: fechar a Profdex exige comuns
+      // e raros, então quem completa a coleção passou pela bancada também.
       //
-      // O LENDÁRIO também, e por uma razão mais dura: é esta contagem que
+      // O LENDÁRIO fica fora, e por uma razão dura: é esta contagem que
       // destrava a raid dele. Incluí-lo tornaria o gate circular — só
       // destravaria a raid quem já tivesse vencido a raid.
       //
       // E `active: true` nos DOIS lados: sem ele, desativar um professor no
       // painel deixava a dex impossível de fechar (o total continuava contando
       // quem saiu da Profdex). Era o bug anotado em docs/tasks/INDEX.md.
-      const comuns = { rare: false, legendary: false, active: true };
+      //
+      // **Este filtro é gêmeo do de `RaidService.dexProgress`**, que é o gate da
+      // raid. Se os dois divergirem, a métrica passa a dizer "completou" para
+      // quem o servidor não deixa desafiar o lendário.
+      const naDex = { legendary: false, active: true };
       const [capturados, total] = await Promise.all([
         this.prisma.capture.findMany({
-          where: { userId, professor: comuns },
+          where: { userId, professor: naDex },
           select: { professorId: true },
           distinct: ['professorId'],
         }),
-        this.prisma.professor.count({ where: comuns }),
+        this.prisma.professor.count({ where: naDex }),
       ]);
       if (total > 0 && capturados.length >= total) {
         eventos.push({ type: 'collection_completed', occurredAt });

@@ -110,42 +110,48 @@ describe('RankingsService — ladders de coleção', () => {
   });
 
   /**
-   * Professor raro (tarefa 15). Ele fica fora dos DOIS lados da fração: só no
-   * numerador, o ladder passaria de 100% para quem pegou um; só no
-   * denominador, os 100% ficariam inalcançáveis sem 100 min de bancada.
+   * O raro CONTA na fração, nos dois lados — ele passou a contar para completar
+   * a Profdex. Deixá-lo fora faria este ladder anunciar 100% para quem abre a
+   * própria coleção e lê `18/21`. O LENDÁRIO continua fora dos dois: aqui a
+   * fração compara alunos, e quem venceu a raid passaria de 100%.
+   *
+   * `active: true` nos dois lados porque um professor desativado no painel
+   * ficaria no denominador e travaria o ladder abaixo de 100% para sempre.
    */
-  it('o ladder de dex ignora os raros dos dois lados da conta', async () => {
+  it('o ladder de dex conta os raros dos dois lados, e nunca o lendário', async () => {
     const { prisma, service } = createSubject();
     prisma.capture.groupBy.mockResolvedValue([
       par('ana', 'prof-1', '2026-09-04T10:00:00Z'),
       par('ana', 'prof-2', '2026-09-04T12:00:00Z'),
     ]);
     // 14 comuns + 1 raro no banco; o count já vem filtrado.
-    prisma.professor.count.mockResolvedValue(14);
+    prisma.professor.count.mockResolvedValue(15);
 
     const ladder = await service.dexLeaderboard('ana', 1);
 
     expect(prisma.capture.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          professor: { rare: false, legendary: false },
+          professor: { legendary: false, active: true },
         }),
       }),
     );
     expect(prisma.professor.count).toHaveBeenCalledWith({
-      where: { rare: false, legendary: false },
+      where: { legendary: false, active: true },
     });
-    expect(ladder.dexTotal).toBe(14);
+    expect(ladder.dexTotal).toBe(15);
   });
 
-  /** O invariante que a decisão 14 protege: a dex nunca passa de 100%. */
+  /** O invariante: a dex nunca passa de 100%, e 100% significa "fechou". */
   it('a dex não passa de 100% com raro no banco', async () => {
     const { prisma, service } = createSubject();
-    // Cenário do bug: o aluno tem os 2 comuns E o raro, mas o groupBy filtrado
-    // devolve só os comuns — então o numerador não pode estourar o total.
+    // O aluno tem 1 comum e 1 raro, e no banco existem exatamente esses dois.
+    // Como os raros estão nos DOIS lados da fração, isso é 100% cravado — nem
+    // acima (o que aconteceria com o raro só no numerador) nem abaixo (o que
+    // aconteceria com ele só no denominador).
     prisma.capture.groupBy.mockResolvedValue([
       par('ana', 'prof-1', '2026-09-04T10:00:00Z'),
-      par('ana', 'prof-2', '2026-09-04T12:00:00Z'),
+      par('ana', 'raro-1', '2026-09-04T12:00:00Z'),
     ]);
     prisma.professor.count.mockResolvedValue(2);
 
@@ -188,7 +194,7 @@ describe('RankingsService — administrador fora do ranking', () => {
     );
   });
 
-  it('aplica o mesmo filtro no ladder de dex, junto do filtro de raros', async () => {
+  it('aplica o mesmo filtro no ladder de dex, junto do filtro do lendário', async () => {
     const { prisma, service } = createSubject();
 
     await service.dexLeaderboard('ana', 1);
@@ -196,7 +202,7 @@ describe('RankingsService — administrador fora do ranking', () => {
     expect(prisma.capture.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          professor: { rare: false, legendary: false },
+          professor: { legendary: false, active: true },
           user: SO_ALUNOS,
         },
       }),

@@ -83,17 +83,20 @@ function criar(
 
 describe('RaidService — o gate da Profdex', () => {
   /**
-   * Os três filtros da contagem. Cada um evita um jeito diferente de a raid
-   * ficar impossível (ou trivial) de destravar, e os três já foram bug em
-   * potencial em alguma consulta deste projeto.
+   * Os filtros da contagem. Cada um evita um jeito diferente de a raid ficar
+   * impossível (ou trivial) de destravar, e os dois já foram bug em potencial em
+   * alguma consulta deste projeto.
+   *
+   * O RARO está dentro: fechar a Profdex exige comuns e raros. A ausência de
+   * `rare: false` aqui é a asserção — se alguém o recolocar, este teste cai.
    */
-  it('conta só professores comuns, ativos, sem raro e sem lendário', async () => {
+  it('conta comuns E raros ativos, e nunca o lendário', async () => {
     const prisma = criarPrisma();
     const { service } = criar(prisma);
 
     await service.dexProgress('ana');
 
-    const esperado = { rare: false, legendary: false, active: true };
+    const esperado = { legendary: false, active: true };
     expect(prisma.capture.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: 'ana', professor: esperado },
