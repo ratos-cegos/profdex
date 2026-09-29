@@ -2,6 +2,7 @@ import {
   classificar,
   mostrarMatricula,
   motivos,
+  tamanhos,
 } from '../../scripts/normalizar-matriculas';
 import {
   acharPorMatricula,
@@ -202,6 +203,22 @@ describe('db:normalizar-matriculas', () => {
     expect(mostrarMatricula('２０')).toBe('"\\uff12\\uff10"');
     expect(mostrarMatricula('ana@edu.unifil.br')).toBe('"ana@edu.unifil.br"');
     expect(mostrarMatricula('a"b\\c')).toBe('"a\\"b\\\\c"');
+  });
+
+  // Evidência para "digitou CPF no lugar da matrícula", sem nome nem valor.
+  it('conta as matrículas numéricas por tamanho', () => {
+    expect(
+      tamanhos([
+        { matricula: '202312345' },
+        { matricula: '2023.999-99' },
+        { matricula: '123.456.789-01' },
+        { matricula: 'fulano@edu.unifil.br' },
+        { matricula: 'admin' },
+      ]),
+    ).toEqual([
+      [9, 2],
+      [11, 1],
+    ]);
   });
 
   it('explica o motivo sem expor quem é', () => {

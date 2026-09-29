@@ -94,6 +94,28 @@ export function motivos(original: string): string[] {
   return achados.length ? achados : ['outro'];
 }
 
+/**
+ * Quantas matrículas numéricas há de cada tamanho, já normalizadas.
+ *
+ * É a única evidência que dá para tirar sem expor ninguém da pergunta "o
+ * aluno digitou outra coisa no lugar da matrícula?": se o evento tem um bloco
+ * de 9 dígitos e um punhado com 11, esse punhado muito provavelmente é CPF —
+ * número válido, que passa na regra, mas que o aluno não vai lembrar de
+ * digitar na bancada.
+ */
+export function tamanhos(contas: Pick<Conta, 'matricula'>[]) {
+  const contagem = new Map<number, number>();
+  for (const { matricula } of contas) {
+    const normalizada = normalizarMatricula(matricula);
+    if (!/^[0-9]+$/.test(normalizada)) continue;
+    contagem.set(
+      normalizada.length,
+      (contagem.get(normalizada.length) ?? 0) + 1,
+    );
+  }
+  return [...contagem.entries()].sort((a, b) => a[0] - b[0]);
+}
+
 /** Separa as contas nas quatro categorias. Não toca no banco. */
 export function classificar(contas: Conta[]): Classificacao {
   const resultado: Classificacao = {
@@ -231,6 +253,15 @@ async function main() {
     console.log(`  corrigíveis:            ${corrigiveis.length}`);
     console.log(`  conflito:               ${conflitos.length}`);
     console.log(`  fora do padrão:         ${foraDoPadrao.length}`);
+
+    const porTamanho = tamanhos(contas);
+    if (porTamanho.length) {
+      console.log('\nTamanho das matrículas numéricas (já normalizadas):');
+      for (const [digitos, n] of porTamanho) {
+        const nota = digitos === 11 ? '  ← tamanho de CPF' : '';
+        console.log(`  ${String(digitos).padStart(2)} dígitos: ${n}${nota}`);
+      }
+    }
 
     const naoCanonicas = [
       ...corrigiveis.map((c) => c.conta),
