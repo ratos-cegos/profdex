@@ -158,7 +158,7 @@ function fimToque(evento) {
 
       <div class="gba-frame carta">
         <header class="carta__topo">
-          <PixelIcon class="carta__espadas" nome="espadas" :escala="2" />
+          <img class="carta__espadas" src="/icons/batalha.png" alt="" aria-hidden="true" />
           <span class="pixel carta__titulo" aria-live="polite">
             {{ total === 1 ? 'DESAFIO!' : `DESAFIOS (${total})` }}
           </span>
@@ -260,7 +260,7 @@ function fimToque(evento) {
       :aria-label="`${total} ${total === 1 ? 'desafio pendente' : 'desafios pendentes'}. Abrir`"
       @click="minimizada = false"
     >
-      <PixelIcon nome="espadas" :escala="2" />
+      <img class="pilula__icone" src="/icons/batalha.png" alt="" aria-hidden="true" />
       <span class="pixel">{{ total }}</span>
     </button>
   </Transition>
@@ -305,6 +305,15 @@ function fimToque(evento) {
   align-items: center;
   gap: 8px;
   min-height: 32px;
+}
+
+/* O ícone de batalha do próprio app (o mesmo da barra inferior). */
+.carta__espadas,
+.pilula__icone {
+  height: 28px;
+  width: auto;
+  image-rendering: pixelated;
+  flex-shrink: 0;
 }
 
 .carta__titulo {

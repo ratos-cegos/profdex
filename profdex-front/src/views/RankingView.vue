@@ -427,7 +427,7 @@ onMounted(() => carregar(abaAtiva.value, 1))
 
 @media (prefers-reduced-motion: no-preference) {
   .rank-me {
-    animation: rank-me-sobe var(--dur-base) steps(4, end) 1.2s both;
+    animation: rank-me-sobe 200ms steps(3, end) 0.6s both;
   }
 }
 

@@ -110,8 +110,8 @@ defineProps({
 
 @media (prefers-reduced-motion: no-preference) {
   .linha {
-    animation: linha-entra var(--dur-base) steps(4, end) both;
-    animation-delay: calc(var(--linha-i, 0) * 70ms + 900ms);
+    animation: linha-entra 200ms steps(3, end) both;
+    animation-delay: calc(var(--linha-i, 0) * 40ms + 450ms);
   }
 
   .linha--voce {
@@ -119,8 +119,8 @@ defineProps({
       linha-entra var(--dur-base) steps(4, end) both,
       linha-pulsa 1.2s steps(2, end) 3;
     animation-delay:
-      calc(var(--linha-i, 0) * 70ms + 900ms),
-      calc(var(--linha-i, 0) * 70ms + 1300ms);
+      calc(var(--linha-i, 0) * 40ms + 450ms),
+      calc(var(--linha-i, 0) * 40ms + 700ms);
   }
 }
 

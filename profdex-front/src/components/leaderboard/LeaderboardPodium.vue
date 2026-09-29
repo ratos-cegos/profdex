@@ -268,17 +268,17 @@ const NOME_LONGO = 16
    padrão; a animação só existe para quem aceita movimento. */
 @media (prefers-reduced-motion: no-preference) {
   .degrau__bloco {
-    animation: degrau-sobe var(--dur-slow) var(--ease-pixel) both;
-    animation-delay: calc(var(--ordem) * 160ms);
+    animation: degrau-sobe var(--dur-base) var(--ease-pixel) both;
+    animation-delay: calc(var(--ordem) * 90ms);
   }
 
   .degrau__topo {
-    animation: degrau-surge var(--dur-base) steps(4, end) both;
-    animation-delay: calc(var(--ordem) * 160ms + var(--dur-slow));
+    animation: degrau-surge 180ms steps(3, end) both;
+    animation-delay: calc(var(--ordem) * 90ms + var(--dur-base));
   }
 
   .degrau--ouro:not(.degrau--vago) .degrau__medalha {
-    animation: medalha-brilha 2.4s steps(2, end) calc(3 * 160ms + 1s) 3;
+    animation: medalha-brilha 2.4s steps(2, end) calc(3 * 90ms + 0.6s) 3;
   }
 }
 

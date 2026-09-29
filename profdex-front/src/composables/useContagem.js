@@ -5,7 +5,7 @@ import { onBeforeUnmount, ref, toValue, watch } from 'vue'
 //
 // Quem pediu menos movimento vê o valor final direto. Sem `matchMedia` (testes,
 // SSR) também: o número certo na tela vale mais que a animação.
-export function useContagem(alvo, { duracao = 600, quadros = 12 } = {}) {
+export function useContagem(alvo, { duracao = 400, quadros = 10 } = {}) {
   const valor = ref(0)
   let timer = null
 
