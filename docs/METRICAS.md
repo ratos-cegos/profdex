@@ -239,12 +239,30 @@ Duas consequências que valem saber ao ler o painel:
   ainda não aparece nessa fatia.
 - **O número anda a cada 5 minutos**, no ritmo do rollup, não em tempo real.
 
-## Relatório de 24h (PDF)
+## Relatório do dia (PDF)
 
-O botão **Exportar PDF** no topo de `/admin/metrics` abre
-`GET /admin/metrics/report` numa aba: interações, bancada (respondidas ×
-acertadas), professores capturados, batalhas e alunos no evento, com três
-gráficos por hora e a quebra das interações. `Ctrl+P` → "Salvar como PDF".
+No topo de `/admin/metrics` há um seletor de **dia** e o botão **Exportar PDF**,
+que abre `GET /admin/metrics/report?date=AAAA-MM-DD` numa aba: interações,
+bancada (respondidas × acertadas), professores capturados, batalhas e alunos no
+evento, com três gráficos por hora e a quebra das interações. `Ctrl+P` →
+"Salvar como PDF".
+
+**A janela é das 17h à meia-noite** do dia escolhido, no fuso do evento — o
+horário em que o estande funciona. Um relatório de 24h diluía a feira em
+dezessete horas de campus dormindo: a taxa de acerto da bancada e o pico de
+batalhas só significam alguma coisa dentro do turno em que houve gente. São 7
+baldes, e todos aparecem no gráfico mesmo vazios, porque uma hora sem registro
+é informação sobre o ritmo do evento.
+
+O recorte é fechado nos dois extremos (`gte` e `lt`). Só com `gte`, um relatório
+de terça somaria o evento inteiro dali para a frente, e o número impresso
+cresceria a cada dia sem ninguém notar. Sem o parâmetro `date`, o dia é **hoje
+no fuso do evento** — o servidor roda em UTC, e às 22h daqui lá já é o dia
+seguinte: o relatório abriria vazio justamente no fim da feira.
+
+Os limites são `REPORT_HORA_INICIO`/`REPORT_HORA_FIM` em
+`admin-metrics.service.ts`, e o fuso entra como offset fixo `-03:00` (o Brasil
+aboliu o horário de verão em 2019, então não há salto a tratar).
 
 É **HTML com `@media print`**, não PDF binário — o mesmo caminho das fichas de
 QR (`captures/capture-sheet.ts`). Gerar PDF de verdade exigiria Chromium
@@ -253,9 +271,21 @@ competindo com o PvP na mesma t3.micro, para produzir o mesmo papel. Os
 gráficos são **SVG inline**, sem biblioteca e sem script — um `<canvas>`
 desenhado por JavaScript sai em branco em parte das impressões.
 
-A janela são as 23 horas fechadas **mais a hora em curso** (24 baldes
-terminando agora). Cortar em `agora − 24h` cru deixaria a hora em andamento de
-fora — justamente a que se abre o relatório para ver.
+### Identidade visual
+
+O relatório usa os tokens de `profdex-front/src/style.css` — laranja `#995200` e
+dourado `#edaf68` da UniFil, superfícies escuras, `Press Start 2P` nos títulos,
+raios 8/16 —, copiados como literais porque o arquivo é servido pelo **backend**
+e não enxerga o CSS do front. Mudou a marca lá? Mude em `metrics-report.ts`
+também; é o preço de o relatório não depender do bundle do app para imprimir.
+
+Na tela ele é escuro, como o app. No papel **inverte** para fundo branco. Não é
+abrir mão da identidade, é o que a preserva: a maioria dos navegadores descarta
+o fundo ao imprimir, e um tema escuro sem essa inversão sairia como texto branco
+em papel branco — ou seja, em branco. O que atravessa para o papel é o que de
+fato identifica o app: fonte pixelada nos títulos, laranja da marca na régua do
+cabeçalho, e **as cores das séries, idênticas às da tela**, para a legenda
+impressa bater com a que foi vista.
 
 ### Dois números que estavam errados
 

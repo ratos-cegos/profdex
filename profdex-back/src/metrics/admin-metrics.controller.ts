@@ -49,17 +49,23 @@ export class AdminMetricsController {
   }
 
   /**
-   * Relatório das últimas 24h, em HTML pronto para o "Salvar como PDF" do
-   * navegador.
+   * Relatório de um DIA do evento — das 17h à meia-noite —, em HTML pronto
+   * para o "Salvar como PDF" do navegador.
    *
    * `text/html` e não um PDF binário, no mesmo padrão da folha de fichas: ver a
    * explicação inteira em `metrics-report.ts`. Continua atrás do `AdminGuard`,
    * como todo o resto do painel — o relatório mostra o evento inteiro.
+   *
+   * `date` é `AAAA-MM-DD` e vem do seletor do painel. Sem o parâmetro, o dia é
+   * HOJE no fuso do evento: é o caso de quem abre o relatório no fim da feira,
+   * e fazer esse alguém digitar a data de hoje seria pedir cerimônia à toa.
    */
   @Get('report')
   @Header('Content-Type', 'text/html; charset=utf-8')
-  async report(): Promise<string> {
-    return buildMetricsReport(await this.metrics.report24h());
+  async report(@Query('date') date?: string): Promise<string> {
+    return buildMetricsReport(
+      await this.metrics.reportDoDia(date || hojeNoEvento()),
+    );
   }
 
   @Get('funnel')
@@ -114,4 +120,21 @@ export class AdminMetricsController {
   raid() {
     return this.metrics.raid();
   }
+}
+
+/**
+ * Hoje no fuso do evento, como `AAAA-MM-DD`.
+ *
+ * `en-CA` porque é o locale cujo formato de data já é ISO — evita remontar a
+ * string a partir de partes. O fuso é explícito porque o servidor de produção
+ * roda em UTC: às 22h de São Paulo lá já é o dia seguinte, e o relatório
+ * abriria vazio justamente no fim da feira, que é quando ele é pedido.
+ */
+function hojeNoEvento(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }

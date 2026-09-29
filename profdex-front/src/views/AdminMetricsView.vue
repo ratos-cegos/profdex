@@ -34,9 +34,28 @@ const horaLegivel = (iso) =>
 
 const numero = (v) => (v ?? 0).toLocaleString('pt-BR')
 
-// ── Relatório de 24h ────────────────────────────────────────────────────────
+// ── Relatório do dia ────────────────────────────────────────────────────────
 const exportando = ref(false)
 const erroRelatorio = ref(null)
+
+/**
+ * O dia do relatório, `AAAA-MM-DD`. Começa em HOJE porque é o caso de quase
+ * toda exportação: o organizador tira o relatório no fim da feira.
+ *
+ * `en-CA` porque é o locale cujo formato de data já é ISO, que é o que o
+ * `<input type="date">` exige. Sem o `sv-SE`/`en-CA`, `toISOString()` daria o
+ * dia em UTC — às 22h daqui, o dia seguinte, e o seletor abriria na data errada
+ * justamente no horário do evento.
+ */
+const hoje = () =>
+  new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+
+const diaDoRelatorio = ref(hoje())
+const maxDia = hoje()
 
 /**
  * Abre o relatório das últimas 24h numa aba nova, pronto para o "Salvar como
@@ -48,12 +67,13 @@ const erroRelatorio = ref(null)
  * aviso de "entre de novo" que o resto da tela dá.
  */
 async function exportarRelatorio() {
-  if (exportando.value) return
+  if (exportando.value || !diaDoRelatorio.value) return
   exportando.value = true
   erroRelatorio.value = null
   let url = null
   try {
     const { data } = await api.get('/admin/metrics/report', {
+      params: { date: diaDoRelatorio.value },
       responseType: 'blob',
     })
     url = URL.createObjectURL(data)
@@ -165,19 +185,30 @@ const labelSerie = computed(
       <template v-else>
         <!-- Relatório para levar impresso. Fica no topo porque é a ação que o
              organizador procura com pressa, no fim do dia. -->
-        <section class="relatorio" aria-label="Relatório das últimas 24 horas">
+        <section class="relatorio" aria-label="Relatório do dia">
           <div class="relatorio__texto">
-            <strong>Relatório das últimas 24h</strong>
+            <strong>Relatório do estande · 17h às 24h</strong>
             <span>Interações, bancada, capturas, batalhas e alunos — com gráficos.</span>
           </div>
-          <button
-            type="button"
-            class="botao"
-            :disabled="exportando"
-            @click="exportarRelatorio"
-          >
-            {{ exportando ? 'Gerando…' : 'Exportar PDF' }}
-          </button>
+          <div class="relatorio__acoes">
+            <label class="relatorio__data">
+              <span class="relatorio__rotulo">Dia</span>
+              <input
+                v-model="diaDoRelatorio"
+                type="date"
+                class="select"
+                :max="maxDia"
+              />
+            </label>
+            <button
+              type="button"
+              class="botao"
+              :disabled="exportando || !diaDoRelatorio"
+              @click="exportarRelatorio"
+            >
+              {{ exportando ? 'Gerando…' : 'Exportar PDF' }}
+            </button>
+          </div>
         </section>
         <p v-if="erroRelatorio" class="hint hint--error" role="alert">
           {{ erroRelatorio }}
@@ -504,6 +535,23 @@ const labelSerie = computed(
 .relatorio__texto span {
   color: var(--text-muted);
   font-size: 12px;
+}
+
+.relatorio__acoes {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.relatorio__data {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.relatorio__rotulo {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .botao {

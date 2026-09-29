@@ -13,14 +13,17 @@ function createSubject(rows: { metric: string; value: number }[]) {
 }
 
 /**
- * O relatório de 24h — o que vira PDF. As asserções aqui são sobre a FONTE de
+ * O relatório do dia — o que vira PDF. As asserções aqui são sobre a FONTE de
  * cada número, não sobre o layout: é a fonte errada que produziu os dois bugs
  * que este relatório existe para não repetir.
  */
-describe('AdminMetricsService.report24h', () => {
+describe('AdminMetricsService.reportDoDia', () => {
+  const DIA = '2026-09-29';
+  /** 17h de 29/09 em São Paulo = 20:00 UTC. É o primeiro balde da janela. */
+  const PRIMEIRO_BALDE = new Date('2026-09-29T20:00:00Z');
+
   function criar(linhas: { metric: string; value: number }[] = []) {
-    const bucket = new Date();
-    bucket.setMinutes(0, 0, 0);
+    const bucket = PRIMEIRO_BALDE;
     const prisma = {
       metricHourly: {
         findMany: jest
@@ -44,7 +47,7 @@ describe('AdminMetricsService.report24h', () => {
       { metric: 'event_battle_finished', value: 176 },
     ]);
 
-    const relatorio = await service.report24h();
+    const relatorio = await service.reportDoDia(DIA);
 
     expect(relatorio.batalhas.total).toBe(88);
     expect(prisma.battle.count).toHaveBeenCalledWith(
@@ -63,7 +66,7 @@ describe('AdminMetricsService.report24h', () => {
       { metric: 'event_quiz_correct', value: 210 },
     ]);
 
-    const { quiz } = await service.report24h();
+    const { quiz } = await service.reportDoDia(DIA);
 
     expect(quiz.respondidas).toBe(320);
     expect(quiz.acertadas).toBe(210);
@@ -74,26 +77,73 @@ describe('AdminMetricsService.report24h', () => {
   it('não inventa taxa de acerto quando ninguém respondeu', async () => {
     const { service } = criar();
 
-    await expect(service.report24h()).resolves.toMatchObject({
+    await expect(service.reportDoDia(DIA)).resolves.toMatchObject({
       quiz: { respondidas: 0, acertadas: 0, taxa: 0 },
     });
   });
 
-  it('devolve as 24 horas da janela, inclusive as vazias', async () => {
+  /**
+   * A janela é o turno do estande — 17h às 24h —, não o dia inteiro: sete
+   * baldes, e todos presentes mesmo sem registro, porque uma hora vazia é
+   * informação sobre o ritmo do evento.
+   */
+  it('devolve as 7 horas do estande, inclusive as vazias', async () => {
     const { service } = criar();
 
-    const relatorio = await service.report24h();
+    const relatorio = await service.reportDoDia(DIA);
 
-    expect(relatorio.horas).toHaveLength(24);
-    expect(relatorio.interacoes.porHora).toHaveLength(24);
-    expect(relatorio.usuarios.porHora).toHaveLength(24);
+    expect(relatorio.horas).toHaveLength(7);
+    expect(relatorio.interacoes.porHora).toHaveLength(7);
+    expect(relatorio.usuarios.porHora).toHaveLength(7);
+    expect(new Date(relatorio.horas[0])).toEqual(PRIMEIRO_BALDE);
+    expect(relatorio.de).toEqual(PRIMEIRO_BALDE);
+    expect(relatorio.ate).toEqual(new Date('2026-09-30T03:00:00Z'));
+  });
+
+  /**
+   * A janela precisa recortar dos DOIS lados. Só com `gte`, um relatório de
+   * terça somaria o evento inteiro dali para a frente — e o número impresso
+   * cresceria a cada dia sem ninguém notar.
+   */
+  it('recorta a janela nos dois extremos, não só no início', async () => {
+    const { prisma, service } = criar();
+
+    await service.reportDoDia(DIA);
+
+    const dentro = {
+      gte: PRIMEIRO_BALDE,
+      lt: new Date('2026-09-30T03:00:00Z'),
+    };
+    expect(prisma.metricHourly.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { bucket: dentro } }),
+    );
+    expect(prisma.battle.count).toHaveBeenCalledWith({
+      where: { status: 'finished', finishedAt: dentro },
+    });
+    expect(prisma.raidAttempt.count).toHaveBeenCalledWith({
+      where: { endedAt: dentro },
+    });
+  });
+
+  /**
+   * A data vira string de instante e vai para o `where` do Prisma. Com lixo,
+   * `new Date(...)` é `Invalid Date`, o filtro recebe `NaN` e o relatório sai
+   * vazio sem ninguém entender por quê — melhor recusar alto.
+   */
+  it('recusa data fora do formato AAAA-MM-DD', async () => {
+    const { service } = criar();
+
+    await expect(service.reportDoDia('ontem')).rejects.toThrow(/AAAA-MM-DD/);
+    await expect(service.reportDoDia('29/09/2026')).rejects.toThrow(
+      /AAAA-MM-DD/,
+    );
   });
 
   /** O turno é derivado das interações pelo mesmo peso que o rollup usou. */
   it('reconstrói a contagem de turnos a partir das interações de turno', async () => {
     const { service } = criar([{ metric: 'interactions_turns', value: 3100 }]);
 
-    const relatorio = await service.report24h();
+    const relatorio = await service.reportDoDia(DIA);
 
     expect(relatorio.batalhas.turnos).toBe(3100);
     expect(relatorio.interacoes.deTurnos).toBe(3100);
