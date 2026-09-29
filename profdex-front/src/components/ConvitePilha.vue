@@ -158,7 +158,7 @@ function fimToque(evento) {
 
       <div class="gba-frame carta">
         <header class="carta__topo">
-          <img class="carta__espadas" src="/icons/batalha.png" alt="" aria-hidden="true" />
+          <img class="carta__espadas" src="/icons/batalha.png" height="28" alt="" aria-hidden="true" />
           <span class="pixel carta__titulo" aria-live="polite">
             {{ total === 1 ? 'DESAFIO!' : `DESAFIOS (${total})` }}
           </span>
@@ -260,7 +260,7 @@ function fimToque(evento) {
       :aria-label="`${total} ${total === 1 ? 'desafio pendente' : 'desafios pendentes'}. Abrir`"
       @click="minimizada = false"
     >
-      <img class="pilula__icone" src="/icons/batalha.png" alt="" aria-hidden="true" />
+      <img class="pilula__icone" src="/icons/batalha.png" height="28" alt="" aria-hidden="true" />
       <span class="pixel">{{ total }}</span>
     </button>
   </Transition>
@@ -640,10 +640,10 @@ function fimToque(evento) {
   }
 }
 
+/* Só `filter`: acender a pílula sem repintar fundo e texto a cada quadro. */
 @keyframes pisca {
   50% {
-    background: var(--unifil-orange);
-    color: var(--text-primary);
+    filter: brightness(1.7);
   }
 }
 </style>

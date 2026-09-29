@@ -127,6 +127,11 @@
     inset -1px -1px 0 var(--surface-border);
 }
 
+/* O app é escuro em toda tela: barras de rolagem e controles nativos também. */
+:root {
+  color-scheme: dark;
+}
+
 ::selection {
   background: var(--unifil-orange);
   color: var(--text-primary);
@@ -175,6 +180,8 @@
   text-shadow: 2px 2px 0 var(--surface);
   text-align: center;
   transition: transform var(--dur-fast) steps(2, end);
+  /* Sem o atraso do toque duplo (zoom) em botão que é para ser tocado rápido. */
+  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
 
