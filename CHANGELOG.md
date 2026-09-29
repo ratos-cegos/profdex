@@ -52,6 +52,15 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
   mexe em conflito (o valor normalizado já é de outra conta) nem em e-mail ou
   nome, que o aluno corrige no Perfil. Ver deploy.md.
 
+- **Passo a passo ilustrado para instalar no iPhone.** O iOS não deixa a página
+  abrir o diálogo de instalação, então o "Instalar o ProfDex" do Perfil mostra
+  o caminho com os mesmos desenhos que o aluno procura na tela: Compartilhar,
+  Adicionar à Tela de Início, Adicionar e o ícone do app. O texto muda para o
+  Chrome do iPhone, que tem o Compartilhar em outro lugar. Em navegadores de
+  dentro de apps, como Instagram e Facebook, onde não dá para instalar, ele
+  manda abrir no Safari e oferece copiar o link. No Android nada muda: o botão
+  continua abrindo o diálogo nativo.
+
 ## [Não publicado] — raid do professor lendário
 
 ### Alterado
