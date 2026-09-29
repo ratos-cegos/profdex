@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   QUIZ_THEMES,
@@ -15,6 +15,52 @@ import {
 
 /** Teto de horas por consulta de série temporal (uma semana). */
 export const MAX_SERIES_HOURS = 24 * 7;
+
+/**
+ * A janela do relatório: das 17h à meia-noite do dia escolhido.
+ *
+ * É o horário em que o estande funciona. Um relatório de 24h diluía a feira em
+ * dezessete horas de campus dormindo — a taxa de acerto da bancada e o pico de
+ * batalhas só significam alguma coisa dentro do turno em que houve gente.
+ */
+export const REPORT_HORA_INICIO = 17;
+export const REPORT_HORA_FIM = 24;
+
+/**
+ * Fuso do evento, como offset fixo.
+ *
+ * `-03:00` cravado, e não a zona IANA: o Brasil aboliu o horário de verão em
+ * 2019, então São Paulo não tem mais salto — e construir o instante a partir do
+ * offset é o que deixa a janela correta mesmo com o servidor de produção em
+ * UTC, que é onde o `date_trunc` dos baldes acontece. A FORMATAÇÃO do texto
+ * continua usando a zona IANA (ver `metrics-report.ts`), que é o lugar certo
+ * para ela.
+ */
+const OFFSET_DO_EVENTO = '-03:00';
+
+/** `2026-09-29` → das 17h à meia-noite daquele dia, no fuso do evento. */
+export function janelaDoRelatorio(dia: string): { de: Date; ate: Date } {
+  // Validação na FRONTEIRA do domínio, não só no DTO: esta função monta uma
+  // string de data e a entrega ao `Date`. Com lixo, `new Date('lixoT17:00')` é
+  // `Invalid Date`, o Prisma recebe `NaN` no `where` e o relatório sai vazio
+  // sem ninguém entender por quê — melhor recusar alto.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) {
+    throw new BadRequestException(
+      'Data inválida: use o formato AAAA-MM-DD (ex.: 2026-09-29).',
+    );
+  }
+
+  const inicio = `${dia}T${String(REPORT_HORA_INICIO).padStart(2, '0')}:00:00${OFFSET_DO_EVENTO}`;
+  const de = new Date(inicio);
+  if (Number.isNaN(de.getTime())) {
+    throw new BadRequestException(`Data inexistente no calendário: ${dia}.`);
+  }
+
+  const ate = new Date(
+    de.getTime() + (REPORT_HORA_FIM - REPORT_HORA_INICIO) * 3_600_000,
+  );
+  return { de, ate };
+}
 
 const PLAYED = {
   OR: [
@@ -173,27 +219,21 @@ export class AdminMetricsService {
    * linha por batalha (o evento conta uma por jogador) e o total de usuários
    * precisa do `UNION` com `app_events` para não perder a bancada.
    */
-  async report24h() {
-    // 24 baldes terminando na hora CORRENTE, e não `agora - 24h` cru: com o
-    // corte cru, o balde da hora em curso cai fora da série (ele é
-    // `from + 24h`, o 25º) — e a hora em curso é justamente a que o organizador
-    // abre o relatório para ver. A janela é, então, as 23 horas fechadas mais a
-    // hora em andamento; o cabeçalho do PDF imprime o período exato.
-    const from = new Date();
-    from.setMinutes(0, 0, 0);
-    from.setHours(from.getHours() - 23);
+  async reportDoDia(dia: string) {
+    const { de, ate } = janelaDoRelatorio(dia);
 
+    const dentro = { gte: de, lt: ate };
     const [linhas, batalhas, usuarios, raids, quebra] = await Promise.all([
       this.prisma.metricHourly.findMany({
-        where: { bucket: { gte: from } },
+        where: { bucket: dentro },
         orderBy: { bucket: 'asc' },
         select: { bucket: true, metric: true, value: true },
       }),
       this.prisma.battle.count({
-        where: { status: 'finished', finishedAt: { gte: from } },
+        where: { status: 'finished', finishedAt: dentro },
       }),
-      this.distinctSessionUsers(from),
-      this.prisma.raidAttempt.count({ where: { endedAt: { gte: from } } }),
+      this.distinctSessionUsers(de, ate),
+      this.prisma.raidAttempt.count({ where: { endedAt: dentro } }),
       this.interactions(),
     ]);
 
@@ -207,11 +247,11 @@ export class AdminMetricsService {
       porHora.set(linha.metric, serie);
     }
 
-    // As 24 horas explícitas, inclusive as vazias e a que está em curso: um
-    // gráfico que pula a hora do almoço mente sobre o ritmo do evento.
+    // Todas as horas da janela explícitas, inclusive as vazias: um gráfico que
+    // pula a hora sem registro mente sobre o ritmo do evento.
     const horas: number[] = [];
-    for (let h = 0; h < 24; h += 1) {
-      horas.push(from.getTime() + h * 3_600_000);
+    for (let t = de.getTime(); t < ate.getTime(); t += 3_600_000) {
+      horas.push(t);
     }
     const serie = (metric: string) =>
       horas.map((t) => porHora.get(metric)?.get(t) ?? 0);
@@ -221,7 +261,8 @@ export class AdminMetricsService {
 
     return {
       geradoEm: new Date(),
-      de: from,
+      de,
+      ate,
       horas,
       interacoes: {
         total: total.get('interactions') ?? 0,
@@ -665,13 +706,22 @@ export class AdminMetricsService {
    * `user_sessions` e sumia do DAU. Era a bancada inteira faltando no número
    * que a coordenação lê.
    */
-  private async distinctSessionUsers(since: Date): Promise<number> {
+  private async distinctSessionUsers(
+    since: Date,
+    until?: Date,
+  ): Promise<number> {
+    // `until` opcional: o `overview` conta "de hoje até agora" e não tem teto;
+    // o relatório recorta uma janela fechada. `COALESCE` com um limite bem no
+    // futuro mantém UMA consulta em vez de duas quase iguais.
+    const ate = until ?? new Date(8_640_000_000_000);
     const rows = await this.prisma.$queryRaw<{ total: number }[]>`
       SELECT COUNT(*)::int AS total
       FROM (
-        SELECT user_id FROM user_sessions WHERE started_at >= ${since}
+        SELECT user_id FROM user_sessions
+         WHERE started_at >= ${since} AND started_at < ${ate}
         UNION
-        SELECT user_id FROM app_events   WHERE occurred_at >= ${since}
+        SELECT user_id FROM app_events
+         WHERE occurred_at >= ${since} AND occurred_at < ${ate}
       ) AS usuarios
     `;
     return rows[0]?.total ?? 0;
