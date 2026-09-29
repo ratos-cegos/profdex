@@ -59,7 +59,7 @@ celular para capturar um professor sorteado no servidor.
 | 5 | Trocar matrícula | **Autoatendimento no Perfil** | O erro é do cadastro, e quem sabe o valor certo é o dono. A unicidade impede tomar matrícula já cadastrada, então ninguém rouba conta existente |
 | 6 | Quantas trocas | **Ilimitadas** | O caso legítimo é um, mas limitar custa uma tela de exceção no painel para um problema que não apareceu |
 | 7 | Senha atual na troca | **Exigida** | É troca de **credencial de login** (`LoginDto` é matrícula + senha). Sem ela, um celular emprestado e desbloqueado troca o login do dono em dois toques |
-| 8 | Validar formato da matrícula | **Não** | O formato varia entre cursos e anos; validar trancaria conta legítima e não é informação que este time tem fechada |
+| 8 | Validar formato da matrícula | **Não** — *revista em 2026-09-29: valor novo é normalizado e só dígitos* | O formato varia entre cursos e anos; validar trancaria conta legítima e não é informação que este time tem fechada. **Revisão:** a bancada só digita 0–9, e contas criadas com e-mail (autofill do celular), ponto ou espaço nunca eram encontradas. A regra vale só para o valor que está sendo gravado: conta antiga continua entrando. Ver `docs/AUTENTICACAO.md#formato-da-matrícula` |
 | 9 | Barra de HP do jogador | **Sobe para 8px acima da faixa**, por um token só, nas duas telas | A barra vive dentro do contexto de empilhamento do palco e nunca vence a faixa. Subir é o único conserto que não exige cirurgia de `z-index` |
 | 10 | Ficha do professor | **Ganha `BottomNav`**, e a volta para a coleção para de remontar | A queixa foi sobre *navegar*: a barra sumir e voltar é o que faz a coleção parecer outra tela |
 | 11 | Modo de captura | Ajuste `captureQrMode` (`ficha` \| `tela`), **global**, em `/admin/configuracoes` | O número certo depende do dia; e é o primeiro ajuste não-numérico do painel |
@@ -201,8 +201,10 @@ encontrado", ou pior, como outra pessoa.
 
 **Cuidados.**
 
-- **Não valide formato** (decisão 8). Uma regra nova aqui trancaria contas
-  criadas com valor fora do padrão.
+- ~~**Não valide formato** (decisão 8).~~ *Revisto em 2026-09-29:* o valor novo
+  é normalizado e precisa ser só dígitos, a mesma regra do cadastro. Conta
+  antiga não é trancada, porque a regra não se aplica ao valor que já está
+  gravado. Ver `docs/AUTENTICACAO.md#formato-da-matrícula`.
 - O papel (`role`) vem do **domínio do e-mail** validado no ticket do Google,
   nunca da matrícula: esta rota não pode tocar `role`, e o DTO não pode ter o
   campo.

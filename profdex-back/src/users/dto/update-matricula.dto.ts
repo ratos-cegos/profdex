@@ -1,13 +1,22 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsNotEmpty, IsString, Matches, MaxLength } from 'class-validator';
 import { MAX_PASSWORD_LENGTH } from '../../auth/password.constants';
+import {
+  MATRICULA_LONGA_MSG,
+  MATRICULA_MAX_DIGITOS,
+  MATRICULA_SO_DIGITOS_MSG,
+  normalizarMatricula,
+} from '../matricula';
 
 /**
  * Correção da matrícula pelo próprio dono.
  *
- * **Sem validação de formato, de propósito** (tarefa 17, decisão 8). O formato
- * varia entre cursos e anos; uma regra nova aqui trancaria conta legítima
- * criada com valor fora do padrão, e não é informação que este time tem
- * fechada. O `MaxLength(64)` é o mesmo do cadastro — só o tamanho da coluna.
+ * **Normalizada e só dígitos**, a mesma regra do cadastro (`users/matricula.ts`).
+ * A tarefa 17 (decisão 8) tinha deixado o formato livre; a revisão de
+ * 2026-09-29 fechou isso para valores NOVOS, porque a bancada só digita 0–9 e
+ * não encontrava quem gravou e-mail, ponto ou espaço. A regra não tranca conta
+ * antiga: ela só vale para o valor que está sendo gravado agora, e é por esta
+ * rota que o dono de uma matrícula fora do padrão a conserta.
  *
  * **Não existe campo `role` aqui, e não pode existir.** O papel vem do domínio
  * do e-mail validado no ticket do Google, nunca da matrícula: um campo a mais
@@ -18,8 +27,12 @@ import { MAX_PASSWORD_LENGTH } from '../../auth/password.constants';
  */
 export class UpdateMatriculaDto {
   @IsString()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? normalizarMatricula(value) : value,
+  )
   @IsNotEmpty({ message: 'Informe a matrícula nova.' })
-  @MaxLength(64)
+  @Matches(/^[0-9]+$/, { message: MATRICULA_SO_DIGITOS_MSG })
+  @MaxLength(MATRICULA_MAX_DIGITOS, { message: MATRICULA_LONGA_MSG })
   matricula: string;
 
   @IsString()

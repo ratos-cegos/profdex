@@ -27,6 +27,11 @@ export class AuthService {
     private jwt: JwtService,
   ) {}
 
+  /** Dono da sessão lido do banco (`null` se a conta não existe mais). */
+  currentUser(userId: string) {
+    return this.users.findSessionUser(userId);
+  }
+
   /** Cadastro direto. Só existe em desenvolvimento — ver `dev-signup.ts`. */
   async registerForDevelopment(dto: RegisterDto) {
     if (!isDevSignupEnabled(process.env)) {

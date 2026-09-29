@@ -6,6 +6,61 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 `Adicionado` para novidades, `Alterado` para mudanças de comportamento existente,
 `Corrigido` para defeitos e `Removido` para o que saiu.
 
+## [Não publicado] — revisão do PWA: matrícula na bancada
+
+### Corrigido
+
+- **A bancada do quiz não encontrava alunos recém-cadastrados.** O cadastro
+  gravava a matrícula como veio, só com `trim()`, e a bancada digita 0–9 num
+  numpad e procura por igualdade exata. No celular, o que chegava ao campo
+  nem sempre era a matrícula. A faixa de autofill do teclado oferece ali o
+  e-mail do Google que o aluno acabou de usar (o campo é
+  `autocomplete="username"`). Também chegavam `2023.123-45`, espaços no meio,
+  espaço de largura zero colado do portal e dígitos de largura total. Nenhum
+  desses valores a bancada acha. Agora:
+  - o **valor novo** (cadastro pelo Google e troca no Perfil) é normalizado e
+    precisa ser **só dígitos**, até 20. Um e-mail é recusado com uma mensagem
+    que diz o que fazer, e a tela mostra o valor normalizado antes de enviar;
+  - a **busca** no login, na bancada, na errata e na recuperação de senha tenta
+    o valor exato e depois o normalizado, então conta antiga não é trancada;
+  - o "não encontrada" da bancada manda o operador pedir ao aluno que confira a
+    matrícula no **Perfil**, onde ele a corrige.
+
+  A regra fica em `profdex-back/src/users/matricula.ts`, com o par em
+  `profdex-front/src/services/matricula-rules.js`. Um teste confere que os dois
+  não divergem. A decisão 8 da tarefa 17 ("não validar formato") foi revista
+  para valores novos.
+
+- **Rate limit do login por matrícula normalizada.** Com a busca tolerante,
+  `2023.12345` e `202312345` chegam à mesma conta. Com chaves diferentes, cada
+  variação ganharia as próprias tentativas de senha.
+
+- **Erro de validação da API aparecia como lista** (`["…"]`) no cadastro e no
+  Perfil. Agora aparece só a primeira mensagem.
+
+- **`/auth/me` devolvia o que estava no token, e não o banco.** O Perfil
+  mostrava a matrícula antiga por até 8h depois de uma troca em outro aparelho
+  ou da normalização. Pior: depois do `db:limpar-evento`, uma conta apagada
+  continuava "logada". Agora ele lê o banco, reemite o cookie quando o token
+  está velho e responde 401, limpando o cookie, quando a conta não existe mais.
+
+### Adicionado
+
+- **`npm run db:normalizar-matriculas`** conserta as matrículas gravadas antes
+  da regra. É dry-run por padrão, com `--yes` para aplicar e `--listar` para ver
+  quem precisa de contato. Sem `--listar`, só imprime contagens e motivos. Não
+  mexe em conflito (o valor normalizado já é de outra conta) nem em e-mail ou
+  nome, que o aluno corrige no Perfil. Ver deploy.md.
+
+- **Passo a passo ilustrado para instalar no iPhone.** O iOS não deixa a página
+  abrir o diálogo de instalação, então o "Instalar o ProfDex" do Perfil mostra
+  o caminho com os mesmos desenhos que o aluno procura na tela: Compartilhar,
+  Adicionar à Tela de Início, Adicionar e o ícone do app. O texto muda para o
+  Chrome do iPhone, que tem o Compartilhar em outro lugar. Em navegadores de
+  dentro de apps, como Instagram e Facebook, onde não dá para instalar, ele
+  manda abrir no Safari e oferece copiar o link. No Android nada muda: o botão
+  continua abrindo o diálogo nativo.
+
 ## [Não publicado] — raid do professor lendário
 
 ### Alterado

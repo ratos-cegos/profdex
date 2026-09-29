@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   UnauthorizedException,
@@ -22,6 +23,21 @@ describe('UsersService', () => {
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { matricula: '123' },
     });
+  });
+
+  // Login de quem digita com pontuação, e de quem foi gravado antes da regra.
+  it('finds the canonical account when the login has punctuation', async () => {
+    const conta = { id: 'aluno-1', matricula: '202312345' };
+    const prisma = {
+      user: {
+        findUnique: jest.fn(({ where }: { where: { matricula: string } }) =>
+          Promise.resolve(where.matricula === conta.matricula ? conta : null),
+        ),
+      },
+    };
+    const service = new UsersService(prisma as unknown as PrismaService);
+
+    await expect(service.findByMatricula('2023.123-45')).resolves.toBe(conta);
   });
 
   // Fora de desenvolvimento, contas nascem só pelo Google
@@ -89,7 +105,10 @@ describe('UsersService', () => {
     const SENHA = 'senha do dono';
 
     async function createSubject(
-      overrides: { outraContaComANova?: boolean } = {},
+      overrides: {
+        outraContaComANova?: boolean;
+        naoNumericas?: { id: string; matricula: string }[];
+      } = {},
     ) {
       const dono = {
         id: 'aluno-1',
@@ -112,6 +131,11 @@ describe('UsersService', () => {
             Promise.resolve({ ...dono, matricula: data.matricula }),
           ),
         },
+        // As contas cuja matrícula tem caractere fora de 0-9 — a colisão que o
+        // índice único não enxerga. Vazia por padrão: o banco já normalizado.
+        $queryRawUnsafe: jest
+          .fn()
+          .mockResolvedValue(overrides.naoNumericas ?? []),
       };
       return {
         dono,
@@ -138,6 +162,27 @@ describe('UsersService', () => {
       expect(user.matricula).toBe('202399999');
     });
 
+    // A mesma regra do cadastro: a bancada só digita 0–9.
+    it('grava a matrícula normalizada', async () => {
+      const { prisma, service } = await createSubject();
+
+      await service.changeMatricula('aluno-1', '2023.999-99​', SENHA);
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'aluno-1' },
+        data: { matricula: '202399999' },
+      });
+    });
+
+    it('recusa e-mail sem tocar no banco', async () => {
+      const { prisma, service } = await createSubject();
+
+      await expect(
+        service.changeMatricula('aluno-1', 'ana@edu.unifil.br', SENHA),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
     it('senha errada não muda nada', async () => {
       const { prisma, service } = await createSubject();
 
@@ -156,6 +201,40 @@ describe('UsersService', () => {
         service.changeMatricula('aluno-1', '202399999', SENHA),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    /**
+     * A unicidade que o índice do banco não enxerga: a conta `2023.999-99`,
+     * gravada antes da regra, É o `202399999` pedido aqui. Deixar passar cria
+     * as duas, e a bancada passa a achar só a nova.
+     */
+    it('matrícula que só colide depois de normalizada também é recusada', async () => {
+      const { prisma, service } = await createSubject({
+        naoNumericas: [{ id: 'aluno-2', matricula: '2023.999-99' }],
+      });
+
+      await expect(
+        service.changeMatricula('aluno-1', '202399999', SENHA),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    /**
+     * O caminho que a bancada manda o aluno seguir: a matrícula DELE está
+     * gravada suja e ele a corrige no Perfil. A colisão encontrada é a própria
+     * conta — barrar aqui deixaria a conta sem conserto possível.
+     */
+    it('o aluno consegue normalizar a própria matrícula suja', async () => {
+      const { prisma, service } = await createSubject({
+        naoNumericas: [{ id: 'aluno-1', matricula: '2023.123-45' }],
+      });
+
+      await service.changeMatricula('aluno-1', '202312399', SENHA);
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'aluno-1' },
+        data: { matricula: '202312399' },
+      });
     });
 
     /**

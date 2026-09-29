@@ -18,6 +18,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
+import { MATRICULA_MAX_DIGITOS } from '../services/matricula-rules'
 import TypeIcon from '../components/TypeIcon.vue'
 import TelaDeDescanso from '../components/TelaDeDescanso.vue'
 import { TYPE_CYCLE, getType, legibleColor } from '../data/types'
@@ -214,13 +215,14 @@ const temasExibidos = computed(() =>
 )
 
 // ── Numpad ──────────────────────────────────────────────────────────────────
-// O servidor aceita até 40 caracteres, mas matrícula real é numérica e curta;
-// o teto aqui só evita que uma criança segurando a tecla encha o visor.
-const MAX_DIGITOS = 20
+// Só 0–9, e o teto é o mesmo que o cadastro impõe (services/matricula-rules.js):
+// desde a correção de 2026-09-29, uma conta nova só grava o que este numpad
+// consegue digitar. O teto também evita que uma criança segurando a tecla
+// encha o visor.
 const TECLAS = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 
 function digitar(digito) {
-  if (matricula.value.length >= MAX_DIGITOS) return
+  if (matricula.value.length >= MATRICULA_MAX_DIGITOS) return
   matricula.value += digito
   // O erro é do valor anterior: some assim que o operador começa a corrigir.
   erro.value = ''

@@ -333,6 +333,25 @@ describe('QuizService', () => {
     expect(prisma.quizAttempt.create).not.toHaveBeenCalled();
   });
 
+  // O "não encontrada" é o sintoma que o operador vê quando o cadastro gravou
+  // outra coisa. A mensagem precisa mandá-lo para onde está a resposta.
+  it('manda o operador conferir a matrícula no Perfil do aluno', async () => {
+    const { prisma, service } = createSubject();
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(service.aluno('202300000')).rejects.toThrow(/Perfil/);
+  });
+
+  it('acha a conta canônica mesmo digitada com pontuação', async () => {
+    const { service } = createSubject();
+
+    await expect(
+      service.start(' 2023.123-45 ', 'banco'),
+    ).resolves.toMatchObject({
+      aluno: { id: 'aluno-1', matricula: '202312345' },
+    });
+  });
+
   it('nunca repete questão já respondida enquanto houver inédita', async () => {
     // O aluno passa o dia no estande: com 20 questões por tema e cooldown de
     // 10min, ver de novo uma que ele já respondeu é falha visível na fila.
