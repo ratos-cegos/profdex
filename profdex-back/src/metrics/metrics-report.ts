@@ -21,6 +21,30 @@ import { escapeHtml } from '../mail/escape-html';
 /** Fuso do evento — o servidor de produção roda em UTC. */
 const FUSO = 'America/Sao_Paulo';
 
+/**
+ * As cores das séries, tiradas dos tokens de `profdex-front/src/style.css`.
+ *
+ * Só entram tons que sobrevivem aos DOIS fundos: a tela (superfície `#1a1a1a`)
+ * e o papel (branco). É o que descarta os tons `--*-glow` da paleta, que somem
+ * no branco, e o `--unifil-orange` puro, que some no escuro.
+ *
+ * Elas ficam como atributo `fill` no SVG, e não em CSS: o `@media print` troca
+ * fundo e texto, mas a cor de uma série é a identidade dela — mudar no papel
+ * faria a legenda impressa não corresponder à da tela.
+ */
+const COR = {
+  /** `--ds-orange`. O número-síntese do evento usa a cor da marca. */
+  interacoes: '#cba034',
+  /** `--ds-blue`. */
+  bancada: '#3c7fa1',
+  /** `--ds-green`. Acerto é o desfecho bom. */
+  acerto: '#549942',
+  /** `--unifil-gold`. A mesma cor do contador da Profdex. */
+  capturas: '#edaf68',
+  /** `--text-muted`: neutro de propósito, é a série de apoio. */
+  alunos: '#a8b8c0',
+} as const;
+
 export interface SerieHoraria {
   label: string;
   valores: number[];
@@ -29,8 +53,11 @@ export interface SerieHoraria {
 
 export interface MetricsReportData {
   geradoEm: Date;
+  /** Início da janela (17h do dia escolhido, no fuso do evento). */
   de: Date;
-  /** Os 24 inícios de hora, em epoch ms. */
+  /** Fim EXCLUSIVO da janela (meia-noite). */
+  ate: Date;
+  /** Um epoch ms por hora da janela — inclusive as sem registro. */
   horas: number[];
   interacoes: {
     total: number;
@@ -58,18 +85,21 @@ export interface MetricsReportData {
 }
 
 export function buildMetricsReport(data: MetricsReportData): string {
-  const periodo = `${formatarMomento(data.de)} — ${formatarMomento(data.geradoEm)}`;
+  const dia = formatarDia(data.de);
+  const faixa = `${formatarHora(data.de.getTime())}–${formatarFim(data.ate)}`;
+  const periodo = `${dia} · ${faixa} · gerado ${formatarMomento(data.geradoEm)}`;
 
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>ProfDex — métricas das últimas 24h</title>
+<title>ProfDex — métricas de ${escapeHtml(dia)}</title>
 ${estilo()}
 </head>
 <body>
   <header class="topo">
-    <h1>ProfDex — métricas das últimas 24 horas</h1>
+    <h1>PROF<span>DEX</span></h1>
+    <p class="subtitulo">Métricas do estande · ${escapeHtml(faixa)}</p>
     <p class="periodo">${escapeHtml(periodo)}</p>
   </header>
 
@@ -95,18 +125,22 @@ ${estilo()}
   </section>
 
   ${grafico('Interações por hora', data.horas, [
-    { label: 'Interações', valores: data.interacoes.porHora, cor: '#c62828' },
+    {
+      label: 'Interações',
+      valores: data.interacoes.porHora,
+      cor: COR.interacoes,
+    },
   ])}
 
   ${grafico('Bancada: respondidas × acertadas', data.horas, [
-    { label: 'Respondidas', valores: data.quiz.porHora, cor: '#1565c0' },
-    { label: 'Acertadas', valores: data.quiz.acertosPorHora, cor: '#2e7d32' },
+    { label: 'Respondidas', valores: data.quiz.porHora, cor: COR.bancada },
+    { label: 'Acertadas', valores: data.quiz.acertosPorHora, cor: COR.acerto },
   ])}
 
   ${grafico('Capturas, batalhas e alunos ativos por hora', data.horas, [
-    { label: 'Capturas', valores: data.capturas.porHora, cor: '#ef6c00' },
-    { label: 'Batalhas', valores: data.batalhas.porHora, cor: '#6a1b9a' },
-    { label: 'Alunos ativos', valores: data.usuarios.porHora, cor: '#00838f' },
+    { label: 'Capturas', valores: data.capturas.porHora, cor: COR.capturas },
+    { label: 'Batalhas', valores: data.batalhas.porHora, cor: COR.bancada },
+    { label: 'Alunos ativos', valores: data.usuarios.porHora, cor: COR.alunos },
   ])}
 
   ${tabelaDeFontes(data)}
@@ -170,10 +204,14 @@ function grafico(
     )
     .join('');
 
-  // Rótulo a cada 3 horas: 24 rótulos colados viram uma tarja preta no papel.
+  // Passo do rótulo conforme a largura disponível: numa janela curta (as 7
+  // horas do estande) cabem todas as horas, e omitir alguma obrigaria o leitor
+  // a contar barras. Numa janela longa, 24 rótulos colados viram uma tarja
+  // preta no papel.
+  const passo = horas.length <= 12 ? 1 : 3;
   const rotulos = horas
     .map((t, i) =>
-      i % 3 === 0
+      i % passo === 0
         ? `<text class="eixo" x="${round(L + i * largura + largura / 2)}" y="${H - 10}" text-anchor="middle">${formatarHora(t)}</text>`
         : '',
     )
@@ -227,8 +265,8 @@ function tabelaDeFontes(data: MetricsReportData): string {
       <tbody>${linhas}</tbody>
     </table>
     <p class="nota">
-      Acumulado do evento inteiro, não só das 24h — é a leitura que mostra o
-      peso relativo de cada atividade.
+      Acumulado do evento inteiro, não só desta janela — é a leitura que mostra
+      o peso relativo de cada atividade.
     </p>
   </section>`;
 }
@@ -239,6 +277,28 @@ const round = (n: number) => Math.round(n * 10) / 10;
 
 function numero(valor: number): string {
   return new Intl.NumberFormat('pt-BR').format(Math.round(valor));
+}
+
+/** `29/09/2026` — o dia da janela, no fuso do evento. */
+function formatarDia(date: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: FUSO,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+}
+
+/**
+ * O fim da faixa, que é EXCLUSIVO.
+ *
+ * A meia-noite é o começo do dia seguinte: imprimir a hora crua diria "00h" e
+ * faria o leitor achar que o relatório virou o dia. Quem fecha um turno diz
+ * "até as 24h", e é isso que vai no papel.
+ */
+function formatarFim(ate: Date): string {
+  const hora = formatarHora(ate.getTime());
+  return hora === '00h' ? '24h' : hora;
 }
 
 /** `14h` — a hora no fuso do evento. */
@@ -267,61 +327,228 @@ function formatarMomento(date: Date): string {
 }
 
 /**
- * Estilo do papel.
+ * Estilo do relatório, na identidade do app.
  *
- * `@media print` esconde a dica do Ctrl+P (ela não faz sentido no papel) e tira
- * o fundo cinza, que torraria tinta e sairia como um bloco sujo na maioria das
- * impressoras. `break-inside: avoid` mantém cada gráfico inteiro numa página —
- * meio gráfico no fim da folha é a forma mais rápida de um relatório parecer
- * amador.
+ * Os tokens são os mesmos de `profdex-front/src/style.css` — laranja e dourado
+ * da UniFil, superfícies escuras, `Press Start 2P` nos títulos, raios 8/16 —,
+ * copiados como literais porque este arquivo é servido pelo BACKEND e não tem
+ * acesso ao CSS do front. Mudou a marca lá? Mude aqui também; é o preço de o
+ * relatório não depender do bundle do app para imprimir.
+ *
+ * **Duas peles, uma identidade.** Na tela o relatório é escuro, como o app. No
+ * papel ele inverte: fundo branco e texto escuro. Não é abrir mão da
+ * identidade — é o contrário. Um fundo `#121418` impresso vira uma folha
+ * encharcada de toner, e a maioria dos navegadores descarta o fundo por padrão
+ * (`print-color-adjust`), o que produziria texto branco em papel branco: o
+ * relatório sairia EM BRANCO. O que atravessa para o papel é o que de fato
+ * identifica o app — a fonte pixelada nos títulos, o laranja da marca na régua
+ * do cabeçalho, o dourado nos números e as cores das séries, que continuam
+ * idênticas às da tela para a legenda impressa bater com a que foi vista.
+ *
+ * A `Press Start 2P` vem do Google Fonts, a mesma origem que o `index.html` do
+ * front já usa. Só nos TÍTULOS e rótulos curtos: ela é larga e ilegível em
+ * corpo de texto, e um relatório inteiro nela não se lê de pé, no estande.
+ * Com a fonte bloqueada, o fallback é `monospace` e o documento continua
+ * perfeitamente legível.
+ *
+ * `break-inside: avoid` mantém cada gráfico inteiro numa página — meio gráfico
+ * no fim da folha é a forma mais rápida de um relatório parecer amador.
  */
 function estilo(): string {
-  return `<style>
+  return `<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --unifil-orange: #995200;
+    --unifil-gold: #edaf68;
+    --bg-deep: #121418;
+    --surface: #1a1a1a;
+    --surface-border: #2b2b2b;
+    --text-primary: #ffffff;
+    --text-muted: #a8b8c0;
+    --radius: 8px;
+    --radius-lg: 16px;
+    --font-pixel: 'Press Start 2P', monospace;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    /* Trocados inteiros no @media print. Tudo que muda entre tela e papel
+       passa por estes quatro — nenhuma regra lá embaixo repete cor solta. */
+    --papel: var(--bg-deep);
+    --cartao: var(--surface);
+    --linha: var(--surface-border);
+    --tinta: var(--text-primary);
+    --tinta-fraca: var(--text-muted);
+  }
+
   * { box-sizing: border-box; }
+
   body {
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    max-width: 780px; margin: 0 auto; padding: 24px;
-    color: #1a1a1a; background: #fff;
+    font-family: var(--font-body);
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 28px 24px 40px;
+    color: var(--tinta);
+    background: var(--papel);
+    line-height: 1.45;
   }
-  .topo { border-bottom: 3px solid #c62828; padding-bottom: 10px; margin-bottom: 4px; }
-  h1 { font-size: 21px; margin: 0; }
-  .periodo { color: #666; font-size: 13px; margin: 4px 0 0; }
+
+  /* Cabeçalho: régua laranja da marca, título pixelado com o D destacado em
+     dourado, como o cabeçalho PROFDEX da coleção. */
+  .topo {
+    border-bottom: 4px solid var(--unifil-orange);
+    padding-bottom: 12px;
+    margin-bottom: 6px;
+  }
+  h1 {
+    font-family: var(--font-pixel);
+    font-size: 15px;
+    line-height: 1.6;
+    letter-spacing: .02em;
+    margin: 0;
+    color: var(--tinta);
+  }
+  h1 span { color: var(--unifil-gold); }
+  /* O subtítulo NÃO é pixelado de propósito: a Press Start 2P é larga demais
+     para uma frase, e o cabeçalho da coleção usa exatamente este par —
+     logotipo pixelado, texto de apoio em fonte de corpo. */
+  .subtitulo {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 10px 0 0;
+    color: var(--tinta);
+  }
+  .periodo {
+    color: var(--tinta-fraca);
+    font-size: 12px;
+    margin: 4px 0 0;
+  }
+
   .dica {
-    background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px;
-    padding: 8px 12px; font-size: 13px; margin: 16px 0;
+    background: var(--cartao);
+    border: 1px solid var(--unifil-orange);
+    border-left-width: 4px;
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-size: 13px;
+    margin: 18px 0 0;
+    color: var(--tinta-fraca);
   }
+  .dica strong { color: var(--unifil-gold); }
+
   .kpis {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-    gap: 10px; margin: 18px 0 26px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(146px, 1fr));
+    gap: 12px;
+    margin: 20px 0 30px;
   }
   .kpi {
-    border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px 12px;
-    display: flex; flex-direction: column; gap: 2px;
+    border: 1px solid var(--linha);
+    border-radius: var(--radius-lg);
+    background: var(--cartao);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
-  .kpi__rotulo { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #666; }
-  .kpi__valor { font-size: 26px; line-height: 1.1; }
-  .kpi__valor .de { font-size: 16px; color: #888; font-weight: 400; }
-  .kpi__apoio { font-size: 11px; color: #888; }
-  .bloco { margin: 0 0 26px; break-inside: avoid; page-break-inside: avoid; }
-  .bloco h2 { font-size: 15px; margin: 0 0 6px; }
-  svg { width: 100%; height: auto; }
-  .grade { stroke: #e8e8e8; stroke-width: 1; }
-  .eixo { font-size: 10px; fill: #888; }
-  .legenda { display: flex; gap: 14px; font-size: 12px; color: #555; margin-bottom: 4px; }
-  .legenda__item { display: inline-flex; align-items: center; gap: 5px; }
-  .legenda__item i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
-  .vazio { font-size: 12px; color: #999; margin: 2px 0 0; }
+  .kpi__rotulo {
+    font-family: var(--font-pixel);
+    font-size: 7px;
+    line-height: 1.7;
+    letter-spacing: .04em;
+    color: var(--tinta-fraca);
+    text-transform: uppercase;
+  }
+  .kpi__valor {
+    font-size: 30px;
+    line-height: 1;
+    font-weight: 700;
+    color: var(--unifil-gold);
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi__valor .de {
+    font-size: 17px;
+    font-weight: 400;
+    color: var(--tinta-fraca);
+  }
+  .kpi__apoio { font-size: 11px; color: var(--tinta-fraca); }
+
+  .bloco {
+    margin: 0 0 28px;
+    padding: 16px;
+    border: 1px solid var(--linha);
+    border-radius: var(--radius-lg);
+    background: var(--cartao);
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .bloco h2 {
+    font-family: var(--font-pixel);
+    font-size: 10px;
+    line-height: 1.7;
+    margin: 0 0 12px;
+    color: var(--unifil-gold);
+  }
+
+  svg { width: 100%; height: auto; display: block; }
+  .grade { stroke: var(--linha); stroke-width: 1; }
+  .eixo { font-size: 10px; fill: var(--tinta-fraca); font-family: var(--font-body); }
+
+  .legenda {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--tinta-fraca);
+    margin-bottom: 10px;
+  }
+  .legenda__item { display: inline-flex; align-items: center; gap: 6px; }
+  .legenda__item i {
+    width: 11px; height: 11px;
+    border-radius: 3px;
+    display: inline-block;
+  }
+  .vazio { font-size: 12px; color: var(--tinta-fraca); margin: 8px 0 0; }
+
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #eee; }
-  th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #666; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--linha); }
+  tr:last-child td { border-bottom: none; }
+  th {
+    font-family: var(--font-pixel);
+    font-size: 7px;
+    line-height: 1.8;
+    letter-spacing: .04em;
+    color: var(--tinta-fraca);
+    text-transform: uppercase;
+  }
+  td { color: var(--tinta); }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .nota, .rodape { font-size: 11px; color: #888; line-height: 1.5; }
-  .rodape { border-top: 1px solid #eee; padding-top: 10px; margin-top: 8px; }
-  code { font-size: 11px; background: #f5f5f5; padding: 1px 4px; border-radius: 3px; }
+
+  .nota, .rodape { font-size: 11px; color: var(--tinta-fraca); line-height: 1.6; }
+  .nota { margin: 12px 0 0; }
+  .rodape { border-top: 1px solid var(--linha); padding-top: 12px; margin-top: 4px; }
+  code {
+    font-size: 11px;
+    background: var(--papel);
+    border: 1px solid var(--linha);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
   @media print {
+    :root {
+      --papel: #ffffff;
+      --cartao: #ffffff;
+      --linha: #d4d4d4;
+      --tinta: #16181c;
+      --tinta-fraca: #5f6b73;
+    }
     body { padding: 0; max-width: none; }
+    /* A dica do Ctrl+P só faz sentido na tela. */
     .dica { display: none; }
-    .kpi { border-color: #bbb; }
+    /* O dourado clareia demais no branco: no papel o destaque é o laranja. */
+    .kpi__valor, .bloco h2, h1 span { color: var(--unifil-orange); }
+    code { background: #f3f3f3; }
   }
   </style>`;
 }
