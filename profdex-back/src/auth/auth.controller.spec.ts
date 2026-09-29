@@ -23,12 +23,19 @@ const configStub = () =>
   }) as unknown as ConfigService;
 
 describe('AuthController', () => {
-  const user = { id: 'user-1', matricula: '123', name: 'Player' };
+  const user = {
+    id: 'user-1',
+    matricula: '123',
+    name: 'Player',
+    role: 'aluno',
+  };
 
   function createSubject() {
     const auth = {
       login: jest.fn(),
       registerForDevelopment: jest.fn(),
+      currentUser: jest.fn().mockResolvedValue(user),
+      signSession: jest.fn().mockReturnValue('reassinado.jwt'),
     };
     const rateLimit = {
       assertAllowed: jest.fn(),
@@ -84,6 +91,28 @@ describe('AuthController', () => {
       ),
     ).rejects.toThrow(UnauthorizedException);
     expect(rateLimit.recordFailure).toHaveBeenCalledWith('127.0.0.1:123');
+  });
+
+  // A busca por matrícula é tolerante (`2023.123-45` acha `202312345`), então
+  // as variações de pontuação precisam gastar o MESMO contador. Senão cada
+  // uma ganharia as próprias tentativas contra a mesma conta.
+  it('keys the rate limit by the normalized matricula', async () => {
+    const { auth, controller, rateLimit, request, response } = createSubject();
+    auth.login.mockRejectedValue(new UnauthorizedException('invalid'));
+
+    for (const matricula of ['2023.123-45', '2023 12345', '202312345']) {
+      await expect(
+        controller.login(
+          { matricula, password: 'invalid password' },
+          request,
+          response as unknown as Response,
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+    }
+
+    expect(
+      new Set(rateLimit.recordFailure.mock.calls.map(([key]) => key)),
+    ).toEqual(new Set(['127.0.0.1:202312345']));
   });
 
   it('checks the rate limit before touching the credentials', async () => {
@@ -151,15 +180,57 @@ describe('AuthController', () => {
     });
   });
 
-  it('returns the authenticated principal and clears logout cookies', () => {
+  it('returns the authenticated principal and clears logout cookies', async () => {
     const { controller, request, response } = createSubject();
 
-    expect(controller.me(request)).toEqual({ user });
+    await expect(
+      controller.me(request, response as unknown as Response),
+    ).resolves.toEqual({ user });
+    // Token em dia: nada a reemitir.
+    expect(response.cookie).not.toHaveBeenCalled();
     controller.logout(response as unknown as Response);
 
     expect(response.clearCookie).toHaveBeenCalledWith(
       SESSION_COOKIE_NAME,
       expect.objectContaining({ path: '/api' }),
     );
+  });
+
+  // /auth/me lê o BANCO. O Perfil é onde a bancada manda o aluno conferir a
+  // matrícula; com o payload do token, ele mostraria o valor antigo por até 8h.
+  describe('GET /auth/me', () => {
+    it('devolve a matrícula do banco e reemite o cookie quando o token está velho', async () => {
+      const { auth, controller, request, response } = createSubject();
+      auth.currentUser.mockResolvedValue({ ...user, matricula: '202312345' });
+
+      await expect(
+        controller.me(request, response as unknown as Response),
+      ).resolves.toEqual({ user: { ...user, matricula: '202312345' } });
+      expect(auth.signSession).toHaveBeenCalledWith(
+        'user-1',
+        '202312345',
+        'Player',
+        'aluno',
+      );
+      expect(response.cookie).toHaveBeenCalledWith(
+        SESSION_COOKIE_NAME,
+        'reassinado.jwt',
+        expect.objectContaining({ httpOnly: true }),
+      );
+    });
+
+    // Depois do `db:limpar-evento`, a conta apagada seguia "logada".
+    it('conta que não existe mais: 401 e cookie limpo', async () => {
+      const { auth, controller, request, response } = createSubject();
+      auth.currentUser.mockResolvedValue(null);
+
+      await expect(
+        controller.me(request, response as unknown as Response),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(response.clearCookie).toHaveBeenCalledWith(
+        SESSION_COOKIE_NAME,
+        expect.objectContaining({ path: '/api' }),
+      );
+    });
   });
 });

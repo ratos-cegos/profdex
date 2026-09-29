@@ -34,11 +34,39 @@ institucional.
 | `googleId` | Id estável do Google (o e-mail pode ser renomeado) |
 | `role` | `aluno` ou `admin`, derivado do domínio |
 
+### Formato da matrícula
+
+A bancada do quiz digita a matrícula num numpad de 0 a 9 e procura a conta por
+igualdade exata. Até 2026-09-29 o cadastro aceitava qualquer texto (só com
+`trim()`), e contas foram criadas com valores que o quiosque nunca encontra: o
+e-mail que a faixa de autofill do celular oferece no campo, `2023.123-45`,
+espaços no meio e espaço de largura zero vindo de copiar e colar.
+
+A regra agora vive em `profdex-back/src/users/matricula.ts`, com o par de tela
+em `profdex-front/src/services/matricula-rules.js`:
+
+- **Todo valor novo** (conclusão do cadastro pelo Google e troca no Perfil) é
+  **normalizado** e precisa sobrar **só com dígitos**, até 20, que é o teto do
+  numpad. A normalização converte dígitos de largura total (NFKC) e tira
+  espaços, invisíveis (U+200B, U+FEFF…), traços, pontos, vírgulas e barras.
+  Letras e `@` não são apagados: um e-mail é recusado com
+  "Digite só os números da matrícula, sem e-mail, letras ou espaços."
+- **A busca é tolerante** (`acharPorMatricula`) no login, na bancada, na errata
+  e na recuperação de senha. Ela tenta primeiro o valor exato, depois o
+  normalizado. Conta antiga não é trancada: a `admin` do seed e as matrículas
+  gravadas antes da regra continuam entrando como sempre.
+- **O rate limit** (`ip:matricula`) usa o valor normalizado. `2023.12345` e
+  `202312345` levam à mesma conta, então gastam o mesmo contador.
+- O cadastro direto de desenvolvimento (`/auth/register`) **não** segue a regra:
+  o seed e os scripts de carga usam `admin`, `bia` e `load…`.
+- Para o que já está no banco, existe o `db:normalizar-matriculas` (ver
+  [deploy.md](../deploy.md)). Ele conserta o que tem conserto e lista o resto.
+
 ### Corrigir a matrícula
 
-A matrícula é digitada uma vez, na conclusão do cadastro, com `MaxLength(64)` e
-**nenhuma validação de formato** — um dígito trocado é aceito em silêncio, e o
-aluno aparece na bancada como "não encontrado", ou pior, como outra pessoa.
+A matrícula é digitada uma vez, na conclusão do cadastro. A regra de só dígitos
+barra e-mail e pontuação, mas **um dígito trocado continua aceito em silêncio**,
+e o aluno aparece na bancada como "não encontrado", ou pior, como outra pessoa.
 
 `PATCH /users/me/matricula` conserta isso, no **Perfil** e pelo próprio dono. O
 erro é do cadastro e quem sabe o valor certo é ele; a unicidade impede tomar
@@ -59,8 +87,15 @@ PATCH /api/users/me/matricula { matricula, currentPassword }  → { user }
 - **Reassina a sessão** e reemite o cookie: o JWT carrega `matricula` no
   payload, e sem isso o perfil seguiria mostrando o valor velho por até 8h.
   Ninguém precisa relogar — justamente com a credencial que acabou de mudar.
-- **Sem validação de formato** e **sem limite de trocas**: o formato varia entre
-  cursos e anos, e uma regra nova trancaria conta legítima.
+- Nos **outros aparelhos** do mesmo aluno (e depois do
+  `db:normalizar-matriculas`), quem acerta a sessão é o `GET /auth/me`. Ele
+  lê matrícula, nome e papel **do banco**, não do token, e reemite o cookie
+  quando o token está velho. Se a conta não existe mais (por exemplo, depois do
+  `db:limpar-evento`), ele responde **401** e limpa o cookie, e o app volta ao
+  login em vez de seguir "logado" numa conta apagada.
+- **Mesma regra de formato do cadastro** (só dígitos, normalizada) e **sem
+  limite de trocas**. É por aqui que o dono de uma matrícula gravada fora do
+  padrão a conserta.
 - **A rota não toca `role`**, e o DTO não tem o campo: o papel vem do domínio do
   e-mail validado no ticket do Google, nunca da matrícula.
 - O progresso não se move — capturas, `quiz_attempts`, `rare_unlocks` e vouchers

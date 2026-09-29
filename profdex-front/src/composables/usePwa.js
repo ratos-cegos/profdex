@@ -62,6 +62,19 @@ export async function instalar() {
   return outcome === 'accepted'
 }
 
+/**
+ * App instalado na tela de início do iPhone/iPad. Só o Safari define
+ * `navigator.standalone`, então isto é falso em qualquer outro lugar.
+ *
+ * Importa para o login pelo Google: no iOS, o app instalado guarda cookies
+ * separados do Safari, e a ida ao Google abre numa folha do Safari. O cadastro
+ * termina lá — a conta é criada, mas a sessão fica no Safari, e o app continua
+ * mostrando o login.
+ */
+export function ehAppInstaladoNoIos() {
+  return typeof window !== 'undefined' && window.navigator.standalone === true
+}
+
 /** Já está rodando instalado (standalone)? */
 export function estaInstalado() {
   if (typeof window === 'undefined') return false

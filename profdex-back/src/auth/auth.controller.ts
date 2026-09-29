@@ -8,6 +8,7 @@ import {
   Post,
   Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -28,6 +29,15 @@ import { GoogleAuthService } from './google-auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PasswordResetService } from './password-reset.service';
 import { GoogleIdentity } from './strategies/google.strategy';
+import { chaveDeLimite } from '../users/matricula';
+
+/** O que o `JwtStrategy.validate` põe em `request.user`. */
+interface SessionPrincipal {
+  id: string;
+  matricula: string;
+  name: string;
+  role: string;
+}
 
 @Controller('auth')
 export class AuthController {
@@ -97,7 +107,9 @@ export class AuthController {
       user: { id: string; matricula: string; name: string };
     }>,
   ) {
-    const key = `${request.ip}:${matricula.trim().toLowerCase()}`;
+    // Normalizada: `2023.12345` e `202312345` levam à mesma conta
+    // (`acharPorMatricula`), então precisam gastar o mesmo contador.
+    const key = chaveDeLimite(request.ip, matricula);
     this.rateLimit.assertAllowed(key);
 
     try {
@@ -115,10 +127,47 @@ export class AuthController {
     }
   }
 
+  /**
+   * Quem está logado, lido do BANCO — não do token.
+   *
+   * O JWT carrega matrícula, nome e papel de quando foi assinado. Devolver o
+   * payload fazia o Perfil mostrar matrícula velha por até 8h depois de uma
+   * troca em outro aparelho ou do `db:normalizar-matriculas` — e o Perfil é
+   * justamente onde a bancada manda o aluno conferir a matrícula. Pior: depois
+   * do `db:limpar-evento`, a conta apagada continuava "logada".
+   *
+   * - Conta que não existe mais → 401 e o cookie é limpo (o app volta ao login).
+   * - Token com dado velho → devolve o do banco e reemite o cookie, para o
+   *   resto do app (rate limit, socket da batalha) enxergar o mesmo valor.
+   */
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  me(@Req() request: Request & { user: unknown }) {
-    return { user: request.user };
+  async me(
+    @Req() request: Request & { user: SessionPrincipal },
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const production = process.env.NODE_ENV === 'production';
+    const user = await this.auth.currentUser(request.user.id);
+    if (!user) {
+      response.clearCookie(
+        SESSION_COOKIE_NAME,
+        getSessionCookieOptions(production),
+      );
+      throw new UnauthorizedException('Sessão inválida');
+    }
+
+    const desatualizado =
+      user.matricula !== request.user.matricula ||
+      user.name !== request.user.name ||
+      user.role !== request.user.role;
+    if (desatualizado) {
+      response.cookie(
+        SESSION_COOKIE_NAME,
+        this.auth.signSession(user.id, user.matricula, user.name, user.role),
+        getSessionCookieOptions(production),
+      );
+    }
+    return { user };
   }
 
   @Post('logout')

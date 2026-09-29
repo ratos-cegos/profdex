@@ -25,6 +25,15 @@ bancada: **matrícula → tema → questão de 60s → resultado** (ver
 `AdminQuizBoothView.vue`), com a matrícula pedida a cada rodada porque quem
 responde muda o tempo todo.
 
+A matrícula entra por um numpad de 0 a 9, e o servidor acha a conta pela busca
+tolerante de `users/matricula.ts`: primeiro o valor exato, depois o
+normalizado. Desde 2026-09-29 o cadastro só grava dígitos, então toda conta
+nova é encontrável daqui. Conta antiga gravada com e-mail, ponto ou espaço
+responde "não encontrada". A mensagem manda o operador pedir ao aluno que abra
+o **Perfil**: é lá que ele vê a matrícula gravada e a corrige. O
+`db:normalizar-matriculas` conserta de uma vez as que têm conserto (ver
+[AUTENTICACAO.md](./AUTENTICACAO.md#formato-da-matrícula)).
+
 > ✅ **Divergência resolvida (25/09/2026).** Este documento descrevia duas
 > coisas incompatíveis: o QR como sorteado da pilha, e o servidor devolvendo em
 > `POST /admin/quiz/answer` a lista `professores` daquele tema. Venceu o

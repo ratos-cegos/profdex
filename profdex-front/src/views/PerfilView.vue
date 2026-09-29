@@ -4,6 +4,12 @@ import { useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
 import AppHeader from '../components/AppHeader.vue'
 import BotaoInstalar from '../components/BotaoInstalar.vue'
+import {
+  MATRICULA_MAX_DIGITOS,
+  mensagemDaApi,
+  normalizarMatricula,
+  validarMatricula,
+} from '../services/matricula-rules.js'
 import { getLandingCreditsUrl } from '../services/public-links.js'
 import { useAuthStore } from '../stores/auth.js'
 
@@ -43,11 +49,21 @@ function cancelarTrocaDeMatricula() {
 }
 
 async function salvarMatricula() {
-  const matricula = novaMatricula.value.trim()
-  if (!matricula || !senhaAtual.value) {
+  if (!novaMatricula.value.trim() || !senhaAtual.value) {
     erroMatricula.value = 'Preencha a matrícula nova e a sua senha atual.'
     return
   }
+
+  // A mesma regra do cadastro (services/matricula-rules.js): só dígitos, que é
+  // o que a bancada consegue digitar. O servidor recusa do mesmo jeito; aqui só
+  // se antecipa a mensagem.
+  const matricula = normalizarMatricula(novaMatricula.value)
+  const erroDoValor = validarMatricula(matricula)
+  if (erroDoValor) {
+    erroMatricula.value = erroDoValor
+    return
+  }
+  novaMatricula.value = matricula
 
   salvandoMatricula.value = true
   erroMatricula.value = ''
@@ -55,12 +71,12 @@ async function salvarMatricula() {
     await auth.changeMatricula(matricula, senhaAtual.value)
     editandoMatricula.value = false
     senhaAtual.value = ''
-    okMatricula.value = `Matrícula atualizada para ${matricula}. É com ela que você entra a partir de agora.`
+    // O valor que o SERVIDOR gravou, não o digitado: é ele que a bancada acha.
+    okMatricula.value = `Matrícula atualizada para ${auth.user?.matricula ?? matricula}. É com ela que você entra a partir de agora.`
   } catch (e) {
     // A mensagem do servidor é a que importa: senha errada (401) e matrícula
     // já cadastrada (409) precisam ser distinguíveis pelo aluno.
-    erroMatricula.value =
-      e?.response?.data?.message ?? 'Não foi possível corrigir a matrícula.'
+    erroMatricula.value = mensagemDaApi(e, 'Não foi possível corrigir a matrícula.')
   } finally {
     salvandoMatricula.value = false
   }
@@ -138,7 +154,10 @@ async function salvarMatricula() {
               type="text"
               inputmode="numeric"
               autocomplete="off"
-              maxlength="64"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              :maxlength="MATRICULA_MAX_DIGITOS * 2"
               required
             />
           </label>

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -14,6 +15,15 @@ import { Prisma } from '@prisma/client';
 import * as bcrypt from '@node-rs/bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { isDevSignupEnabled } from '../auth/dev-signup';
+import {
+  acharPorMatricula,
+  colideComGravada,
+  ehMatriculaValida,
+  escaparMatricula,
+  MATRICULA_SO_DIGITOS_MSG,
+  normalizarMatricula,
+  SQL_MATRICULAS_NAO_NUMERICAS,
+} from './matricula';
 
 /**
  * Em produção, contas só nascem pelo login com Google, em
@@ -31,8 +41,23 @@ export class UsersService {
 
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Login por matrícula. Tolerante (`acharPorMatricula`): quem digita
+   * `2023.123-45` entra na conta `202312345`, e as contas gravadas antes da
+   * regra de só dígitos continuam entrando com o valor exato de sempre.
+   */
   findByMatricula(matricula: string) {
-    return this.prisma.user.findUnique({ where: { matricula } });
+    return acharPorMatricula(matricula, (valor) =>
+      this.prisma.user.findUnique({ where: { matricula: valor } }),
+    );
+  }
+
+  /** O dono da sessão como está NO BANCO agora — ver `AuthController.me`. */
+  findSessionUser(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, matricula: true, name: true, role: true },
+    });
   }
 
   /**
@@ -48,13 +73,20 @@ export class UsersService {
    *
    * Nada mais se move: capturas, `quiz_attempts`, `rare_unlocks` e vouchers são
    * todos por `userId`, então o progresso inteiro acompanha a conta.
+   *
+   * O valor novo segue a regra do cadastro (`users/matricula.ts`): normalizado
+   * e só dígitos. O DTO já garante isso; repetir aqui protege quem chamar o
+   * método por fora do ValidationPipe.
    */
   async changeMatricula(
     userId: string,
     matricula: string,
     currentPassword: string,
   ) {
-    const nova = matricula.trim();
+    const nova = normalizarMatricula(matricula);
+    if (!ehMatriculaValida(nova)) {
+      throw new BadRequestException(MATRICULA_SO_DIGITOS_MSG);
+    }
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     // Sessão válida para um usuário que sumiu: não é erro do cliente, mas a
@@ -69,13 +101,23 @@ export class UsersService {
     // Reenviar a mesma matrícula não é erro — e não merece linha de auditoria.
     if (nova === user.matricula) return user;
 
-    const jaExiste = await this.prisma.user.findUnique({
-      where: { matricula: nova },
-      select: { id: true },
-    });
+    const [jaExiste, naoNumericas] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { matricula: nova },
+        select: { id: true },
+      }),
+      // Como no cadastro: a conta antiga `2023.12345` é a MESMA matrícula que
+      // o `202312345` pedido aqui, e o índice único não vê isso.
+      this.prisma.$queryRawUnsafe<{ id: string; matricula: string }[]>(
+        SQL_MATRICULAS_NAO_NUMERICAS,
+      ),
+    ]);
     // Mesma mensagem do cadastro: a unicidade é a mesma regra, e ela é o que
     // impede alguém de tomar a matrícula de uma conta existente.
-    if (jaExiste) throw new ConflictException('Matrícula já cadastrada');
+    const colisao = colideComGravada(nova, naoNumericas);
+    if (jaExiste || (colisao && colisao.id !== userId)) {
+      throw new ConflictException('Matrícula já cadastrada');
+    }
 
     const atualizado = await this.prisma.user
       .update({ where: { id: userId }, data: { matricula: nova } })
@@ -95,11 +137,15 @@ export class UsersService {
     // Sem tabela nova, no padrão de `qr_batch` e `setting_updated`: a pergunta
     // depois do evento é "por que a bancada não acha mais este aluno?", e o
     // valor ANTIGO é a única coisa que responde isso.
+    //
+    // O `from` vai escapado (`escaparMatricula`) porque o motivo mais comum
+    // desta troca é justamente uma matrícula com caractere invisível: sem
+    // escapar, o log mostraria `202312345` dos dois lados e não explicaria nada.
     this.logger.log(
       JSON.stringify({
         audit: 'matricula_changed',
         userId,
-        from: user.matricula,
+        from: escaparMatricula(user.matricula),
         to: nova,
       }),
     );

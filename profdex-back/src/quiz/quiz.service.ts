@@ -18,6 +18,10 @@ import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import {
+  acharPorMatricula,
+  MATRICULA_NAO_ENCONTRADA_MSG,
+} from '../users/matricula';
+import {
   ANSWER_GRACE_MS,
   ANSWER_WINDOW_MS,
   QUIZ_DIFFICULTY_MIX,
@@ -848,16 +852,19 @@ export class QuizService implements OnModuleInit, OnModuleDestroy {
 
   // ── Interno ───────────────────────────────────────────────────────────────
 
+  /**
+   * A bancada só digita 0–9. A busca é a tolerante de `users/matricula.ts`, e
+   * a mensagem de "não encontrada" manda o operador para onde está a resposta:
+   * o Perfil do aluno mostra a matrícula gravada, e é lá que ele a corrige.
+   */
   private async findAluno(matricula: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { matricula: matricula.trim() },
-      select: { id: true, name: true, matricula: true },
-    });
-    if (!user) {
-      throw new NotFoundException(
-        'Matrícula não encontrada. O aluno precisa ter entrado no app pelo menos uma vez.',
-      );
-    }
+    const user = await acharPorMatricula(matricula, (valor) =>
+      this.prisma.user.findUnique({
+        where: { matricula: valor },
+        select: { id: true, name: true, matricula: true },
+      }),
+    );
+    if (!user) throw new NotFoundException(MATRICULA_NAO_ENCONTRADA_MSG);
     return user;
   }
 

@@ -345,6 +345,34 @@ com o que o painel consulta — rodar contra a `DATABASE_URL` errada é a causa
 mais comum. As seções continuam **listando** os professores raros e o lendário
 mesmo zeradas: eles são cadastro, não progresso.
 
+### Matrículas que a bancada não encontra
+
+Até 2026-09-29 o cadastro gravava a matrícula como veio. Isso incluía o e-mail
+que o autofill do celular põe no campo, `2023.123-45` e espaço invisível, e a
+bancada só digita 0–9. O cadastro agora só aceita dígitos. Para o que já estava
+no banco:
+
+```bash
+docker compose exec app npm run db:normalizar-matriculas                # só mostra o que faria
+docker compose exec app npm run db:normalizar-matriculas -- --listar    # ...e quem precisa de contato
+docker compose exec app npm run db:normalizar-matriculas -- --yes       # aplica o que tem conserto
+```
+
+Sem `--listar`, o script só imprime **contagens e motivos**, e não sai nome nem
+e-mail. Ele separa as contas em quatro grupos:
+
+- **canônicas**: já estão certas.
+- **corrigíveis**: normalizadas, viram só dígitos livres. O `--yes` grava, com a
+  linha `matricula_changed` no log.
+- **conflito**: o valor normalizado já é de outra conta. O script não mexe
+  nelas.
+- **fora do padrão**: e-mail, letras ou mais de 20 dígitos. Não têm conserto
+  automático, e o aluno corrige no **Perfil**.
+
+Rodar de novo é seguro. O login e a bancada usam o valor novo na hora. Para quem
+já está logado, o Perfil passa a mostrar o valor novo na próxima vez que o app
+abrir: o `/auth/me` lê o banco e reemite a sessão.
+
 ### A conta do organizador com a coleção inteira
 
 Para conferir Profdex, raid e arena sem escanear ficha por ficha:

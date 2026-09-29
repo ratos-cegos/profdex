@@ -5,6 +5,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { escapeHtml } from '../mail/escape-html';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ehMatriculaValida, normalizarMatricula } from '../users/matricula';
 
 /** Prazo do link. Curto de propósito: é uma chave de acesso à conta. */
 export const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
@@ -46,10 +47,29 @@ export class PasswordResetService {
    */
   async request(identifier: string): Promise<void> {
     const value = identifier.trim().toLowerCase();
-    const user = await this.prisma.user.findFirst({
+    // `2023.123-45` também acha a conta `202312345`, como no login. A forma
+    // normalizada só entra quando sobra matrícula de verdade (só dígitos): um
+    // e-mail sem os pontos não é identificador de ninguém.
+    //
+    // Duas consultas, e não um `OR` só: com `2023.12345` e `202312345` os dois
+    // gravados (o "conflito" que o `db:normalizar-matriculas` não conserta), um
+    // `findFirst` sem ordem deixa o banco escolher, e o link de redefinição sai
+    // para o e-mail da conta errada. O exato tem que ganhar, como em
+    // `acharPorMatricula`. O e-mail viaja junto do valor exato porque não pode
+    // perder para uma matrícula só parecida.
+    const exato = await this.prisma.user.findFirst({
       where: { OR: [{ matricula: value }, { email: value }] },
       select: { id: true, name: true, email: true },
     });
+    const normalizada = normalizarMatricula(value);
+    const user =
+      exato ??
+      (normalizada !== value && ehMatriculaValida(normalizada)
+        ? await this.prisma.user.findFirst({
+            where: { matricula: normalizada },
+            select: { id: true, name: true, email: true },
+          })
+        : null);
 
     // Sem conta, ou conta sem e-mail (cadastro antigo por matrícula): não há
     // para onde mandar. Silêncio — do lado de fora é indistinguível de sucesso.
