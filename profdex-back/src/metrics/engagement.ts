@@ -118,8 +118,8 @@ export const ENGAGEMENT_POINTS: Record<EventType, number> = {
    * primeira tentativa ser possível.
    *
    * Não redispara `collection_completed`: aquele evento já pagou 200 quando o
-   * aluno fechou os comuns, e é ele que destrava a raid. Pagar de novo seria
-   * contar a mesma conquista duas vezes.
+   * aluno fechou a coleção (comuns e raros), e é ela que destrava a raid. Pagar
+   * de novo seria contar a mesma conquista duas vezes.
    */
   legendary_captured: 200,
 };
@@ -169,7 +169,18 @@ export const INTERACTION_WEIGHTS: Record<EventType, number> = {
   guide_opened: 1,
   collection_completed: 50,
   foto_ar: 3,
-  quiz_answered: 10,
+  /**
+   * 20, e não 10: uma rodada de bancada custa fila, um operador e minutos do
+   * aluno — é o gesto mais caro do evento, e valia metade de um professor
+   * inédito (`professor_discovered` 5 + `professor_captured` 15 = 20). Empatar
+   * com a captura é o mínimo defensável.
+   *
+   * Mudar este peso muda a série INTEIRA, não só daqui para a frente: o rollup
+   * recalcula as últimas 24h a cada passada, e `npm run metrics:rollup-full`
+   * refaz o que for mais antigo que isso. Sem um dos dois, o gráfico ganha um
+   * degrau no dia da mudança que não corresponde a evento nenhum.
+   */
+  quiz_answered: 20,
   quiz_correct: 0, // já contado no quiz_answered
   quiz_practice_answered: 0, // treino é volume livre, não atividade do evento
   // Zero nos dois: o gesto já foi contado. Os 5 acertos vieram como 5
@@ -183,6 +194,25 @@ export const INTERACTION_WEIGHTS: Record<EventType, number> = {
   // tentativa que o produziu.
   legendary_captured: 0,
 };
+
+/**
+ * Interações por TURNO de batalha (PvP e raid).
+ *
+ * A batalha vale 25 por lado como fato consumado, mas esse número é o mesmo
+ * para uma batalha de 4 turnos e para uma de 38 — e a diferença entre as duas é
+ * exatamente a diferença de engajamento que o relatório precisa mostrar.
+ *
+ * Vale 1, como um `screen_view`: um turno é um toque e alguns segundos de
+ * animação. Com isso uma batalha típica (~20 turnos) sai de 25 para ~45 por
+ * lado, e uma batalha longa passa a valer mais que uma curta — sem que o turno
+ * domine o total, como aconteceria com peso 2 no teto de 40 turnos do PvP.
+ *
+ * As DUAS fontes de turno já existem no banco, e nenhuma exige evento novo:
+ * o PvP grava `turns` no metadata do `battle_finished` (um por jogador, o que
+ * mantém a simetria do "25 para cada lado") e a raid grava em
+ * `raid_attempts.turns`.
+ */
+export const INTERACTIONS_PER_BATTLE_TURN = 1;
 
 /** Tamanho do bloco de tempo de uso convertido em interações. */
 export const TIME_BLOCK_MINUTES = 10;

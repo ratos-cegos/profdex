@@ -8,6 +8,7 @@ import {
   EVENT_TYPES,
   INTERACTION_SOURCE_LABELS,
   INTERACTION_WEIGHTS,
+  INTERACTIONS_PER_BATTLE_TURN,
   INTERACTIONS_PER_TIME_BLOCK,
   TIME_BLOCK_MINUTES,
 } from './engagement';
@@ -66,8 +67,13 @@ export class AdminMetricsService {
       this.prisma.appEvent.count({
         where: { type: 'professor_captured', occurredAt: { gte: startOfDay } },
       }),
-      this.prisma.appEvent.count({
-        where: { type: 'battle_finished', occurredAt: { gte: startOfDay } },
+      // A tabela `battles`, e NÃO `appEvent.count('battle_finished')`: o evento
+      // é gravado uma vez POR JOGADOR (ver battle-room.service.ts), então
+      // contá-lo mostrava o dobro das batalhas que aconteceram. O peso de
+      // interação continua contando os dois lados de propósito — aqui a
+      // pergunta é "quantas batalhas houve?", e ela tem uma resposta só.
+      this.prisma.battle.count({
+        where: { status: 'finished', finishedAt: { gte: startOfDay } },
       }),
       this.interactionTotals(startOfDay),
     ]);
@@ -129,6 +135,15 @@ export class AdminMetricsService {
         peso: INTERACTIONS_PER_TIME_BLOCK,
         interacoes: por.get('interactions_time') ?? 0,
       })
+      // Os turnos entram na quebra pelo mesmo motivo que o tempo: o total vem
+      // pré-somado do rollup, e uma fonte de fora da lista faria a quebra não
+      // fechar com ele — a tabela do painel viraria uma conta que não bate.
+      .concat({
+        fonte: 'Turnos de batalha (PvP e raid)',
+        ocorrencias: 0,
+        peso: INTERACTIONS_PER_BATTLE_TURN,
+        interacoes: por.get('interactions_turns') ?? 0,
+      })
       .filter((f) => f.interacoes > 0)
       .sort((a, b) => b.interacoes - a.interacoes);
 
@@ -140,6 +155,114 @@ export class AdminMetricsService {
         pct: totais.total
           ? Math.round((f.interacoes / totais.total) * 1000) / 10
           : 0,
+      })),
+    };
+  }
+
+  /**
+   * Os números do relatório de 24 horas — o que o PDF imprime.
+   *
+   * Janela MÓVEL de 24h, e não "hoje": às 9h da manhã "hoje" são duas horas de
+   * evento, e o relatório existe justamente para ser tirado no meio da feira.
+   * É a mesma janela que o rollup recalcula a cada passada, então tudo aqui
+   * está na régua atual — nada de balde congelado num peso velho.
+   *
+   * As séries horárias vêm de `metrics_hourly` (pré-agregado). Os totais de
+   * batalha e de usuários vêm das TABELAS, porque são perguntas com resposta
+   * única e exata, e é delas que a coordenação vai cobrar: `battles` conta uma
+   * linha por batalha (o evento conta uma por jogador) e o total de usuários
+   * precisa do `UNION` com `app_events` para não perder a bancada.
+   */
+  async report24h() {
+    // 24 baldes terminando na hora CORRENTE, e não `agora - 24h` cru: com o
+    // corte cru, o balde da hora em curso cai fora da série (ele é
+    // `from + 24h`, o 25º) — e a hora em curso é justamente a que o organizador
+    // abre o relatório para ver. A janela é, então, as 23 horas fechadas mais a
+    // hora em andamento; o cabeçalho do PDF imprime o período exato.
+    const from = new Date();
+    from.setMinutes(0, 0, 0);
+    from.setHours(from.getHours() - 23);
+
+    const [linhas, batalhas, usuarios, raids, quebra] = await Promise.all([
+      this.prisma.metricHourly.findMany({
+        where: { bucket: { gte: from } },
+        orderBy: { bucket: 'asc' },
+        select: { bucket: true, metric: true, value: true },
+      }),
+      this.prisma.battle.count({
+        where: { status: 'finished', finishedAt: { gte: from } },
+      }),
+      this.distinctSessionUsers(from),
+      this.prisma.raidAttempt.count({ where: { endedAt: { gte: from } } }),
+      this.interactions(),
+    ]);
+
+    // Uma passada só sobre as linhas: por métrica (total) e por hora (série).
+    const total = new Map<string, number>();
+    const porHora = new Map<string, Map<number, number>>();
+    for (const linha of linhas) {
+      total.set(linha.metric, (total.get(linha.metric) ?? 0) + linha.value);
+      const serie = porHora.get(linha.metric) ?? new Map<number, number>();
+      serie.set(linha.bucket.getTime(), linha.value);
+      porHora.set(linha.metric, serie);
+    }
+
+    // As 24 horas explícitas, inclusive as vazias e a que está em curso: um
+    // gráfico que pula a hora do almoço mente sobre o ritmo do evento.
+    const horas: number[] = [];
+    for (let h = 0; h < 24; h += 1) {
+      horas.push(from.getTime() + h * 3_600_000);
+    }
+    const serie = (metric: string) =>
+      horas.map((t) => porHora.get(metric)?.get(t) ?? 0);
+
+    const respondidas = total.get('event_quiz_answered') ?? 0;
+    const acertadas = total.get('event_quiz_correct') ?? 0;
+
+    return {
+      geradoEm: new Date(),
+      de: from,
+      horas,
+      interacoes: {
+        total: total.get('interactions') ?? 0,
+        deTempo: total.get('interactions_time') ?? 0,
+        deTurnos: total.get('interactions_turns') ?? 0,
+        porHora: serie('interactions'),
+      },
+      quiz: {
+        respondidas,
+        acertadas,
+        // Taxa de acerto da BANCADA. Sem `respondidas` não há taxa nenhuma —
+        // `0/0` viraria `NaN` no meio do PDF.
+        taxa: respondidas
+          ? Math.round((acertadas / respondidas) * 1000) / 10
+          : 0,
+        porHora: serie('event_quiz_answered'),
+        acertosPorHora: serie('event_quiz_correct'),
+      },
+      capturas: {
+        total: total.get('event_professor_captured') ?? 0,
+        raros: total.get('event_rare_captured') ?? 0,
+        porHora: serie('event_professor_captured'),
+      },
+      batalhas: {
+        total: batalhas,
+        raids,
+        turnos:
+          (total.get('interactions_turns') ?? 0) / INTERACTIONS_PER_BATTLE_TURN,
+        // `/ 2` porque a série horária vem do EVENTO, que é gravado uma vez por
+        // jogador. O total ao lado vem da tabela `battles` e não precisa disso —
+        // e é por isso que os dois podem divergir em 1 numa hora de virada.
+        porHora: serie('event_battle_finished').map((v) => Math.round(v / 2)),
+      },
+      usuarios: {
+        total: usuarios,
+        porHora: serie('active_users'),
+      },
+      fontes: quebra.fontes.map((f) => ({
+        fonte: f.fonte,
+        interacoes: f.interacoes,
+        pct: f.pct,
       })),
     };
   }
@@ -531,11 +654,25 @@ export class AdminMetricsService {
     return rows[0] ?? { total: 0, hoje: 0 };
   }
 
+  /**
+   * Alunos distintos que USARAM o app na janela — sessão aberta **ou** evento
+   * gerado.
+   *
+   * O `UNION` não é preciosismo: o aluno da bancada responde no tablet do
+   * OPERADOR, e o `quiz_answered` dele nasce com `sessionId: null`. Se o app no
+   * bolso dele não estava em primeiro plano — e a varredura encerra a sessão
+   * após 3 min, que é menos que a fila —, ele não tinha nenhuma linha em
+   * `user_sessions` e sumia do DAU. Era a bancada inteira faltando no número
+   * que a coordenação lê.
+   */
   private async distinctSessionUsers(since: Date): Promise<number> {
     const rows = await this.prisma.$queryRaw<{ total: number }[]>`
-      SELECT COUNT(DISTINCT user_id)::int AS total
-      FROM user_sessions
-      WHERE started_at >= ${since}
+      SELECT COUNT(*)::int AS total
+      FROM (
+        SELECT user_id FROM user_sessions WHERE started_at >= ${since}
+        UNION
+        SELECT user_id FROM app_events   WHERE occurred_at >= ${since}
+      ) AS usuarios
     `;
     return rows[0]?.total ?? 0;
   }

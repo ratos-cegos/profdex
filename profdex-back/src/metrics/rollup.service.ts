@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { QUIZ_THEMES } from '../quiz/quiz.constants';
 import {
   INTERACTION_WEIGHTS,
+  INTERACTIONS_PER_BATTLE_TURN,
   INTERACTIONS_PER_TIME_BLOCK,
   TIME_BLOCK_MINUTES,
 } from './engagement';
@@ -17,11 +18,20 @@ import {
 const ROLLUP_INTERVAL_MS = 5 * 60_000;
 
 /**
- * Quantas horas para trás são recalculadas a cada passada. Duas cobrem a hora
- * em curso e a anterior (que pode ter recebido eventos atrasados do buffer).
- * O upsert torna o recálculo idempotente.
+ * Quantas horas para trás são recalculadas a cada passada.
+ *
+ * 24, e não as 2 que cobriam só a hora em curso e a anterior: o relatório do
+ * painel é uma janela móvel de 24h, e ela precisa fechar com a régua ATUAL.
+ * Com 2 horas, mudar um peso (ou corrigir uma conta) deixava o resto do dia
+ * congelado no cálculo velho, e o gráfico ganhava um degrau que não
+ * correspondia a evento nenhum — foi o que aconteceu ao recalibrar o quiz.
+ *
+ * Custa uma varredura de 24h de `app_events` a cada 5 minutos. É barato na
+ * escala do evento (dezenas de milhares de linhas, todas sob o índice de
+ * `occurred_at`) e o upsert mantém tudo idempotente. O que for mais antigo que
+ * a janela se conserta com `npm run metrics:rollup-full`.
  */
-const ROLLUP_WINDOW_HOURS = 2;
+const ROLLUP_WINDOW_HOURS = 24;
 
 interface Row {
   bucket: Date;
@@ -55,14 +65,23 @@ export class RollupService implements OnModuleInit, OnModuleDestroy {
     this.timer = null;
   }
 
-  /** Recalcula a janela recente. Seguro chamar a qualquer momento. */
-  async run(): Promise<void> {
+  /**
+   * Recalcula a janela recente. Seguro chamar a qualquer momento.
+   *
+   * `desde` existe para o recálculo histórico (`scripts/rollup-full.ts`), que
+   * precisa passar por cima da janela de 24h quando um peso muda — sem ele, os
+   * baldes antigos ficariam para sempre na régua velha. Fora disso ninguém
+   * passa o argumento.
+   */
+  async run(desde?: Date): Promise<void> {
     // Uma passada por vez: se o banco estiver lento, empilhar recálculos só
     // pioraria a situação.
     if (this.running) return;
     this.running = true;
 
-    const from = new Date(Date.now() - ROLLUP_WINDOW_HOURS * 3_600_000);
+    const from = desde
+      ? new Date(desde)
+      : new Date(Date.now() - ROLLUP_WINDOW_HOURS * 3_600_000);
     from.setMinutes(0, 0, 0);
 
     try {
@@ -162,13 +181,31 @@ export class RollupService implements OnModuleInit, OnModuleDestroy {
   /**
    * Interações por hora — o número de volume do evento.
    *
-   * Duas fontes somadas: os eventos, cada um com seu peso (ver
-   * INTERACTION_WEIGHTS), e o tempo ativo convertido em blocos. Sai também
-   * `interactions_time` sozinha, para o painel conseguir mostrar quanto do
-   * total veio de tempo e não de ação — sem isso o número seria uma caixa
-   * preta.
+   * TRÊS fontes somadas: os eventos, cada um com seu peso (ver
+   * INTERACTION_WEIGHTS); o tempo ativo convertido em blocos; e os TURNOS de
+   * batalha. Saem também `interactions_time` e `interactions_turns` sozinhas,
+   * para o painel mostrar quanto do total veio de cada coisa — sem isso o
+   * número seria uma caixa preta.
    *
-   * As duas séries precisam sair da MESMA consulta: gerar duas linhas
+   * O turno vem de duas origens, e nenhuma delas exigiu evento novo:
+   *
+   * - **PvP**: `metadata->>'turns'` do `battle_finished`. Há um evento por
+   *   jogador, então a mesma batalha entra duas vezes — de propósito, é a
+   *   simetria do "25 para cada lado" que o peso do evento já usa.
+   * - **Raid**: `raid_attempts.turns`, atribuído à hora do FIM da tentativa —
+   *   uma raid longa cruza a virada da hora, e `ended_at` é o instante em que o
+   *   número passa a existir. Tentativas `anulada` entram: os turnos foram
+   *   jogados de verdade, e quem perdeu a raid para um restart nosso não deve
+   *   perder o esforço no relatório.
+   *
+   * O `CASE` com `~ '^[0-9]{1,6}$'` no metadata não é paranoia: o campo é JSON
+   * livre, e `::int` sobre lixo lançaria exceção no meio da passada, derrubando
+   * TODAS as métricas da janela — o mesmo cuidado que o `practiceQuiz` já
+   * documenta. O teto de 6 dígitos evita estourar `int` numa linha corrompida.
+   * `battle_finished` é server-only, então o lixo só chegaria por um bug nosso;
+   * a rede continua valendo a pena.
+   *
+   * As séries precisam sair da MESMA consulta: gerar duas linhas
    * `(bucket, 'interactions')` no mesmo INSERT faria o Postgres recusar o
    * `ON CONFLICT` ("cannot affect row a second time").
    */
@@ -199,12 +236,41 @@ export class RollupService implements OnModuleInit, OnModuleDestroy {
         FROM user_sessions s
         WHERE s.ended_at >= ${from}
         GROUP BY 1
+      ),
+      turnos AS (
+        SELECT bucket, (SUM(qtd) * ${INTERACTIONS_PER_BATTLE_TURN}::int)::int AS value
+        FROM (
+          SELECT date_trunc('hour', e.occurred_at) AS bucket,
+                 -- CASE, e não FILTER: FILTER só existe em agregação, e aqui
+                 -- isto é uma expressão escalar por linha.
+                 CASE
+                   WHEN e.metadata->>'turns' ~ '^[0-9]{1,6}$'
+                     THEN (e.metadata->>'turns')::int
+                   ELSE 0
+                 END AS qtd
+          FROM app_events e
+          WHERE e.type = 'battle_finished'
+            AND e.occurred_at >= ${from}
+          UNION ALL
+          SELECT date_trunc('hour', a.ended_at) AS bucket,
+                 a.turns                        AS qtd
+          FROM raid_attempts a
+          WHERE a.ended_at >= ${from}
+        ) AS todos
+        GROUP BY bucket
       )
       SELECT bucket, 'interactions_time'::text AS metric, value
       FROM tempo
       UNION ALL
+      SELECT bucket, 'interactions_turns'::text AS metric, value
+      FROM turnos
+      UNION ALL
       SELECT bucket, 'interactions'::text AS metric, SUM(value)::int AS value
-      FROM (SELECT * FROM eventos UNION ALL SELECT * FROM tempo) AS todas
+      FROM (
+        SELECT * FROM eventos
+        UNION ALL SELECT * FROM tempo
+        UNION ALL SELECT * FROM turnos
+      ) AS todas
       GROUP BY bucket
     `;
   }
@@ -235,9 +301,7 @@ export class RollupService implements OnModuleInit, OnModuleDestroy {
    * criaria uma chave nova em `metrics_hourly` e sujaria o painel para sempre.
    */
   private practiceQuiz(from: Date): Promise<Row[]> {
-    const temas = Prisma.join(
-      QUIZ_THEMES.map((t) => Prisma.sql`(${t}::text)`),
-    );
+    const temas = Prisma.join(QUIZ_THEMES.map((t) => Prisma.sql`(${t}::text)`));
 
     return this.prisma.$queryRaw<Row[]>`
       WITH temas (tema) AS (VALUES ${temas}),

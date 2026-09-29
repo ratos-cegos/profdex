@@ -199,23 +199,30 @@ export class RankingsService {
     const [pares, professores] = await Promise.all([
       // `groupBy` por (aluno, professor): o Prisma não faz COUNT(DISTINCT), e
       // dobrar o número de linhas é barato — no máximo alunos × professores.
-      // Os RAROS ficam fora dos dois lados da fração. Eles não contam para
-      // completar a Profdex (tarefa 15, decisão 14), e contá-los só no
-      // numerador faria o ladder passar de 100% para quem pegou um; só no
-      // denominador, tornaria os 100% inalcançáveis sem 100 min de bancada.
       //
-      // O LENDÁRIO sai dos dois lados pelo mesmo argumento. Ele conta para
-      // completar a Profdex do aluno, mas aqui a fração compara ALUNOS entre
-      // si: com ele no numerador, quem venceu a raid passaria de 100%; com ele
-      // no denominador, ninguém fecha o ladder sem vencer a raid. A régua do
-      // ranking de coleção continua sendo a coleção comum, igual para todos.
+      // Os RAROS entram nos dois lados da fração, porque passaram a contar para
+      // completar a Profdex. Deixá-los fora faria este ladder anunciar 100% para
+      // quem abre a própria coleção e lê `18/21` — a mesma contradição que o
+      // contador da tela existe para não criar. Com eles nos dois lados, 100%
+      // aqui significa exatamente "fechou a dex", que é o gate da raid.
+      //
+      // O LENDÁRIO continua fora dos dois lados. Aqui a fração compara ALUNOS
+      // entre si: com ele no numerador, quem venceu a raid passaria de 100%; com
+      // ele no denominador, ninguém fecha o ladder sem vencer a raid.
+      //
+      // `active: true` nos dois lados pelo mesmo motivo que no gate: sem ele, um
+      // professor desativado no painel fica no denominador e trava o ladder em
+      // 97% para todo mundo, para sempre.
       this.prisma.capture.groupBy({
         by: ['userId', 'professorId'],
-        where: { professor: { rare: false, legendary: false }, user: SO_ALUNOS },
+        where: {
+          professor: { legendary: false, active: true },
+          user: SO_ALUNOS,
+        },
         _max: { capturedAt: true },
       }),
       this.prisma.professor.count({
-        where: { rare: false, legendary: false },
+        where: { legendary: false, active: true },
       }),
     ]);
 

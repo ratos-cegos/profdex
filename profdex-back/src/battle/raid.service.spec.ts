@@ -1,6 +1,8 @@
+import { MailService } from '../mail/mail.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { EMAIL_DO_PRIMEIRO } from './raid-first-clear.mail';
 import {
   RAID_BLOQUEADA,
   RAID_EM_COOLDOWN,
@@ -8,6 +10,13 @@ import {
   RAID_SEM_LENDARIO,
   RaidService,
 } from './raid.service';
+
+/**
+ * O aviso do primeiro vencedor é disparado sem `await` de propósito (a tela de
+ * vitória não espera e-mail). Os testes precisam devolver o controle ao loop
+ * para que essa cadeia termine antes das asserções.
+ */
+const esperarOAviso = () => new Promise((resolve) => setImmediate(resolve));
 
 const LENDARIO = {
   id: 'lendario-1',
@@ -43,6 +52,19 @@ function criarPrisma(over: Record<string, unknown> = {}) {
         ]);
       }),
       create: jest.fn().mockResolvedValue({ id: 'captura-1' }),
+      count: jest.fn().mockResolvedValue(21),
+    },
+    user: {
+      findUniqueOrThrow: jest.fn().mockResolvedValue({
+        name: 'Ana Souza',
+        matricula: '202312345',
+        email: 'ana.souza@edu.unifil.br',
+        battleRating: 1180,
+        battleWins: 7,
+        battleLosses: 2,
+        battleDraws: 1,
+        engagementScore: 2450,
+      }),
     },
     raidUnlock: {
       findUnique: jest.fn().mockResolvedValue(null),
@@ -73,27 +95,48 @@ function criar(
   const settings = {
     raidCooldownMs: jest.fn().mockResolvedValue(cooldownMs),
   };
+  const mail = { send: jest.fn().mockResolvedValue(true) };
   const service = new RaidService(
     prisma as unknown as PrismaService,
     metrics as unknown as MetricsService,
     settings as unknown as SettingsService,
+    mail as unknown as MailService,
   );
-  return { service, metrics, settings };
+  return { service, metrics, settings, mail };
+}
+
+/**
+ * A transação do `award`, com a tabela do prêmio começando com `anteriores`
+ * linhas — é esse número que decide se o vencedor é o primeiro do evento.
+ */
+function criarTransacao(anteriores: number) {
+  return {
+    capture: { create: jest.fn().mockResolvedValue({ id: 'captura-1' }) },
+    raidClear: {
+      count: jest.fn().mockResolvedValue(anteriores),
+      create: jest
+        .fn()
+        .mockResolvedValue({ clearedAt: new Date('2026-09-29T17:32:00Z') }),
+    },
+  };
 }
 
 describe('RaidService — o gate da Profdex', () => {
   /**
-   * Os três filtros da contagem. Cada um evita um jeito diferente de a raid
-   * ficar impossível (ou trivial) de destravar, e os três já foram bug em
-   * potencial em alguma consulta deste projeto.
+   * Os filtros da contagem. Cada um evita um jeito diferente de a raid ficar
+   * impossível (ou trivial) de destravar, e os dois já foram bug em potencial em
+   * alguma consulta deste projeto.
+   *
+   * O RARO está dentro: fechar a Profdex exige comuns e raros. A ausência de
+   * `rare: false` aqui é a asserção — se alguém o recolocar, este teste cai.
    */
-  it('conta só professores comuns, ativos, sem raro e sem lendário', async () => {
+  it('conta comuns E raros ativos, e nunca o lendário', async () => {
     const prisma = criarPrisma();
     const { service } = criar(prisma);
 
     await service.dexProgress('ana');
 
-    const esperado = { rare: false, legendary: false, active: true };
+    const esperado = { legendary: false, active: true };
     expect(prisma.capture.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: 'ana', professor: esperado },
@@ -267,10 +310,7 @@ describe('RaidService — o prêmio', () => {
    *  fila do prêmio, e o contrário daria prêmio sem exemplar. */
   it('cria o exemplar com IV 15 nos quatro e a linha da fila do prêmio', async () => {
     const prisma = criarPrisma();
-    const tx = {
-      capture: { create: jest.fn().mockResolvedValue({ id: 'captura-1' }) },
-      raidClear: { create: jest.fn().mockResolvedValue({}) },
-    };
+    const tx = criarTransacao(2);
     prisma.$transaction = jest.fn((fn: (t: unknown) => unknown) => fn(tx));
     const { service, metrics } = criar(prisma);
 
@@ -296,14 +336,16 @@ describe('RaidService — o prêmio', () => {
         }),
       }),
     );
-    expect(tx.raidClear.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        userId: 'ana',
-        captureId: 'captura-1',
-        attemptId: 'tentativa-9',
-        attempts: 4,
+    expect(tx.raidClear.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: 'ana',
+          captureId: 'captura-1',
+          attemptId: 'tentativa-9',
+          attempts: 4,
+        }),
       }),
-    });
+    );
 
     // Os três eventos, server-only: descoberta + captura + o lendário.
     const eventos = metrics.record.mock.calls[0][2] as { type: string }[];
@@ -337,6 +379,100 @@ describe('RaidService — o prêmio', () => {
     await expect(
       service.award('ana', { id: 'l1', types: ['ia'] }, null, 't1', 2),
     ).resolves.toBeNull();
+  });
+});
+
+/**
+ * O aviso do PRIMEIRO vencedor. Vale um prêmio físico e sai uma vez por evento
+ * — as duas metades dessa frase são o que este bloco protege.
+ */
+describe('RaidService — o aviso do primeiro vencedor', () => {
+  const vencer = (service: RaidService) =>
+    service.award(
+      'ana',
+      { id: 'lendario-1', types: ['matematica'] },
+      'var-1',
+      'tentativa-9',
+      4,
+    );
+
+  it('manda o e-mail com nome, matrícula e estatísticas quando é o primeiro', async () => {
+    const prisma = criarPrisma();
+    prisma.$transaction = jest.fn((fn: (t: unknown) => unknown) =>
+      fn(criarTransacao(0)),
+    );
+    const { service, mail } = criar(prisma);
+
+    await vencer(service);
+    await esperarOAviso();
+
+    expect(mail.send).toHaveBeenCalledTimes(1);
+    const [para, assunto, corpo] = mail.send.mock.calls[0] as string[];
+    expect(para).toBe(EMAIL_DO_PRIMEIRO);
+    expect(assunto).toContain('Ana Souza');
+    expect(corpo).toContain('202312345');
+    expect(corpo).toContain('ana.souza@edu.unifil.br');
+    // As estatísticas pedidas: tentativas, dex, raros, exemplares, Elo e pontos.
+    expect(corpo).toContain('3/3');
+    expect(corpo).toContain('1180 de Elo');
+    expect(corpo).toContain('7V 2D 1E');
+    expect(corpo).toContain('2.450 pontos');
+    expect(corpo).toContain('Exemplares');
+    expect(corpo).toContain('>21<');
+  });
+
+  /** A regra inteira: "apenas o primeiro". */
+  it('NÃO manda e-mail para quem venceu depois do primeiro', async () => {
+    const prisma = criarPrisma();
+    prisma.$transaction = jest.fn((fn: (t: unknown) => unknown) =>
+      fn(criarTransacao(1)),
+    );
+    const { service, mail } = criar(prisma);
+
+    await vencer(service);
+    await esperarOAviso();
+
+    expect(mail.send).not.toHaveBeenCalled();
+  });
+
+  /**
+   * As estatísticas são enfeite; o aviso, não. Perder o e-mail inteiro porque
+   * uma consulta falhou seria trocar a informação que vale o prêmio pelos
+   * detalhes dela.
+   */
+  it('sem as estatísticas, manda o aviso mínimo em vez de nada', async () => {
+    const prisma = criarPrisma();
+    prisma.$transaction = jest.fn((fn: (t: unknown) => unknown) =>
+      fn(criarTransacao(0)),
+    );
+    prisma.user.findUniqueOrThrow = jest
+      .fn()
+      .mockRejectedValue(new Error('banco fora do ar'));
+    const { service, mail } = criar(prisma);
+
+    await expect(vencer(service)).resolves.toEqual({ captureId: 'captura-1' });
+    await esperarOAviso();
+
+    expect(mail.send).toHaveBeenCalledTimes(1);
+    const [, assunto, corpo] = mail.send.mock.calls[0] as string[];
+    expect(assunto).toContain('sem estatísticas');
+    expect(corpo).toContain('ana');
+  });
+
+  /**
+   * A vitória já está gravada e o aluno já viu a tela. Um e-mail que não sai não
+   * pode virar exceção — nem rejeição não tratada, já que ninguém dá `await`.
+   */
+  it('a vitória não falha quando o envio falha', async () => {
+    const prisma = criarPrisma();
+    prisma.$transaction = jest.fn((fn: (t: unknown) => unknown) =>
+      fn(criarTransacao(0)),
+    );
+    const { service, mail } = criar(prisma);
+    mail.send = jest.fn().mockRejectedValue(new Error('rede fora'));
+
+    await expect(vencer(service)).resolves.toEqual({ captureId: 'captura-1' });
+    await esperarOAviso();
   });
 });
 
