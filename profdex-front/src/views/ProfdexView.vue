@@ -113,19 +113,18 @@ const podeDesafiar = computed(
 )
 
 const iniciando = ref(false)
-const raidErro = ref(null)
 
 async function desafiarLendario() {
   if (!podeDesafiar.value || iniciando.value) return
   iniciando.value = true
-  raidErro.value = null
   try {
     const ack = await battle.startRaid()
     // Sucesso não navega daqui: o `battle:start` que chega pelo socket é quem
     // empurra a tela para a seleção de time, como no PvP. Navegar aqui também
     // criaria uma corrida entre os dois caminhos.
+    // A recusa (cooldown, dex incompleta…) aparece no aviso pixel do App.vue,
+    // disparado pelo próprio store com o `code` da raid.
     if (!ack.ok) {
-      raidErro.value = ack.message
       // O servidor é a autoridade sobre cooldown e elegibilidade: se ele
       // recusou, o estado local está velho. Reler corrige o botão na hora.
       await store.fetchRaid().catch(() => {})
@@ -268,8 +267,6 @@ function goDetails(prof) {
             </div>
           </template>
         </div>
-
-        <p v-if="raidErro" class="raid-erro" role="alert">{{ raidErro }}</p>
 
         <!-- ✦ Raros. Contam para completar a Profdex, mas ficam em seção
              separada e abaixo da coleção: a arte do raro merece destaque, e o
@@ -536,17 +533,6 @@ function goDetails(prof) {
 .lendario__botao:focus-visible {
   outline: 2px solid white;
   outline-offset: 2px;
-}
-
-.raid-erro {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--red) 12%, var(--bg-card));
-  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--text);
 }
 
 /* ── Raros ──────────────────────────────────────────────────────────────── */

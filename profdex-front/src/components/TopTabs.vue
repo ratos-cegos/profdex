@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import PixelIcon from './PixelIcon.vue'
 
 // Abas Batalha | Ranking.
 //
@@ -11,7 +12,8 @@ import { useRoute } from 'vue-router'
 const ABAS = [
   { rota: 'batalha', rotulo: 'Jogar', icone: '/icons/batalha.png' },
   { rota: 'ranking', rotulo: 'Ranking', icone: '/icons/ranking.png' },
-  { rota: 'treino', rotulo: 'Treino', emoji: '🎯' },
+  // Sem PNG próprio: o alvo é desenhado na grade de pixel da casa.
+  { rota: 'treino', rotulo: 'Treino', pixel: 'alvo' },
 ]
 
 const route = useRoute()
@@ -30,7 +32,7 @@ const abaAtiva = computed(() => route.name)
       :aria-selected="abaAtiva === aba.rota"
     >
       <img v-if="aba.icone" class="tabs__icone" :src="aba.icone" alt="" aria-hidden="true" />
-      <span v-else class="tabs__emoji" aria-hidden="true">{{ aba.emoji }}</span>
+      <PixelIcon v-else class="tabs__pixel" :nome="aba.pixel" :escala="2" />
       {{ aba.rotulo }}
     </RouterLink>
   </div>
@@ -74,8 +76,14 @@ const abaAtiva = computed(() => route.name)
   transition: opacity 0.15s ease;
   pointer-events: none;
 }
-.tabs__emoji { font-size: 22px; opacity: .65; }
-.tabs__btn--ativa .tabs__emoji { opacity: 1; }
+.tabs__pixel {
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.tabs__btn--ativa .tabs__pixel {
+  opacity: 1;
+}
 
 .tabs__btn--ativa {
   border-color: var(--yellow);
@@ -92,7 +100,8 @@ const abaAtiva = computed(() => route.name)
     color: var(--yellow);
   }
 
-  .tabs__btn:hover .tabs__icone {
+  .tabs__btn:hover .tabs__icone,
+  .tabs__btn:hover .tabs__pixel {
     opacity: 1;
   }
 }
@@ -108,7 +117,8 @@ const abaAtiva = computed(() => route.name)
 
 @media (prefers-reduced-motion: reduce) {
   .tabs__btn,
-  .tabs__icone {
+  .tabs__icone,
+  .tabs__pixel {
     transition: none;
   }
 
