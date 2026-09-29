@@ -49,6 +49,14 @@ export class UsersService {
     );
   }
 
+  /** O dono da sessão como está NO BANCO agora — ver `AuthController.me`. */
+  findSessionUser(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, matricula: true, name: true, role: true },
+    });
+  }
+
   /**
    * Corrige a matrícula do próprio dono.
    *

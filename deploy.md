@@ -369,8 +369,9 @@ e-mail. Ele separa as contas em quatro grupos:
 - **fora do padrão**: e-mail, letras ou mais de 20 dígitos. Não têm conserto
   automático, e o aluno corrige no **Perfil**.
 
-Rodar de novo é seguro. Quem foi corrigido continua com a sessão antiga até ela
-expirar (8h), mas o login e a bancada já usam o valor novo.
+Rodar de novo é seguro. O login e a bancada usam o valor novo na hora. Para quem
+já está logado, o Perfil passa a mostrar o valor novo na próxima vez que o app
+abrir: o `/auth/me` lê o banco e reemite a sessão.
 
 ### A conta do organizador com a coleção inteira
 

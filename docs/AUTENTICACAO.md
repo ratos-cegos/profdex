@@ -87,6 +87,12 @@ PATCH /api/users/me/matricula { matricula, currentPassword }  → { user }
 - **Reassina a sessão** e reemite o cookie: o JWT carrega `matricula` no
   payload, e sem isso o perfil seguiria mostrando o valor velho por até 8h.
   Ninguém precisa relogar — justamente com a credencial que acabou de mudar.
+- Nos **outros aparelhos** do mesmo aluno (e depois do
+  `db:normalizar-matriculas`), quem acerta a sessão é o `GET /auth/me`. Ele
+  lê matrícula, nome e papel **do banco**, não do token, e reemite o cookie
+  quando o token está velho. Se a conta não existe mais (por exemplo, depois do
+  `db:limpar-evento`), ele responde **401** e limpa o cookie, e o app volta ao
+  login em vez de seguir "logado" numa conta apagada.
 - **Mesma regra de formato do cadastro** (só dígitos, normalizada) e **sem
   limite de trocas**. É por aqui que o dono de uma matrícula gravada fora do
   padrão a conserta.

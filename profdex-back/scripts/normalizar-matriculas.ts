@@ -312,8 +312,9 @@ async function main() {
     console.log(`\n${aplicadas} conta(s) corrigida(s).`);
     if (aplicadas) {
       console.log(
-        'A sessão de quem foi corrigido ainda carrega a matrícula antiga até ' +
-          'expirar (8h) — o login e a bancada já usam a nova.',
+        'Login e bancada já usam a nova. O Perfil de quem está logado passa ' +
+          'a mostrá-la na próxima abertura do app (o /auth/me lê o banco e ' +
+          'reemite a sessão).',
       );
     }
   } finally {

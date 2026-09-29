@@ -38,6 +38,12 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 - **Erro de validação da API aparecia como lista** (`["…"]`) no cadastro e no
   Perfil. Agora aparece só a primeira mensagem.
 
+- **`/auth/me` devolvia o que estava no token, e não o banco.** O Perfil
+  mostrava a matrícula antiga por até 8h depois de uma troca em outro aparelho
+  ou da normalização. Pior: depois do `db:limpar-evento`, uma conta apagada
+  continuava "logada". Agora ele lê o banco, reemite o cookie quando o token
+  está velho e responde 401, limpando o cookie, quando a conta não existe mais.
+
 ### Adicionado
 
 - **`npm run db:normalizar-matriculas`** conserta as matrículas gravadas antes
