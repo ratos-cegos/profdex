@@ -50,7 +50,12 @@ const NOME_LONGO = 16
         </div>
 
         <template v-if="slot.user">
-          <h2 class="degrau__nome" :class="{ 'degrau__nome--longo': slot.user.nome.length > NOME_LONGO }">
+          <h2
+            class="degrau__nome"
+            :class="{ 'degrau__nome--longo': slot.user.nome.length > NOME_LONGO }"
+            :title="slot.user.nomeCompleto"
+            :aria-label="slot.user.nomeCompleto"
+          >
             {{ slot.user.nome }}
           </h2>
           <p class="pixel degrau__pts">

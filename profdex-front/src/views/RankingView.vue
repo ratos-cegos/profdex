@@ -8,6 +8,7 @@ import PointsLeaderboard from '../components/PointsLeaderboard.vue'
 import TopTabs from '../components/TopTabs.vue'
 import { TIER_ICONE } from '../data/pixelIcons'
 import { formatarPontos } from '../components/leaderboard/formato'
+import { abreviarNome } from '../services/abreviar-nome'
 
 // Esta tela era um protótipo com dados fixos de `src/data/ranking.js`, enquanto o
 // ranking real (Elo de PvP) vivia como aba interna da BatalhaView. Agora existe
@@ -148,7 +149,10 @@ function adaptar(entrada) {
 const jogadores = computed(() =>
   (ranking.value?.entries || []).map((entrada) => ({
     id: entrada.id,
-    nome: entrada.name,
+    // Nomes do meio viram inicial ("Maria E. S. de Albuquerque"); o completo
+    // fica para o `title` e o leitor de tela.
+    nome: abreviarNome(entrada.name),
+    nomeCompleto: entrada.name,
     destaque: entrada.id === ranking.value?.me?.id,
     ...adaptar(entrada),
   })),
@@ -161,7 +165,8 @@ const minhaPosicao = computed(() => {
   const { pontuacao, tier, detalhe } = adaptar(me)
   return {
     position: me.position,
-    name: me.name,
+    name: abreviarNome(me.name),
+    nomeCompleto: me.name,
     pontos: formatarPontos(pontuacao),
     tier,
     resumo: [tier, detalhe].filter(Boolean).join(' · '),
@@ -224,7 +229,7 @@ onMounted(() => carregar(abaAtiva.value, 1))
         <template v-if="minhaPosicao">
           <span class="pixel rank-me__pos">#{{ minhaPosicao.position }}</span>
           <span class="rank-me__quem">
-            <span class="rank-me__name">
+            <span class="rank-me__name" :title="minhaPosicao.nomeCompleto">
               <!-- Fonte do corpo, não a pixel: a Press Start 2P perde o acento
                    em maiúscula e escreveria "VOCE". -->
               <span class="rank-me__voce">Você ·</span>

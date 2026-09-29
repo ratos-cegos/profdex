@@ -22,7 +22,7 @@ defineProps({
     <span class="pixel linha__pos" aria-hidden="true">{{ position }}</span>
 
     <span class="linha__quem">
-      <span class="linha__nome">{{ user.nome }}</span>
+      <span class="linha__nome" :title="user.nomeCompleto" :aria-label="user.nomeCompleto">{{ user.nome }}</span>
       <span v-if="user.tier || user.detalhe" class="linha__detalhe">
         <PixelIcon v-if="TIER_ICONE[user.tier]" :nome="TIER_ICONE[user.tier]" :escala="1" />
         {{ [user.tier, user.detalhe].filter(Boolean).join(' · ') }}
