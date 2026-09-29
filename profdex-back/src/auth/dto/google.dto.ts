@@ -1,4 +1,18 @@
-import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsNotEmpty,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+import {
+  MATRICULA_LONGA_MSG,
+  MATRICULA_MAX_DIGITOS,
+  MATRICULA_SO_DIGITOS_MSG,
+  MATRICULA_VAZIA_MSG,
+  normalizarMatricula,
+} from '../../users/matricula';
 import {
   MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
@@ -16,9 +30,19 @@ export class CompleteGoogleSignupDto {
   @IsNotEmpty()
   ticket: string;
 
+  /**
+   * Normalizada e SÓ DÍGITOS, porque é o que a bancada do quiz consegue
+   * digitar. Antes aceitava qualquer texto, e o e-mail que o autofill do
+   * celular oferece neste campo virava uma conta que a bancada nunca achava.
+   * Ver `users/matricula.ts`.
+   */
   @IsString()
-  @IsNotEmpty()
-  @MaxLength(64)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? normalizarMatricula(value) : value,
+  )
+  @IsNotEmpty({ message: MATRICULA_VAZIA_MSG })
+  @Matches(/^[0-9]+$/, { message: MATRICULA_SO_DIGITOS_MSG })
+  @MaxLength(MATRICULA_MAX_DIGITOS, { message: MATRICULA_LONGA_MSG })
   matricula: string;
 
   @IsString()

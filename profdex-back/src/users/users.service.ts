@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -14,6 +15,12 @@ import { Prisma } from '@prisma/client';
 import * as bcrypt from '@node-rs/bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { isDevSignupEnabled } from '../auth/dev-signup';
+import {
+  acharPorMatricula,
+  ehMatriculaValida,
+  MATRICULA_SO_DIGITOS_MSG,
+  normalizarMatricula,
+} from './matricula';
 
 /**
  * Em produção, contas só nascem pelo login com Google, em
@@ -31,8 +38,15 @@ export class UsersService {
 
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Login por matrícula. Tolerante (`acharPorMatricula`): quem digita
+   * `2023.123-45` entra na conta `202312345`, e as contas gravadas antes da
+   * regra de só dígitos continuam entrando com o valor exato de sempre.
+   */
   findByMatricula(matricula: string) {
-    return this.prisma.user.findUnique({ where: { matricula } });
+    return acharPorMatricula(matricula, (valor) =>
+      this.prisma.user.findUnique({ where: { matricula: valor } }),
+    );
   }
 
   /**
@@ -48,13 +62,20 @@ export class UsersService {
    *
    * Nada mais se move: capturas, `quiz_attempts`, `rare_unlocks` e vouchers são
    * todos por `userId`, então o progresso inteiro acompanha a conta.
+   *
+   * O valor novo segue a regra do cadastro (`users/matricula.ts`): normalizado
+   * e só dígitos. O DTO já garante isso; repetir aqui protege quem chamar o
+   * método por fora do ValidationPipe.
    */
   async changeMatricula(
     userId: string,
     matricula: string,
     currentPassword: string,
   ) {
-    const nova = matricula.trim();
+    const nova = normalizarMatricula(matricula);
+    if (!ehMatriculaValida(nova)) {
+      throw new BadRequestException(MATRICULA_SO_DIGITOS_MSG);
+    }
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     // Sessão válida para um usuário que sumiu: não é erro do cliente, mas a

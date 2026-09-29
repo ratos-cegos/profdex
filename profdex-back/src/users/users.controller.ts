@@ -17,6 +17,7 @@ import {
 import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UpdateMatriculaDto } from './dto/update-matricula.dto';
+import { chaveDeLimite } from './matricula';
 import { UsersService } from './users.service';
 
 interface AuthedRequest extends Request {
@@ -26,10 +27,11 @@ interface AuthedRequest extends Request {
 /**
  * A própria conta do aluno.
  *
- * Existe por causa de um problema só: a matrícula é digitada uma vez, sem
- * validação de formato, e um dígito trocado é aceito em silêncio. Sem esta
- * rota não havia nenhuma forma de corrigir — o projeto não tinha controller de
- * usuários, e o Perfil apenas EXIBIA o valor.
+ * Existe por causa de um problema só: a matrícula é digitada uma vez, e um
+ * dígito trocado é aceito em silêncio — a regra de só dígitos
+ * (`users/matricula.ts`) barra e-mail e pontuação, mas não um 3 no lugar do 8.
+ * Sem esta rota não havia nenhuma forma de corrigir — o projeto não tinha
+ * controller de usuários, e o Perfil apenas EXIBIA o valor.
  *
  * É autoatendimento, e não uma tela do painel (decisão 5): o erro é do
  * cadastro, quem sabe o valor certo é o dono, e a unicidade impede tomar
@@ -65,7 +67,7 @@ export class UsersController {
     @Res({ passthrough: true }) response: Response,
     @Body() dto: UpdateMatriculaDto,
   ) {
-    const chave = `${request.ip}:${request.user.matricula.trim().toLowerCase()}`;
+    const chave = chaveDeLimite(request.ip, request.user.matricula);
     this.rateLimit.assertAllowed(chave);
 
     const user = await this.users

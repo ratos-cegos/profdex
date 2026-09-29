@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   UnauthorizedException,
@@ -22,6 +23,21 @@ describe('UsersService', () => {
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { matricula: '123' },
     });
+  });
+
+  // Login de quem digita com pontuação, e de quem foi gravado antes da regra.
+  it('finds the canonical account when the login has punctuation', async () => {
+    const conta = { id: 'aluno-1', matricula: '202312345' };
+    const prisma = {
+      user: {
+        findUnique: jest.fn(({ where }: { where: { matricula: string } }) =>
+          Promise.resolve(where.matricula === conta.matricula ? conta : null),
+        ),
+      },
+    };
+    const service = new UsersService(prisma as unknown as PrismaService);
+
+    await expect(service.findByMatricula('2023.123-45')).resolves.toBe(conta);
   });
 
   // Fora de desenvolvimento, contas nascem só pelo Google
@@ -136,6 +152,27 @@ describe('UsersService', () => {
       });
       expect(user.id).toBe('aluno-1');
       expect(user.matricula).toBe('202399999');
+    });
+
+    // A mesma regra do cadastro: a bancada só digita 0–9.
+    it('grava a matrícula normalizada', async () => {
+      const { prisma, service } = await createSubject();
+
+      await service.changeMatricula('aluno-1', '2023.999-99​', SENHA);
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'aluno-1' },
+        data: { matricula: '202399999' },
+      });
+    });
+
+    it('recusa e-mail sem tocar no banco', async () => {
+      const { prisma, service } = await createSubject();
+
+      await expect(
+        service.changeMatricula('aluno-1', 'ana@edu.unifil.br', SENHA),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
     it('senha errada não muda nada', async () => {

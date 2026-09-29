@@ -4,6 +4,7 @@ import * as bcrypt from '@node-rs/bcrypt';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ehMatriculaValida, normalizarMatricula } from '../users/matricula';
 
 /** Prazo do link. Curto de propósito: é uma chave de acesso à conta. */
 export const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
@@ -45,8 +46,21 @@ export class PasswordResetService {
    */
   async request(identifier: string): Promise<void> {
     const value = identifier.trim().toLowerCase();
+    // `2023.123-45` também acha a conta `202312345`, como no login. A forma
+    // normalizada só entra quando sobra matrícula de verdade (só dígitos): um
+    // e-mail sem os pontos não é identificador de ninguém.
+    const normalizada = normalizarMatricula(value);
+    const matriculas =
+      normalizada !== value && ehMatriculaValida(normalizada)
+        ? [value, normalizada]
+        : [value];
     const user = await this.prisma.user.findFirst({
-      where: { OR: [{ matricula: value }, { email: value }] },
+      where: {
+        OR: [
+          ...matriculas.map((matricula) => ({ matricula })),
+          { email: value },
+        ],
+      },
       select: { id: true, name: true, email: true },
     });
 

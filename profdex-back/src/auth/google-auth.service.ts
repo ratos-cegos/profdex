@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -8,6 +9,11 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from '@node-rs/bcrypt';
 import { createHmac } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  ehMatriculaValida,
+  MATRICULA_SO_DIGITOS_MSG,
+  normalizarMatricula,
+} from '../users/matricula';
 import { CompleteGoogleSignupDto } from './dto/google.dto';
 import { Role } from './institutional-domains';
 import { GoogleIdentity } from './strategies/google.strategy';
@@ -127,7 +133,13 @@ export class GoogleAuthService {
   async completeSignup(dto: CompleteGoogleSignupDto) {
     const payload = this.verifyTicket(dto.ticket);
 
-    const matricula = dto.matricula.trim();
+    // O DTO já normalizou e validou; repetir aqui é o que garante a regra para
+    // quem chamar este método sem passar pelo ValidationPipe. Uma conta gravada
+    // com e-mail ou ponto na matrícula é uma conta que a bancada não acha.
+    const matricula = normalizarMatricula(dto.matricula);
+    if (!ehMatriculaValida(matricula)) {
+      throw new BadRequestException(MATRICULA_SO_DIGITOS_MSG);
+    }
     const [byMatricula, byGoogle] = await Promise.all([
       this.prisma.user.findUnique({
         where: { matricula },

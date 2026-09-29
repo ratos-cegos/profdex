@@ -4,6 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import {
+  MATRICULA_MAX_DIGITOS,
+  mensagemDaApi,
+  normalizarMatricula,
+  validarMatricula,
+} from '../services/matricula-rules'
+import {
   SENHA_CURTA_MSG,
   SENHA_PLACEHOLDER,
   senhaTemTamanhoMinimo,
@@ -23,6 +29,9 @@ const senha = ref('')
 
 const loading = ref(false)
 const errorMsg = ref('')
+// O aviso na tela é da matrícula? Só esse some quando o campo é consertado —
+// o de ticket expirado ou de servidor fora do ar continua valendo.
+const erroEhDaMatricula = ref(false)
 
 onMounted(() => {
   ticket.value = route.query.ticket ?? ''
@@ -33,19 +42,48 @@ onMounted(() => {
   }
 })
 
+/**
+ * Mostra no campo o valor que vai ser gravado: `2023.123-45` vira `202312345`
+ * ao sair dele. O aluno confere ali o número que vai digitar na bancada, e o
+ * e-mail que o autofill do teclado pôs no campo continua visível, com o erro.
+ */
+function normalizarCampo() {
+  const normalizada = normalizarMatricula(matricula.value)
+  if (!normalizada) return
+  matricula.value = normalizada
+  if (erroEhDaMatricula.value && !validarMatricula(normalizada)) {
+    errorMsg.value = ''
+    erroEhDaMatricula.value = false
+  }
+}
+
+function mostrarErro(mensagem, daMatricula = false) {
+  errorMsg.value = mensagem
+  erroEhDaMatricula.value = daMatricula
+}
+
 async function submit() {
   if (!ticket.value || !matricula.value || !nome.value || !senha.value) return
+
+  const matriculaNormalizada = normalizarMatricula(matricula.value)
+  const erroDaMatricula = validarMatricula(matriculaNormalizada)
+  if (erroDaMatricula) {
+    mostrarErro(erroDaMatricula, true)
+    return
+  }
+  matricula.value = matriculaNormalizada
+
   if (!senhaTemTamanhoMinimo(senha.value)) {
-    errorMsg.value = SENHA_CURTA_MSG
+    mostrarErro(SENHA_CURTA_MSG)
     return
   }
 
   loading.value = true
-  errorMsg.value = ''
+  mostrarErro('')
   try {
     const { data } = await api.post('/auth/google/complete', {
       ticket: ticket.value,
-      matricula: matricula.value.trim(),
+      matricula: matriculaNormalizada,
       name: nome.value.trim(),
       password: senha.value,
     })
@@ -54,9 +92,11 @@ async function submit() {
     router.push({ name: 'profdex' })
   } catch (err) {
     const serverDown = !err.response || err.response.status >= 500
-    errorMsg.value = serverDown
-      ? 'Servidor indisponível. Tente de novo em instantes.'
-      : (err.response.data?.message ?? 'Não foi possível concluir o cadastro.')
+    mostrarErro(
+      serverDown
+        ? 'Servidor indisponível. Tente de novo em instantes.'
+        : mensagemDaApi(err, 'Não foi possível concluir o cadastro.'),
+    )
   } finally {
     loading.value = false
   }
@@ -77,15 +117,35 @@ async function submit() {
       </p>
 
       <form class="form" @submit.prevent="submit">
+        <!--
+          `autocomplete="username"` fica: é ele que faz o gerenciador de senhas
+          guardar a MATRÍCULA junto da senha, para o login de depois. O preço é
+          a faixa do teclado oferecer o e-mail do Google aqui — e quem barra
+          isso é a validação (daqui e do servidor), não o atributo.
+          `inputmode="numeric"` abre o teclado de números, que é o que a
+          bancada do quiz também usa. Sem `pattern`, de propósito: a validação
+          nativa do navegador barraria `2023.123-45` com uma mensagem genérica
+          antes de a normalização rodar.
+        -->
         <label class="campo">
           <span class="campo__label">Matrícula</span>
           <input
             v-model="matricula"
             class="campo__input"
             type="text"
-            placeholder="SUA MATRÍCULA"
+            inputmode="numeric"
+            placeholder="SÓ OS NÚMEROS"
             autocomplete="username"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            :maxlength="MATRICULA_MAX_DIGITOS * 2"
+            @blur="normalizarCampo"
           />
+          <span class="campo__ajuda">
+            É o número que você vai digitar na bancada do quiz. Confira antes
+            de criar a conta.
+          </span>
         </label>
 
         <label class="campo">

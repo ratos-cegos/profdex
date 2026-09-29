@@ -86,6 +86,28 @@ describe('AuthController', () => {
     expect(rateLimit.recordFailure).toHaveBeenCalledWith('127.0.0.1:123');
   });
 
+  // A busca por matrícula é tolerante (`2023.123-45` acha `202312345`), então
+  // as variações de pontuação precisam gastar o MESMO contador. Senão cada
+  // uma ganharia as próprias tentativas contra a mesma conta.
+  it('keys the rate limit by the normalized matricula', async () => {
+    const { auth, controller, rateLimit, request, response } = createSubject();
+    auth.login.mockRejectedValue(new UnauthorizedException('invalid'));
+
+    for (const matricula of ['2023.123-45', '2023 12345', '202312345']) {
+      await expect(
+        controller.login(
+          { matricula, password: 'invalid password' },
+          request,
+          response as unknown as Response,
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+    }
+
+    expect(
+      new Set(rateLimit.recordFailure.mock.calls.map(([key]) => key)),
+    ).toEqual(new Set(['127.0.0.1:202312345']));
+  });
+
   it('checks the rate limit before touching the credentials', async () => {
     const { auth, controller, rateLimit, request, response } = createSubject();
     auth.login.mockResolvedValue({ accessToken: 'signed.jwt', user });

@@ -7,6 +7,10 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { lerAlternativas } from '../quiz/quiz.service';
+import {
+  acharPorMatricula,
+  MATRICULA_NAO_ENCONTRADA_MSG,
+} from '../users/matricula';
 import { ERRATA_PAGE_SIZE } from './errata.constants';
 import type {
   AbrirErrataDto,
@@ -346,16 +350,15 @@ export class ErrataService {
 
   // ── Interno ───────────────────────────────────────────────────────────────
 
+  /** Mesma busca tolerante e mesma mensagem da bancada (`users/matricula.ts`). */
   private async findAluno(matricula: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { matricula: matricula.trim() },
-      select: { id: true, name: true, matricula: true },
-    });
-    if (!user) {
-      throw new NotFoundException(
-        'Matrícula não encontrada. O aluno precisa ter entrado no app pelo menos uma vez.',
-      );
-    }
+    const user = await acharPorMatricula(matricula, (valor) =>
+      this.prisma.user.findUnique({
+        where: { matricula: valor },
+        select: { id: true, name: true, matricula: true },
+      }),
+    );
+    if (!user) throw new NotFoundException(MATRICULA_NAO_ENCONTRADA_MSG);
     return user;
   }
 

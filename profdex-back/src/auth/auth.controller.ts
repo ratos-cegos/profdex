@@ -28,6 +28,7 @@ import { GoogleAuthService } from './google-auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PasswordResetService } from './password-reset.service';
 import { GoogleIdentity } from './strategies/google.strategy';
+import { chaveDeLimite } from '../users/matricula';
 
 @Controller('auth')
 export class AuthController {
@@ -97,7 +98,9 @@ export class AuthController {
       user: { id: string; matricula: string; name: string };
     }>,
   ) {
-    const key = `${request.ip}:${matricula.trim().toLowerCase()}`;
+    // Normalizada: `2023.12345` e `202312345` levam à mesma conta
+    // (`acharPorMatricula`), então precisam gastar o mesmo contador.
+    const key = chaveDeLimite(request.ip, matricula);
     this.rateLimit.assertAllowed(key);
 
     try {
