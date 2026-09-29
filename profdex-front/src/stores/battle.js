@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { io } from 'socket.io-client'
 import router from '../router'
 import { useAuthStore } from './auth'
+import { useAvisosStore } from './avisos'
 import { applyMoveAck } from './battle-move'
 import { applyResync } from './battle-resync'
 import { checarSocketVivo, ensureSocket } from './battle-socket'
@@ -44,8 +45,16 @@ export const useBattleStore = defineStore('battle', () => {
   //   pendingEvents: [], result: null|{result,reason} }
   const pvp = ref(null)
 
-  // Última falha de comando (cooldown, jogador ocupado…) — a UI mostra e limpa.
+  // Última falha de comando (cooldown, jogador ocupado…). Quem a mostra é o
+  // aviso pixel (stores/avisos.js), em qualquer tela; o valor continua aqui
+  // para quem precisa consultar o último motivo.
   const lastError = ref(null)
+  const avisos = useAvisosStore()
+
+  function falhar(mensagem, code) {
+    lastError.value = mensagem
+    avisos.mostrar(mensagem, { code })
+  }
 
   let socket = null
 
@@ -146,7 +155,7 @@ export const useBattleStore = defineStore('battle', () => {
 
     socket.on('invite:cancelled', ({ inviteId, reason }) => {
       if (outgoingInvite.value?.inviteId === inviteId && reason === 'declined') {
-        lastError.value = `${outgoingInvite.value.to.name} recusou o desafio.`
+        falhar(`${outgoingInvite.value.to.name} recusou o desafio.`)
       }
       dropInvite(inviteId)
     })
@@ -212,15 +221,19 @@ export const useBattleStore = defineStore('battle', () => {
       const eraRaid = pvp.value?.mode === 'raid'
       pvp.value = null
       if (reason === 'left') {
-        if (!byYou) lastError.value = 'O rival saiu da seleção.'
+        if (!byYou) falhar('O rival saiu da seleção.')
       } else if (reason === 'server_shutdown') {
-        lastError.value = eraRaid
-          ? 'O servidor reiniciou — a tentativa não contou.'
-          : 'O servidor reiniciou — a batalha foi anulada.'
+        falhar(
+          eraRaid
+            ? 'O servidor reiniciou — a tentativa não contou.'
+            : 'O servidor reiniciou — a batalha foi anulada.',
+        )
       } else {
-        lastError.value = eraRaid
-          ? 'A preparação expirou — a tentativa não contou.'
-          : 'A seleção expirou — batalha cancelada.'
+        falhar(
+          eraRaid
+            ? 'A preparação expirou — a tentativa não contou.'
+            : 'A seleção expirou — batalha cancelada.',
+        )
       }
       // A raid nasce na Profdex e volta para lá: mandar quem desistiu dela
       // para o lobby do PvP o largaria numa tela que ele não pediu.
@@ -308,7 +321,7 @@ export const useBattleStore = defineStore('battle', () => {
     socket.on('battle:resync', (snap) => {
       const { pvp: proximo, rota, aviso } = applyResync(snap, pvp.value)
       pvp.value = proximo
-      if (aviso) lastError.value = aviso
+      if (aviso) falhar(aviso)
       if (rota) goTo(rota)
     })
   }
@@ -383,7 +396,7 @@ export const useBattleStore = defineStore('battle', () => {
       lobbyUsers.value = ack.users
       onlineTotal.value = ack.total
     } else {
-      lastError.value = ack.message
+      falhar(ack.message)
     }
     return ack
   }
@@ -408,14 +421,14 @@ export const useBattleStore = defineStore('battle', () => {
   async function sendInvite(toUserId) {
     const ack = await command('invite:send', { toUserId })
     if (ack.ok) outgoingInvite.value = ack.invite
-    else lastError.value = ack.message
+    else falhar(ack.message)
     return ack
   }
 
   async function acceptInvite(inviteId) {
     const ack = await command('invite:accept', { inviteId })
     if (!ack.ok) {
-      lastError.value = ack.message
+      falhar(ack.message)
       dropInvite(inviteId)
     }
     return ack
@@ -473,7 +486,7 @@ export const useBattleStore = defineStore('battle', () => {
     const faseAoEnviar = pvp.value?.phase
     const ack = await command(evento, payload)
     if (!ack.ok) {
-      lastError.value = ack.message
+      falhar(ack.message)
       return ack
     }
     if (pvp.value && pvp.value.phase === faseAoEnviar) pvp.value.youPicked = true
@@ -496,7 +509,7 @@ export const useBattleStore = defineStore('battle', () => {
    */
   async function leaveSelection() {
     const ack = await command('battle:leave')
-    if (!ack.ok) lastError.value = ack.message
+    if (!ack.ok) falhar(ack.message)
     return ack
   }
 
@@ -510,14 +523,14 @@ export const useBattleStore = defineStore('battle', () => {
     pvp.value.youMoved = true
     const ack = await command('battle:switch', { captureId })
     applyMoveAck(pvp.value, { ack, turnAtSend })
-    if (!ack.ok) lastError.value = ack.message
+    if (!ack.ok) falhar(ack.message)
     return ack
   }
 
   /** Quem entra no lugar de quem caiu (fase de substituição). */
   async function enterWith(captureId) {
     const ack = await command('battle:enter', { captureId })
-    if (!ack.ok) lastError.value = ack.message
+    if (!ack.ok) falhar(ack.message)
     return ack
   }
 
@@ -533,7 +546,7 @@ export const useBattleStore = defineStore('battle', () => {
     pvp.value.youMoved = true
     const ack = await command('battle:move', { moveId })
     applyMoveAck(pvp.value, { ack, turnAtSend })
-    if (!ack.ok) lastError.value = ack.message
+    if (!ack.ok) falhar(ack.message)
     return ack
   }
 
@@ -556,11 +569,13 @@ export const useBattleStore = defineStore('battle', () => {
     // (que reusa o cookie já presente) e curto o bastante para não parecer
     // travamento se a rede estiver fora.
     if (!(await esperarConexao(1000))) {
-      lastError.value = 'Sem conexão com o servidor. Tente de novo.'
+      falhar('Sem conexão com o servidor. Tente de novo.')
       return { ok: false, message: lastError.value }
     }
     const ack = await command('raid:start')
-    if (!ack.ok) lastError.value = ack.message
+    // A raid é a única recusa que vem com `code`: ele escolhe o ícone do aviso
+    // mesmo que o texto do servidor mude.
+    if (!ack.ok) falhar(ack.message, ack.code)
     return ack
   }
 

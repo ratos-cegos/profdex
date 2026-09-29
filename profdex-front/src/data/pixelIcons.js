@@ -258,6 +258,22 @@ const SETA_CIMA = [
   '............',
 ]
 
+// "Recolher para o canto": um traço, o sinal de minimizar de qualquer janela.
+const MINIMIZAR = [
+  '............',
+  '............',
+  '............',
+  '............',
+  '............',
+  '............',
+  '............',
+  '..xxxxxxxx..',
+  '..xxxxxxxx..',
+  '............',
+  '............',
+  '............',
+]
+
 const CHECK = [
   '............',
   '............',
@@ -292,6 +308,7 @@ export const ICONES = {
   fechar: { grade: FECHAR },
   'seta-cima': { grade: SETA_CIMA },
   'seta-baixo': { grade: [...SETA_CIMA].reverse() },
+  minimizar: { grade: MINIMIZAR },
   check: { grade: CHECK },
 }
 

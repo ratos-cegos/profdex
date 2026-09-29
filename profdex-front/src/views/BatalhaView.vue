@@ -43,7 +43,7 @@ function secondsLeft(expiresAt) {
   return Math.max(0, Math.ceil((expiresAt - now.value) / 1000))
 }
 
-// Os convites recebidos saíram daqui: viraram o ConviteBanner do App.vue, que
+// Os convites recebidos saíram daqui: viraram a ConvitePilha do App.vue, que
 // aparece em qualquer tela. Preso a esta view, o desafio sumia assim que o
 // aluno navegava — e morria em 60s sem ele saber que existiu.
 
@@ -134,14 +134,11 @@ function goBack() {
     <main class="batalha__main page">
       <TopTabs />
 
-      <!-- Os convites recebidos aparecem no ConviteBanner (App.vue), sobre
+      <!-- Os convites recebidos aparecem na ConvitePilha (App.vue), sobre
            qualquer tela do app. -->
 
-      <!-- Erros de comando (cooldown, jogador ocupado…) -->
-      <p v-if="battle.lastError" class="lobby-error" role="alert">
-        {{ battle.lastError }}
-        <button class="lobby-error__close" type="button" @click="battle.clearError">✕</button>
-      </p>
+      <!-- Erros de comando (cooldown, jogador ocupado…) aparecem no aviso
+           pixel do App.vue, o mesmo de qualquer outra tela. -->
 
       <!-- Convite enviado: fica na tela principal, já que o modal fecha ao enviar -->
       <p v-if="battle.outgoingInvite" class="outgoing" aria-live="polite">
@@ -527,30 +524,7 @@ function goBack() {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Os estilos dos convites recebidos foram com eles para o ConviteBanner. */
-
-/* Erro de comando */
-.lobby-error {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin: 0;
-  padding: 10px 14px;
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  border: 1px solid var(--red-light);
-  color: var(--red-light);
-  font-size: 13px;
-}
-
-.lobby-error__close {
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 14px;
-  cursor: pointer;
-}
+/* Os estilos dos convites recebidos foram com eles para a ConvitePilha. */
 
 /* Opções de batalha */
 .battle-options {
