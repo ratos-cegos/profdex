@@ -84,6 +84,145 @@
      9). Existe para o chip de status poder ser empilhado ACIMA da barra sem
      que ArenaView repita o número. Mudou o painel, muda aqui. */
   --palco-barra-altura: 62px;
+
+  /* Vocabulário da landing (profdex-landing/src/styles/tokens.css e
+     retro-tech.css), trazido para o app quando o ranking e o aviso de desafio
+     passaram a seguir a identidade dela. Os nomes são os MESMOS da landing de
+     propósito: um valor copiado de lá tem de funcionar aqui sem tradução. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 40px;
+
+  --dur-fast: 120ms;
+  --dur-base: 300ms;
+  --dur-slow: 600ms;
+  /* Movimento que É o efeito anda em quadros, como num portátil; o suave fica
+     para o que deve passar despercebido. */
+  --ease-pixel: steps(6, end);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Prata da Pokédex: sai do único cinza-azulado da paleta, sem hex novo. */
+  --silver-hi: color-mix(in srgb, var(--text-muted) 45%, var(--text-primary));
+  --silver-lo: color-mix(in srgb, var(--text-muted) 38%, var(--surface-border));
+  /* Bronze é o laranja da marca apagado: a escada ouro › prata › bronze fica
+     inteira dentro da paleta. */
+  --bronze-lo: color-mix(in srgb, var(--unifil-orange) 55%, var(--bg-deep));
+
+  /* Bisel Pokédex: prata em cima-esquerda, prata escura embaixo-direita, anel
+     dourado e um fio escuro. A primeira sombra da lista pinta por cima. */
+  --dex-bevel:
+    inset 2px 2px 0 var(--silver-hi),
+    inset -2px -2px 0 var(--silver-lo),
+    inset 0 0 0 4px var(--unifil-gold),
+    inset 0 0 0 5px var(--bg-deep);
+  --dex-bevel-sm:
+    inset 1px 1px 0 var(--silver-hi),
+    inset -1px -1px 0 var(--silver-lo),
+    inset 0 0 0 2px var(--unifil-gold),
+    inset 0 0 0 3px var(--bg-deep);
+  --dex-bevel-locked:
+    inset 1px 1px 0 var(--silver-lo),
+    inset -1px -1px 0 var(--surface-border);
+}
+
+::selection {
+  background: var(--unifil-orange);
+  color: var(--text-primary);
+}
+
+/* ── Caixa "molde GBA" (igual à da landing, gba.css) ─────────────────────
+   4px laranja por fora, 2px dourado por dentro e 2px da própria surface
+   afastando o conteúdo do dourado: a caixa de diálogo do Game Boy Advance. */
+.gba-frame {
+  background: var(--surface);
+  border: 4px solid var(--unifil-orange);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 0 0 2px var(--unifil-gold),
+    inset 0 0 0 4px var(--surface);
+}
+
+.gba-frame--deep {
+  background: var(--bg-deep);
+  box-shadow:
+    inset 0 0 0 2px var(--unifil-gold),
+    inset 0 0 0 4px var(--bg-deep);
+}
+
+/* ── Botão com chanfro de 8 bits (igual ao da landing) ────────────────────
+   Dois `inset` opostos fazem a luz vir de cima-esquerda. Sobe um pixel no
+   hover e afunda no toque, em `steps()`: botão de console muda de quadro. */
+.btn-pixel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--unifil-orange);
+  border: 3px solid var(--surface-border);
+  border-radius: 0;
+  box-shadow:
+    inset -3px -3px 0 var(--surface-border),
+    inset 3px 3px 0 var(--unifil-gold);
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  line-height: 1.4;
+  /* Branco sobre o laranja da marca dá 5,6:1 (AA). Dourado não passaria. */
+  color: var(--text-primary);
+  text-shadow: 2px 2px 0 var(--surface);
+  text-align: center;
+  transition: transform var(--dur-fast) steps(2, end);
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .btn-pixel:hover:not(:disabled) {
+    background: #a85b00;
+    transform: translate(-1px, -1px);
+  }
+
+  .btn-pixel--ghost:hover:not(:disabled) {
+    background: var(--surface);
+  }
+}
+
+.btn-pixel:active:not(:disabled) {
+  transform: translate(1px, 1px) scale(0.98);
+  box-shadow:
+    inset 3px 3px 0 var(--surface-border),
+    inset -3px -3px 0 var(--ds-orange-shadow);
+}
+
+.btn-pixel:focus-visible {
+  outline: 3px solid var(--unifil-gold);
+  outline-offset: 3px;
+}
+
+.btn-pixel:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-pixel--ghost {
+  background: transparent;
+  box-shadow:
+    inset -3px -3px 0 var(--surface-border),
+    inset 3px 3px 0 var(--surface-border);
+  color: var(--unifil-gold);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-pixel {
+    transition: none;
+  }
+
+  .btn-pixel:hover,
+  .btn-pixel:active {
+    transform: none !important;
+  }
 }
 
 *, *::before, *::after {

@@ -3,8 +3,11 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import api from '../services/api'
 import BottomNav from '../components/BottomNav.vue'
 import AppHeader from '../components/AppHeader.vue'
+import PixelIcon from '../components/PixelIcon.vue'
 import PointsLeaderboard from '../components/PointsLeaderboard.vue'
 import TopTabs from '../components/TopTabs.vue'
+import { TIER_ICONE } from '../data/pixelIcons'
+import { formatarPontos } from '../components/leaderboard/formato'
 
 // Esta tela era um protótipo com dados fixos de `src/data/ranking.js`, enquanto o
 // ranking real (Elo de PvP) vivia como aba interna da BatalhaView. Agora existe
@@ -14,16 +17,6 @@ import TopTabs from '../components/TopTabs.vue'
 // a navegação externa (Batalha ↔ Ranking ↔ Treino). Misturar as duas viraria
 // quatro níveis de navegação empilhados na mesma dobra.
 
-// Emblema por tier (cores/emoji seguem docs/BATALHA-PVP.md).
-const TIER_BADGE = {
-  Bronze: '🥉',
-  Prata: '🥈',
-  Ouro: '🥇',
-  Platina: '💠',
-  Diamante: '💎',
-  Mestre: '👑',
-}
-
 // Cada aba é uma fonte de dados diferente com o MESMO formato de resposta
 // (entries + me + paginação), então só muda o endpoint e como a linha vira
 // pontuação/detalhe na lista.
@@ -32,7 +25,9 @@ const ABAS = [
     id: 'elo',
     rotulo: 'ELO',
     endpoint: '/rankings/battle',
-    unidade: 'ELO',
+    // O número é o rating de batalha, mas para quem joga ele é "pontos": ao lado
+    // do nome aparece "1.000 pts", não "1.000 ELO".
+    unidade: 'pts',
     vazio: 'Ninguém pontuou ainda — vença a primeira batalha do evento!',
     semPosicao: 'Você ainda não pontuou — desafie alguém na aba Batalha!',
   },
@@ -134,11 +129,10 @@ function adaptar(entrada) {
   if (abaAtiva.value === 'elo') {
     return {
       pontuacao: entrada.rating,
-      // Ex.: "🥉 Bronze · 1V·0D" — o emblema acompanha o nome do tier.
-      detalhe: [
-        [TIER_BADGE[entrada.tier], entrada.tier].filter(Boolean).join(' '),
-        `${entrada.wins}V·${entrada.losses}D`,
-      ].join(' · '),
+      // O tier vai separado: quem desenha a linha põe o emblema pixel dele ao
+      // lado do nome ("[escudo] Bronze · 1V·0D").
+      tier: entrada.tier,
+      detalhe: `${entrada.wins}V·${entrada.losses}D`,
     }
   }
   if (abaAtiva.value === 'dex') {
@@ -164,11 +158,13 @@ const jogadores = computed(() =>
 const minhaPosicao = computed(() => {
   const me = ranking.value?.me
   if (!me || !noRanking.value) return null
-  const { pontuacao, detalhe } = adaptar(me)
+  const { pontuacao, tier, detalhe } = adaptar(me)
   return {
     position: me.position,
     name: me.name,
-    resumo: [`${pontuacao} ${aba.value.unidade}`, detalhe].filter(Boolean).join(' · '),
+    pontos: formatarPontos(pontuacao),
+    tier,
+    resumo: [tier, detalhe].filter(Boolean).join(' · '),
   }
 })
 
@@ -177,7 +173,9 @@ onMounted(() => carregar(abaAtiva.value, 1))
 
 <template>
   <div class="ranking-screen">
-    <AppHeader title="RANKING" subtitle="TOP TREINADORES"><template #left><span aria-hidden="true">🏆</span></template></AppHeader>
+    <AppHeader title="RANKING" subtitle="TOP TREINADORES">
+      <template #left><PixelIcon nome="trofeu" :escala="3" /></template>
+    </AppHeader>
 
     <main ref="conteudo" class="ranking-page page">
       <TopTabs />
@@ -202,16 +200,18 @@ onMounted(() => carregar(abaAtiva.value, 1))
       <p v-else-if="estado.erro" class="ranking-hint" role="alert">{{ estado.erro }}</p>
       <p v-else-if="vazio" class="ranking-hint">{{ aba.vazio }}</p>
 
+      <!-- A key por aba remonta o ranking na troca: o pódio sobe de novo com os
+           números da aba nova, em vez de trocar os nomes por baixo dele. -->
       <PointsLeaderboard
         v-if="jogadores.length"
+        :key="abaAtiva"
         :users="jogadores"
         :unidade="aba.unidade"
-        :mostrar-cabecalho="false"
       />
 
       <button
         v-if="temMais"
-        class="pixel ranking-more"
+        class="btn-pixel btn-pixel--ghost ranking-more"
         type="button"
         :disabled="estado.carregando"
         @click="carregar(abaAtiva, ranking.page + 1)"
@@ -220,11 +220,29 @@ onMounted(() => carregar(abaAtiva.value, 1))
       </button>
 
       <!-- Sua posição, mesmo fora do topo da lista -->
-      <div v-if="ranking?.me" class="rank-me">
+      <div v-if="ranking?.me" class="rank-me" :class="{ 'rank-me--sem': !minhaPosicao }">
         <template v-if="minhaPosicao">
           <span class="pixel rank-me__pos">#{{ minhaPosicao.position }}</span>
-          <span class="rank-me__name">Você · {{ minhaPosicao.name }}</span>
-          <span class="pixel rank-me__tier">{{ minhaPosicao.resumo }}</span>
+          <span class="rank-me__quem">
+            <span class="rank-me__name">
+              <!-- Fonte do corpo, não a pixel: a Press Start 2P perde o acento
+                   em maiúscula e escreveria "VOCE". -->
+              <span class="rank-me__voce">Você ·</span>
+              {{ minhaPosicao.name }}
+            </span>
+            <span v-if="minhaPosicao.resumo" class="rank-me__detalhe">
+              <PixelIcon
+                v-if="TIER_ICONE[minhaPosicao.tier]"
+                :nome="TIER_ICONE[minhaPosicao.tier]"
+                :escala="1"
+              />
+              {{ minhaPosicao.resumo }}
+            </span>
+          </span>
+          <span class="pixel rank-me__pts">
+            <span>{{ minhaPosicao.pontos }}</span>
+            <small>{{ aba.unidade }}</small>
+          </span>
         </template>
         <span v-else class="rank-me__name">{{ aba.semPosicao }}</span>
       </div>
@@ -243,37 +261,6 @@ onMounted(() => carregar(abaAtiva.value, 1))
   display: flex;
   flex-direction: column;
   background: var(--bg);
-}
-
-.ranking-header {
-  position: relative;
-  flex-shrink: 0;
-  padding: 16px 20px 28px;
-  background: linear-gradient(160deg, var(--red-dark), var(--red));
-}
-
-.ranking-header::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 20px;
-  border-radius: 20px 20px 0 0;
-  background: var(--bg);
-}
-
-.ranking-header__label {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--yellow);
-  font-size: 7px;
-}
-
-.ranking-header__title {
-  color: var(--text-primary);
-  font-size: 18px;
-  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
 }
 
 .ranking-page {
@@ -297,33 +284,38 @@ onMounted(() => carregar(abaAtiva.value, 1))
 }
 
 /* Segmented control das abas internas. Visualmente mais leve que o TopTabs de
-   propósito: são níveis diferentes de navegação e não podem competir. */
+   propósito: são níveis diferentes de navegação e não podem competir. A aba
+   ativa ganha o bisel de 8 bits dos botões da casa, "pressionada" na placa. */
 .rank-abas {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  gap: 4px;
   padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-card);
+  border: 2px solid var(--surface-border);
+  border-radius: 4px;
+  background: var(--bg-deep);
 }
 
 .rank-abas__btn {
-  min-height: 38px;
+  min-height: 40px;
   border: 0;
-  border-radius: calc(var(--radius) - 4px);
+  border-radius: 0;
   background: transparent;
   color: var(--text-muted);
   font-size: 8px;
   cursor: pointer;
   transition:
-    background 0.15s ease,
-    color 0.15s ease;
+    background var(--dur-fast) steps(2, end),
+    color var(--dur-fast) steps(2, end);
 }
 
 .rank-abas__btn--ativa {
-  background: var(--bg-surface);
-  color: var(--yellow);
+  background: var(--unifil-orange);
+  box-shadow:
+    inset -2px -2px 0 var(--surface-border),
+    inset 2px 2px 0 var(--unifil-gold);
+  color: var(--text-primary);
+  text-shadow: 2px 2px 0 var(--surface);
 }
 
 .rank-abas__btn:focus-visible {
@@ -351,57 +343,93 @@ onMounted(() => carregar(abaAtiva.value, 1))
 }
 
 .ranking-more {
-  min-height: 40px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  color: var(--text);
-  font-size: 8px;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-
-.ranking-more:hover:not(:disabled) {
-  border-color: var(--yellow);
-}
-
-.ranking-more:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+  align-self: center;
+  min-width: 60%;
 }
 
 /* Fica colada no rodapé enquanto a lista rola — a própria posição é o dado que o
    jogador mais procura e sumiria ao descer. Sem `margin-top: auto`: com poucos
-   jogadores isso a empurrava para o fim da tela e abria um vão morto no meio. */
+   jogadores isso a empurrava para o fim da tela e abria um vão morto no meio.
+   É a caixa de diálogo GBA da landing, e o nome quebra linha em vez de cortar. */
 .rank-me {
   position: sticky;
   bottom: 0;
   z-index: 3;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 12px;
-  border: 2px solid var(--yellow);
+  padding: 12px 14px;
+  border: 4px solid var(--unifil-orange);
   border-radius: var(--radius);
-  background: var(--bg-surface);
-  box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.55);
+  background: var(--surface);
+  box-shadow:
+    inset 0 0 0 2px var(--unifil-gold),
+    inset 0 0 0 4px var(--surface),
+    0 -8px 20px rgb(0 0 0 / 55%);
+}
+
+.rank-me--sem {
+  grid-template-columns: 1fr;
 }
 
 .rank-me__pos {
-  font-size: 10px;
-  color: var(--yellow);
+  font-size: 11px;
+  color: var(--unifil-gold);
+}
+
+.rank-me__quem {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .rank-me__name {
-  flex: 1;
-  overflow: hidden;
   font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
-.rank-me__tier {
-  font-size: 9px;
-  color: var(--yellow);
+.rank-me__voce {
+  color: var(--unifil-gold);
+}
+
+.rank-me__detalhe {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.rank-me__pts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rank-me__pts small {
+  color: var(--unifil-gold);
+  font-size: 7px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rank-me {
+    animation: rank-me-sobe var(--dur-base) steps(4, end) 1.2s both;
+  }
+}
+
+@keyframes rank-me-sobe {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
 }
 </style>
