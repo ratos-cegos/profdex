@@ -168,11 +168,31 @@ function tabelaDeMotivos(contas: Conta[]) {
   return [...contagem.entries()].sort((a, b) => b[1] - a[1]);
 }
 
+/**
+ * A matrícula como ela é, com o que não se vê escrito por extenso:
+ * `"2023​12345"` em vez de um `2023​12345` que parece certo e não é.
+ *
+ * `JSON.stringify` sozinho NÃO serve: ele só escapa caracteres de controle, e
+ * o U+200B, o NBSP e o U+FEFF saem crus — invisíveis no terminal. Tudo fora do
+ * ASCII imprimível vira `\uXXXX`.
+ */
+export function mostrarMatricula(matricula: string): string {
+  let saida = '';
+  // Por unidade UTF-16, e não por code point: um caractere fora do BMP vira
+  // os dois `\uXXXX` do par, e nada se perde.
+  for (let i = 0; i < matricula.length; i += 1) {
+    const codigo = matricula.charCodeAt(i);
+    const caractere = matricula[i];
+    if (caractere === '"' || caractere === '\\') saida += `\\${caractere}`;
+    else if (codigo >= 0x20 && codigo <= 0x7e) saida += caractere;
+    else saida += `\\u${codigo.toString(16).padStart(4, '0')}`;
+  }
+  return `"${saida}"`;
+}
+
 function linhaDeContato(conta: Conta, extra = '') {
-  // JSON.stringify mostra o invisível: `"2023​12345"` em vez de um
-  // `202312345` que parece certo e não é.
   const email = conta.email ?? 'sem e-mail';
-  return `  ${JSON.stringify(conta.matricula)} · ${conta.name} · ${email} · ${conta.role}${extra}`;
+  return `  ${mostrarMatricula(conta.matricula)} · ${conta.name} · ${email} · ${conta.role}${extra}`;
 }
 
 async function main() {

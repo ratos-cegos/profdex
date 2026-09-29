@@ -1,4 +1,8 @@
-import { classificar, motivos } from '../../scripts/normalizar-matriculas';
+import {
+  classificar,
+  mostrarMatricula,
+  motivos,
+} from '../../scripts/normalizar-matriculas';
 import {
   acharPorMatricula,
   chaveDeLimite,
@@ -188,6 +192,16 @@ describe('db:normalizar-matriculas', () => {
 
     expect(classificar(depois).corrigiveis).toHaveLength(0);
     expect(classificar(depois).canonicas).toHaveLength(1);
+  });
+
+  // O `--listar` existe para o organizador achar a conta; uma matrícula com
+  // U+200B impressa crua parece certa e não é. (`JSON.stringify` não escapa.)
+  it('mostra por extenso o que não se vê', () => {
+    expect(mostrarMatricula('2023​12345')).toBe('"2023\\u200b12345"');
+    expect(mostrarMatricula('﻿2023 12345')).toBe('"\\ufeff2023\\u00a012345"');
+    expect(mostrarMatricula('２０')).toBe('"\\uff12\\uff10"');
+    expect(mostrarMatricula('ana@edu.unifil.br')).toBe('"ana@edu.unifil.br"');
+    expect(mostrarMatricula('a"b\\c')).toBe('"a\\"b\\\\c"');
   });
 
   it('explica o motivo sem expor quem é', () => {
