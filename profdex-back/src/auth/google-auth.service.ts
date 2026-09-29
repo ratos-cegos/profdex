@@ -10,9 +10,11 @@ import * as bcrypt from '@node-rs/bcrypt';
 import { createHmac } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  colideComGravada,
   ehMatriculaValida,
   MATRICULA_SO_DIGITOS_MSG,
   normalizarMatricula,
+  SQL_MATRICULAS_NAO_NUMERICAS,
 } from '../users/matricula';
 import { CompleteGoogleSignupDto } from './dto/google.dto';
 import { Role } from './institutional-domains';
@@ -140,11 +142,17 @@ export class GoogleAuthService {
     if (!ehMatriculaValida(matricula)) {
       throw new BadRequestException(MATRICULA_SO_DIGITOS_MSG);
     }
-    const [byMatricula, byGoogle] = await Promise.all([
+    const [byMatricula, naoNumericas, byGoogle] = await Promise.all([
       this.prisma.user.findUnique({
         where: { matricula },
         select: { id: true },
       }),
+      // A conta antiga `2023.12345` é a MESMA matrícula que o `202312345` que
+      // está entrando, mas o índice único não sabe disso. Sem esta checagem, o
+      // cadastro novo passa e o aluno antigo some da bancada.
+      this.prisma.$queryRawUnsafe<{ id: string; matricula: string }[]>(
+        SQL_MATRICULAS_NAO_NUMERICAS,
+      ),
       this.prisma.user.findFirst({
         where: {
           OR: [{ googleId: payload.googleId }, { email: payload.email }],
@@ -152,7 +160,9 @@ export class GoogleAuthService {
         select: { id: true },
       }),
     ]);
-    if (byMatricula) throw new ConflictException('Matrícula já cadastrada');
+    if (byMatricula || colideComGravada(matricula, naoNumericas)) {
+      throw new ConflictException('Matrícula já cadastrada');
+    }
     // Corrida de duas abas, ou ticket reapresentado depois do cadastro pronto.
     if (byGoogle) throw new ConflictException('Esta conta Google já foi usada');
 

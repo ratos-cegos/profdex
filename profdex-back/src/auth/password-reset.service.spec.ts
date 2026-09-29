@@ -20,11 +20,11 @@ describe('PasswordResetService.request', () => {
     return { prisma, service };
   }
 
-  function candidatas(prisma: ReturnType<typeof createSubject>['prisma']) {
-    const { where } = prisma.user.findFirst.mock.calls[0][0] as {
-      where: { OR: Record<string, string>[] };
-    };
-    return where.OR;
+  /** Os `where` de cada consulta, na ordem em que o serviço as fez. */
+  function consultas(prisma: ReturnType<typeof createSubject>['prisma']) {
+    return prisma.user.findFirst.mock.calls.map(
+      (call) => (call[0] as { where: unknown }).where,
+    );
   }
 
   it('procura também a forma normalizada, como o login', async () => {
@@ -32,11 +32,31 @@ describe('PasswordResetService.request', () => {
 
     await service.request(' 2023.123-45 ');
 
-    expect(candidatas(prisma)).toEqual([
-      { matricula: '2023.123-45' },
+    // Duas consultas, nesta ordem — e não um `OR` só, onde o banco escolheria.
+    expect(consultas(prisma)).toEqual([
+      { OR: [{ matricula: '2023.123-45' }, { email: '2023.123-45' }] },
       { matricula: '202312345' },
-      { email: '2023.123-45' },
     ]);
+  });
+
+  /**
+   * O defeito que isto fecha: com `2023.12345` e `202312345` os dois gravados
+   * (o "conflito" que o `db:normalizar-matriculas` não conserta), um `findFirst`
+   * com as duas no mesmo `OR` e sem ordem deixa o banco decidir — e o link de
+   * redefinição sai para o e-mail da conta errada.
+   */
+  it('a conta exata ganha da parecida, sem depender do banco', async () => {
+    const { prisma, service } = createSubject();
+    prisma.user.findFirst.mockResolvedValueOnce({
+      id: 'legado',
+      name: 'Ana',
+      email: null,
+    });
+
+    await service.request('2023.12345');
+
+    // Achou no exato: a forma normalizada nem chega a ser consultada.
+    expect(prisma.user.findFirst).toHaveBeenCalledTimes(1);
   });
 
   // Tirar os pontos de um e-mail não produz matrícula de ninguém.
@@ -45,9 +65,13 @@ describe('PasswordResetService.request', () => {
 
     await service.request('Ana.Souza@edu.unifil.br');
 
-    expect(candidatas(prisma)).toEqual([
-      { matricula: 'ana.souza@edu.unifil.br' },
-      { email: 'ana.souza@edu.unifil.br' },
+    expect(consultas(prisma)).toEqual([
+      {
+        OR: [
+          { matricula: 'ana.souza@edu.unifil.br' },
+          { email: 'ana.souza@edu.unifil.br' },
+        ],
+      },
     ]);
   });
 });

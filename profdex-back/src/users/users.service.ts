@@ -17,9 +17,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { isDevSignupEnabled } from '../auth/dev-signup';
 import {
   acharPorMatricula,
+  colideComGravada,
   ehMatriculaValida,
+  escaparMatricula,
   MATRICULA_SO_DIGITOS_MSG,
   normalizarMatricula,
+  SQL_MATRICULAS_NAO_NUMERICAS,
 } from './matricula';
 
 /**
@@ -98,13 +101,23 @@ export class UsersService {
     // Reenviar a mesma matrícula não é erro — e não merece linha de auditoria.
     if (nova === user.matricula) return user;
 
-    const jaExiste = await this.prisma.user.findUnique({
-      where: { matricula: nova },
-      select: { id: true },
-    });
+    const [jaExiste, naoNumericas] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { matricula: nova },
+        select: { id: true },
+      }),
+      // Como no cadastro: a conta antiga `2023.12345` é a MESMA matrícula que
+      // o `202312345` pedido aqui, e o índice único não vê isso.
+      this.prisma.$queryRawUnsafe<{ id: string; matricula: string }[]>(
+        SQL_MATRICULAS_NAO_NUMERICAS,
+      ),
+    ]);
     // Mesma mensagem do cadastro: a unicidade é a mesma regra, e ela é o que
     // impede alguém de tomar a matrícula de uma conta existente.
-    if (jaExiste) throw new ConflictException('Matrícula já cadastrada');
+    const colisao = colideComGravada(nova, naoNumericas);
+    if (jaExiste || (colisao && colisao.id !== userId)) {
+      throw new ConflictException('Matrícula já cadastrada');
+    }
 
     const atualizado = await this.prisma.user
       .update({ where: { id: userId }, data: { matricula: nova } })
@@ -124,11 +137,15 @@ export class UsersService {
     // Sem tabela nova, no padrão de `qr_batch` e `setting_updated`: a pergunta
     // depois do evento é "por que a bancada não acha mais este aluno?", e o
     // valor ANTIGO é a única coisa que responde isso.
+    //
+    // O `from` vai escapado (`escaparMatricula`) porque o motivo mais comum
+    // desta troca é justamente uma matrícula com caractere invisível: sem
+    // escapar, o log mostraria `202312345` dos dois lados e não explicaria nada.
     this.logger.log(
       JSON.stringify({
         audit: 'matricula_changed',
         userId,
-        from: user.matricula,
+        from: escaparMatricula(user.matricula),
         to: nova,
       }),
     );

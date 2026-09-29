@@ -1,14 +1,16 @@
 import {
   classificar,
-  mostrarMatricula,
   motivos,
   tamanhos,
 } from '../../scripts/normalizar-matriculas';
 import {
   acharPorMatricula,
   chaveDeLimite,
+  colideComGravada,
   ehMatriculaValida,
+  escaparMatricula,
   MATRICULA_MAX_DIGITOS,
+  mostrarMatricula,
   normalizarMatricula,
 } from './matricula';
 
@@ -150,6 +152,48 @@ describe('chaveDeLimite', () => {
   });
 });
 
+/**
+ * A unicidade que o índice do banco não enxerga.
+ *
+ * O cadastro e a troca no Perfil já chegam com a matrícula normalizada, mas o
+ * que está GRAVADO pode não estar. Sem esta checagem, `202312345` entra ao lado
+ * do `2023.12345` que já existe, e a bancada passa a achar só o novo — o aluno
+ * antigo vira o "conflito" que o `db:normalizar-matriculas` se recusa a
+ * consertar.
+ */
+describe('colideComGravada', () => {
+  const gravadas = [
+    { id: 'a', matricula: '2023.12345' },
+    { id: 'b', matricula: 'ana@edu.unifil.br' },
+    { id: 'c', matricula: 'admin' },
+  ];
+
+  it('acha a conta antiga que normaliza para a matrícula nova', () => {
+    expect(colideComGravada('202312345', gravadas)).toEqual({
+      id: 'a',
+      matricula: '2023.12345',
+    });
+  });
+
+  it('não inventa colisão com e-mail nem com letras', () => {
+    expect(colideComGravada('202399999', gravadas)).toBeNull();
+    // Um e-mail não vira matrícula de ninguém: `normalizarMatricula` não
+    // apaga letras nem `@`.
+    expect(colideComGravada('anaeduunifilbr', gravadas)).toBeNull();
+  });
+
+  // O caminho que a bancada manda o aluno seguir. Se ele fosse barrado pela
+  // própria matrícula antiga, não haveria como consertar a conta pelo Perfil.
+  it('a conta encontrada pode ser a própria — quem decide é o chamador', () => {
+    const encontrada = colideComGravada('202312345', gravadas);
+    expect(encontrada?.id).toBe('a');
+  });
+
+  it('lista vazia (depois do script) não colide com nada', () => {
+    expect(colideComGravada('202312345', [])).toBeNull();
+  });
+});
+
 describe('db:normalizar-matriculas', () => {
   const conta = (id: string, matricula: string, role = 'aluno') => ({
     id,
@@ -203,6 +247,23 @@ describe('db:normalizar-matriculas', () => {
     expect(mostrarMatricula('２０')).toBe('"\\uff12\\uff10"');
     expect(mostrarMatricula('ana@edu.unifil.br')).toBe('"ana@edu.unifil.br"');
     expect(mostrarMatricula('a"b\\c')).toBe('"a\\"b\\\\c"');
+  });
+
+  // A linha de auditoria é JSON: ela usa a forma SEM aspas, senão o valor sai
+  // com aspas dentro de aspas. O que ela não pode é sair cru — era o defeito.
+  it('escapa sem aspas, para caber na linha de auditoria', () => {
+    const invisivel = `2023${String.fromCharCode(0x200b)}12345`;
+    expect(escaparMatricula(invisivel)).toBe('2023\\u200b12345');
+    expect(mostrarMatricula(invisivel)).toBe(
+      `"${escaparMatricula(invisivel)}"`,
+    );
+    // O que o código fazia antes, e por que não servia: sai cru.
+    expect(JSON.stringify({ from: invisivel })).toContain(
+      String.fromCharCode(0x200b),
+    );
+    expect(JSON.stringify({ from: escaparMatricula(invisivel) })).not.toContain(
+      String.fromCharCode(0x200b),
+    );
   });
 
   // Evidência para "digitou CPF no lugar da matrícula", sem nome nem valor.

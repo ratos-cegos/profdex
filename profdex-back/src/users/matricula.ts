@@ -87,6 +87,76 @@ export async function acharPorMatricula<T>(
 }
 
 /**
+ * A matrícula com o que não se vê escrito por extenso: um U+200B no meio de
+ * `202312345` sai como `2023\u200b12345`, em vez de um `202312345` que parece
+ * certo e não é. Tudo fora do ASCII imprimível vira `\uXXXX`.
+ *
+ * (Este comentário não traz o caractere invisível de verdade de propósito: o
+ * `no-irregular-whitespace` do eslint o barra, e com razão.)
+ *
+ * `JSON.stringify` NÃO serve para isto: ele só escapa caracteres de controle, e
+ * o U+200B, o NBSP e o U+FEFF saem crus — invisíveis no terminal e no log. Toda
+ * linha que mostra uma matrícula VINDA DO BANCO precisa passar por aqui, porque
+ * é justamente o valor invisível que se quer enxergar (na auditoria da troca,
+ * no relatório do `db:normalizar-matriculas`). O valor já normalizado é só
+ * dígitos e não precisa.
+ */
+export function escaparMatricula(matricula: string): string {
+  let saida = '';
+  // Por unidade UTF-16, e não por code point: um caractere fora do BMP vira
+  // os dois `\uXXXX` do par, e nada se perde.
+  for (let i = 0; i < matricula.length; i += 1) {
+    const codigo = matricula.charCodeAt(i);
+    const caractere = matricula[i];
+    if (caractere === '"' || caractere === '\\') saida += `\\${caractere}`;
+    else if (codigo >= 0x20 && codigo <= 0x7e) saida += caractere;
+    else saida += `\\u${codigo.toString(16).padStart(4, '0')}`;
+  }
+  return saida;
+}
+
+/** `escaparMatricula` entre aspas, para as linhas de relatório do script. */
+export function mostrarMatricula(matricula: string): string {
+  return `"${escaparMatricula(matricula)}"`;
+}
+
+/**
+ * O SQL que devolve as contas capazes de colidir — ver `colideComGravada`.
+ *
+ * Filtro grosso de propósito: "tem algum caractere fora de 0-9" não repete a
+ * regra de normalização em SQL (que seria uma terceira cópia dela, depois do
+ * back e do front). Quem decide a colisão é o JavaScript, com a função de
+ * sempre. Depois do `db:normalizar-matriculas` este conjunto encolhe para os
+ * poucos casos sem conserto.
+ */
+export const SQL_MATRICULAS_NAO_NUMERICAS = `SELECT id, matricula FROM users WHERE matricula !~ '^[0-9]+$'`;
+
+/**
+ * Alguma conta JÁ GRAVADA normaliza para esta matrícula?
+ *
+ * `acharPorMatricula` não serve aqui, porque a direção é a inversa. Lá, o valor
+ * digitado é que é normalizado para achar o que está no banco. Aqui o valor que
+ * chega já vem normalizado (o cadastro só aceita dígitos) e quem precisa passar
+ * pela normalização é o que está GRAVADO: a conta antiga `2023.12345` colide
+ * com o `202312345` que está entrando agora, e um `findUnique` exato não vê
+ * isso.
+ *
+ * Deixar as duas entrarem fabrica exatamente o "conflito" que o
+ * `db:normalizar-matriculas` se recusa a consertar — e aí o aluno antigo fica
+ * invisível na bancada até alguém arrumar à mão.
+ */
+export function colideComGravada<T extends { matricula: string }>(
+  matricula: string,
+  naoNumericas: readonly T[],
+): T | null {
+  return (
+    naoNumericas.find(
+      (conta) => normalizarMatricula(conta.matricula) === matricula,
+    ) ?? null
+  );
+}
+
+/**
  * Chave do rate limit de login e da troca de matrícula (`ip:matricula`).
  *
  * Normalizada pelo mesmo motivo da busca: se `2023.12345`, `2023-12345` e

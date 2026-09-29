@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,8 +21,13 @@ describe('GoogleAuthService.completeSignup', () => {
     role: 'aluno' as const,
   };
 
-  async function createSubject() {
+  async function createSubject(
+    naoNumericas: { id: string; matricula: string }[] = [],
+  ) {
     const prisma = {
+      // As contas com caractere fora de 0-9 — a colisão que o índice único não
+      // enxerga. Vazia por padrão: o banco já normalizado.
+      $queryRawUnsafe: jest.fn().mockResolvedValue(naoNumericas),
       user: {
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn().mockResolvedValue(null),
@@ -65,6 +70,46 @@ describe('GoogleAuthService.completeSignup', () => {
     expect(prisma.user.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { matricula: '202312345' } }),
     );
+  });
+
+  /**
+   * A conta antiga `2023.12345` É o `202312345` que está entrando — o índice
+   * único não vê isso. Sem a checagem, as duas coexistem, a bancada acha só a
+   * nova, e o aluno antigo vira o "conflito" que o `db:normalizar-matriculas`
+   * se recusa a consertar.
+   */
+  it('recusa matrícula que só colide depois de normalizada', async () => {
+    const { prisma, service, ticket } = await createSubject([
+      { id: 'aluno-antigo', matricula: '2023.12345' },
+    ]);
+
+    await expect(
+      service.completeSignup({
+        ticket,
+        matricula: '202312345',
+        name: 'Ana Souza',
+        password: 'senha forte',
+      }),
+    ).rejects.toThrow(ConflictException);
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  // Letras e `@` não são apagados pela normalização, então um e-mail gravado
+  // numa conta antiga não bloqueia matrícula numérica de ninguém.
+  it('conta antiga com e-mail na matrícula não bloqueia o cadastro', async () => {
+    const { prisma, service, ticket } = await createSubject([
+      { id: 'outro', matricula: 'joao@edu.unifil.br' },
+    ]);
+
+    const user = await service.completeSignup({
+      ticket,
+      matricula: '202312345',
+      name: 'Ana Souza',
+      password: 'senha forte',
+    });
+
+    expect(user.matricula).toBe('202312345');
+    expect(prisma.user.create).toHaveBeenCalled();
   });
 
   // O ValidationPipe barra isto antes; a prova é que o serviço também barra,
