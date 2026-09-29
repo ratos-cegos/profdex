@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { resolveApiBaseUrl } from '../services/api-base-url'
+import { ehAppInstaladoNoIos } from '../composables/usePwa'
 import InstitutionalSignature from '../components/InstitutionalSignature.vue'
 
 const router = useRouter()
@@ -20,6 +21,9 @@ const googleLoginUrl = computed(() => {
   })
   return `${base}/auth/google`
 })
+
+// Lido uma vez: o modo de exibição não muda com a tela aberta.
+const appInstaladoNoIos = ehAppInstaladoNoIos()
 
 const matricula = ref('')
 const password = ref('')
@@ -104,6 +108,15 @@ async function submit() {
         <span>Entrar com e-mail institucional</span>
       </a>
       <p class="auth-hint">Use seu @edu.unifil.br ou @unifil.br</p>
+      <!-- Só no app instalado no iPhone: lá a ida ao Google termina numa folha
+           do Safari, com cookies separados do app. A conta é criada, mas a
+           sessão fica no Safari — e tocar no Google de novo repete o ciclo.
+           O caminho que funciona é a matrícula e a senha recém-definidas. -->
+      <p v-if="appInstaladoNoIos" class="auth-hint auth-hint--ios" role="note">
+        No iPhone, o login pelo Google termina no Safari. Já criou a conta e
+        voltou para cá sem entrar? Use a matrícula e a senha que você acabou de
+        definir.
+      </p>
 
       <div class="auth-footer">
         Primeira vez? Entre com o e-mail institucional acima — a conta é criada
@@ -212,6 +225,13 @@ async function submit() {
   font-size: 8px;
   line-height: 1.6;
   color: var(--text-muted, #888);
+}
+
+/* Não é rodapé: é a instrução que desfaz o "o cadastro não funcionou" de
+   quem voltou do Safari sem sessão. Mais legível que a dica de domínio. */
+.auth-hint--ios {
+  font-size: 9px;
+  color: var(--text, #eee);
 }
 
 /* Header Vermelho Sólido */
