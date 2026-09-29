@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from '@node-rs/bcrypt';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { escapeHtml } from '../mail/escape-html';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -153,12 +154,4 @@ function buildEmail(name: string, link: string): string {
       </p>
     </div>
   `;
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }

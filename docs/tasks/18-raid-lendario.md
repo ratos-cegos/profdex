@@ -34,7 +34,11 @@ tabela abaixo estão **fechadas** — não reabrir sem alinhar.
 > batalha contra o professor **lendário**, controlado pelo servidor. O aluno
 > leva até 3 exemplares; vencendo, **captura o lendário e completa a Profdex**.
 
-O evento é **opcional** e **não exige os raros**. Na Profdex ele aparece como a
+> ⚠️ **Atualizado em 29/09/2026:** o gate passou a exigir **comuns E raros**, e
+> o primeiro aluno a vencer gera um **e-mail** para a organização. Ver a entrada
+> de 29/09/2026 no `INDEX.md`. O resto desta tarefa continua valendo.
+
+O evento é **opcional**. Na Profdex ele aparece como a
 entrada `qtd_professores + 1`: silhueta com `???`, piscando colorido, e um
 botão **CAPTURAR**. Tentativas são ilimitadas, com cooldown entre elas.
 

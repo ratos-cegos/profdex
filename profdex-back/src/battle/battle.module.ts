@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { MailModule } from '../mail/mail.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { BattleGateway } from './battle.gateway';
 import { BattleRoomService } from './battle-room.service';
@@ -17,6 +18,7 @@ import { RatingService } from './rating.service';
   imports: [
     AuthModule, // JwtModule (verificação de sessão no handshake)
     MetricsModule, // registro de batalha concluída/vencida e da raid
+    MailModule, // aviso do PRIMEIRO aluno a vencer o lendário
   ],
   controllers: [RankingsController, RaidController],
   providers: [

@@ -134,7 +134,8 @@ telas de arena só foram exercitados por teste de unidade e build.
 - **Banco de produção:** está vazio e **pode ser limpo**. As tarefas 11–13 não
   escrevem migração de preservação de dados.
 - **Professor raro (24/09/2026):** professor com `rare: true` **não sai em ficha
-  comum e não conta para completar a Profdex**. Para capturá-lo o aluno precisa
+  comum**, e desde 29/09/2026 **conta para completar a Profdex** (ver "Raro no
+  gate da raid", abaixo). Para capturá-lo o aluno precisa
   de **5 acertos em cada tipo dele** na bancada (os tipos **são** os temas do
   gate; dois tipos = os dois temas, não um deles). Destravar é **por tema e
   permanente**; capturar é **uma vez por conta**, e há **no máximo 1 raro por
@@ -168,12 +169,12 @@ telas de arena só foram exercitados por teste de unidade e build.
   aplicações do tema** (configurável, 0 desliga). O filtro por aluno continua
   sendo **regra** e o global é só **preferência** — se os dois brigarem, vence
   não repetir para o mesmo aluno. Detalhes na tarefa 17.
-- **Raid do professor lendário (27/09/2026):** quem captura **todos os
-  professores comuns** destrava uma batalha contra o professor **lendário**,
-  jogado pelo servidor — até 3 exemplares do aluno contra um chefe de **4× a
-  vida** (configurável) e IV 15. Vencer **captura o lendário e completa a
-  Profdex**: ele é a entrada `Y+1`, aparece como silhueta `???` piscando
-  colorido e **só depois de destravar**. Raros **não** são exigidos. Tentativas
+- **Raid do professor lendário (27/09/2026):** quem fecha a Profdex destrava uma
+  batalha contra o professor **lendário**, jogado pelo servidor — até 3
+  exemplares do aluno contra um chefe de **4× a vida** (configurável) e IV 15.
+  Vencer **captura o lendário e completa a Profdex**: ele é a entrada `Y+1`,
+  aparece como silhueta `???` piscando colorido e **só depois de destravar**.
+  (Os raros passaram a ser exigidos em 29/09/2026 — ver abaixo.) Tentativas
   ilimitadas com **cooldown de 30 min** (configurável, contado do fim);
   abandono consome, restart do servidor **não**. O exemplar ganho tem **IV 15
   nos quatro** e joga no PvP normalmente. O destravamento é **permanente** —
@@ -183,6 +184,18 @@ telas de arena só foram exercitados por teste de unidade e build.
 - **Matrícula é corrigível pelo próprio aluno (26/09/2026):** troca no Perfil,
   **ilimitada**, exigindo a **senha atual** (é credencial de login) e reassinando
   a sessão. **Sem validação de formato.** Detalhes na tarefa 17.
+- **Raro no gate da raid, e aviso do primeiro (29/09/2026):** fechar a Profdex
+  passou a exigir **comuns E raros** — o `where` da contagem é
+  `{ legendary: false, active: true }`, e é o mesmo em `RaidService.dexProgress`,
+  no `collection_completed` e no ladder de dex. O `X/Y` da tela soma os raros
+  junto (a seção `✦ RAROS` continua, como recorte). A **válvula de escape** sem
+  deploy é `active: false` no painel: raro sem tiragem impressa, ou com tema que
+  ninguém destrava, trancaria a dex do evento inteiro. Destravamento antigo
+  **continua valendo** (a linha de `raid_unlocks` nunca é recalculada). E o
+  **primeiro** aluno a vencer o lendário gera um **e-mail** para
+  `gustavo.silveira@unifil.br` com nome, matrícula e estatísticas — uma vez por
+  evento, decidido dentro da transação do prêmio; falha de envio vira linha de
+  auditoria, nunca exceção.
 
 ## Achados em aberto
 
@@ -196,4 +209,6 @@ tarefa que os revelou — misturá-los ao mesmo commit confunde a revisão.
   todo mundo a partir do primeiro "remover" no painel. Foi corrigido junto com
   a raid porque virou pré-requisito dela: é a MESMA contagem que destrava o
   lendário, e com o bug a raid seria inalcançável pelo mesmo motivo. O `where`
-  agora é `{ rare: false, legendary: false, active: true }` nos dois lados.
+  passou a ser `{ rare: false, legendary: false, active: true }` nos dois lados,
+  e desde 29/09/2026 é `{ legendary: false, active: true }` — o raro entrou na
+  conta, o `active` continua.
