@@ -49,9 +49,12 @@ onMounted(() => {
  */
 function normalizarCampo() {
   const normalizada = normalizarMatricula(matricula.value)
-  if (!normalizada) return
+  // Só reescreve quando o resultado É matrícula. Um e-mail normalizado vira
+  // `anasouza@eduunifilbr` — texto que o aluno nunca digitou; melhor deixar o
+  // que ele vê como está e deixar o erro dizer o que fazer.
+  if (validarMatricula(normalizada)) return
   matricula.value = normalizada
-  if (erroEhDaMatricula.value && !validarMatricula(normalizada)) {
+  if (erroEhDaMatricula.value) {
     errorMsg.value = ''
     erroEhDaMatricula.value = false
   }
