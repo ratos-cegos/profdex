@@ -1,6 +1,7 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { DEFAULT_MAX_HP } from './engine/engine';
+import { MOVES_BY_TYPE } from './engine/moves';
 import { RaidRoomService } from './raid-room.service';
 import { RaidService } from './raid.service';
 
@@ -491,5 +492,147 @@ describe('RaidRoomService — reconexão', () => {
       // O chefe já agiu por definição: não há por quem esperar na raid.
       foeMoved: true,
     });
+  });
+});
+
+describe('RaidRoomService — os três estágios', () => {
+  const randomOriginal = Math.random;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    // Sorteio fixo, igual ao bloco da vitória. Aqui ele também fixa os tipos
+    // dos estágios: a partir de `matematica`, o primeiro candidato a distância
+    // ≥2 é `robotica`, e depois `engenharia-software`.
+    Math.random = () => 0;
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    Math.random = randomOriginal;
+  });
+
+  /** Todo evento de roteiro emitido na partida, em ordem. */
+  const roteiros = (ctx: ReturnType<typeof montar>) =>
+    ctx.emitidos
+      .flatMap((e) => (e.payload?.events ?? []) as any[])
+      .filter((ev) => ev.type === 'roteiro');
+
+  it('abre no estágio 1 com os tipos do banco', async () => {
+    const ctx = montar();
+    await atePrimeiroTurno(ctx);
+
+    const begin = ctx.ultimo('battle:begin');
+    expect(begin.foe.estagio).toBe(1);
+    expect(begin.foe.totalDeEstagios).toBe(3);
+    // A ficha da Profdex diz `matematica`; a abertura não pode mentir.
+    expect(begin.foe.types).toEqual(['matematica']);
+    expect(begin.foe.efeitoDoEstagio).toBe('Rigor Formal');
+  });
+
+  it('cruzar dois terços da vida vira o estágio e narra a roleta', async () => {
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const virada = roteiros(ctx)[0];
+    expect(virada.roleta.kind).toBe('tipo');
+    expect(virada.roleta.opcoes).toHaveLength(9);
+    expect(virada.roleta.resultado).toBe('robotica');
+    expect(virada.linhas.length).toBeGreaterThanOrEqual(2);
+    // A última linha é o anúncio do efeito do tipo em que caiu.
+    expect(virada.linhas).toContain(
+      'Ele ergueu uma blindagem que se recompõe sozinha.',
+    );
+  });
+
+  it('passa pelos três estágios numa partida que vai até o fim', async () => {
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const virados = roteiros(ctx).filter((r) => r.roleta?.kind === 'tipo');
+    // Duas viradas: 1→2 e 2→3. O estágio 1 não é anunciado por roteiro.
+    expect(virados).toHaveLength(2);
+    expect(virados.map((r) => r.roleta.resultado)).toEqual([
+      'robotica',
+      'engenharia-software',
+    ]);
+  });
+
+  it('a virada troca os tipos do chefe', async () => {
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    const tiposIniciais = ctx.ultimo('battle:begin').foe.types;
+
+    await jogarAteOFim(ctx);
+
+    const tiposVistos = new Set(
+      ctx.emitidos
+        .filter((e) => e.payload?.foe?.types)
+        .map((e) => e.payload.foe.types.join('+')),
+    );
+    expect(tiposIniciais).toEqual(['matematica']);
+    expect(tiposVistos.size).toBeGreaterThan(1);
+    expect([...tiposVistos]).toContain('robotica');
+  });
+
+  it('a virada refaz o moveset a partir do tipo novo', async () => {
+    // Os golpes do chefe não vão no payload (só os do aluno vão), então a
+    // verificação é pela superfície observável: as mensagens "usou X!".
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const usados = new Set(
+      ctx.emitidos
+        .flatMap((e) => (e.payload?.events ?? []) as any[])
+        .filter((ev) => ev.type === 'message')
+        .map((ev) => /^Tânia usou (.+)!$/.exec(ev.text)?.[1])
+        .filter(Boolean),
+    );
+
+    const nomesDoTipo = (tipo: string) =>
+      MOVES_BY_TYPE[tipo].map((m) => m.name);
+    const usouDeRobotica = nomesDoTipo('robotica').some((n) => usados.has(n));
+
+    expect(usados.size).toBeGreaterThan(0);
+    expect(usouDeRobotica).toBe(true);
+  });
+
+  it('não repete o roteiro a cada turno do mesmo estágio', async () => {
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const porResultado = roteiros(ctx)
+      .filter((r) => r.roleta?.kind === 'tipo')
+      .map((r) => r.roleta.resultado);
+    // Um roteiro por estágio, não um por turno.
+    expect(new Set(porResultado).size).toBe(porResultado.length);
+  });
+
+  it('o nome do efeito do estágio chega ao front', async () => {
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const nomes = new Set(
+      ctx.emitidos
+        .filter((e) => e.payload?.foe?.efeitoDoEstagio)
+        .map((e) => e.payload.foe.efeitoDoEstagio),
+    );
+    expect(nomes).toContain('Rigor Formal'); // matematica, estágio 1
+    expect(nomes).toContain('Blindagem'); // robotica, estágio 2
+  });
+
+  it('o chefe ainda cai: três estágios não tornam a raid invencível', async () => {
+    // Guarda de balanceamento. O estágio 3 deste sorteio é ENSW, que cura 15
+    // por turno — se a soma dos efeitos passar do dano que um time consegue
+    // fazer, a raid fica matematicamente invencível e é aqui que se descobre.
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+
+    const fim = await jogarAteOFim(ctx);
+
+    expect(fim.result).toBe('win');
   });
 });

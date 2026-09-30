@@ -5,6 +5,7 @@ import ArenaPalco from '../components/ArenaPalco.vue'
 import BancoDeReservas from '../components/BancoDeReservas.vue'
 import MoveButton from '../components/MoveButton.vue'
 import ProfessorFace from '../components/ProfessorFace.vue'
+import RoteiroOverlay from '../components/RoteiroOverlay.vue'
 import { useBattleStore } from '../stores/battle'
 
 // Arena PvP: o servidor resolve tudo; esta tela só envia a intenção de golpe
@@ -233,6 +234,32 @@ const ratingDeltaText = computed(() => {
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// ── Roteiro ──────────────────────────────────────────────────────────────────
+// Os eventos `roteiro` (virada de estágio da raid, NDE, Ricardo) saem da faixa
+// de mensagem e vão para um overlay que ESPERA o toque do jogador. A fila de
+// eventos fica pausada enquanto ele lê — daí a promessa: `play()` só continua
+// quando o overlay avisa que terminou.
+const roteiro = ref(null)
+let fecharRoteiro = null
+
+function mostrarRoteiro(ev) {
+  return new Promise((resolve) => {
+    roteiro.value = { linhas: ev.linhas ?? [], roleta: ev.roleta ?? null }
+    fecharRoteiro = () => {
+      roteiro.value = null
+      fecharRoteiro = null
+      resolve()
+    }
+  })
+}
+
+// Sair da tela no meio de um roteiro (voltar, F5, rota trocada) deixaria a
+// promessa pendurada para sempre e `animating` travado em true — botões mortos
+// até o próximo F5. Resolver na desmontagem é o que fecha essa porta.
+function soltarRoteiroPendente() {
+  fecharRoteiro?.()
+}
+
 // Reproduz a fila de eventos de uma rodada (mesmos tipos do motor).
 async function play(events) {
   animating.value = true
@@ -300,6 +327,11 @@ async function play(events) {
         if (ev.target === 'enemy') foeFainted.value = false
         message.value = `${ev.name} entra em campo!`
         await delay(700)
+        break
+      // Momento de roteiro: sai da faixa e vai para o overlay, no ritmo do
+      // jogador. O `await` mantém o resto da rodada em espera.
+      case 'roteiro':
+        await mostrarRoteiro(ev)
         break
       default:
         break
@@ -402,7 +434,10 @@ onMounted(() => {
   }, 500)
 })
 
-onUnmounted(() => clock && clearInterval(clock))
+onUnmounted(() => {
+  if (clock) clearInterval(clock)
+  soltarRoteiroPendente()
+})
 </script>
 
 <template>
@@ -417,6 +452,14 @@ onUnmounted(() => clock && clearInterval(clock))
     <!-- O mesmo palco do treino: só os dois lutadores, o fundo e as barras de
          HP sobrepostas. Sem colunas flex, sem banco de reservas aqui dentro. -->
     <ArenaPalco :foe="ladoRival" :you="ladoSeu" />
+
+    <!-- Fora da faixa de propósito: ver o comentário no topo de
+         RoteiroOverlay.vue. Ele se sobrepõe ao palco e pausa a rodada. -->
+    <RoteiroOverlay
+      v-if="roteiro"
+      :roteiro="roteiro"
+      @fim="soltarRoteiroPendente"
+    />
 
     <!-- Faixa de comandos, de ALTURA TRAVADA (ver `--faixa-altura` no estilo):
          os três blocos que se alternam aqui ocupam sempre o mesmo espaço. -->
