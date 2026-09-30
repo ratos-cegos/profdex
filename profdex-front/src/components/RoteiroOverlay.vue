@@ -14,7 +14,7 @@
 // voltou depois do cooldown já viu este texto.
 
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import Roleta from './Roleta.vue'
+import RoletaDeSorteio from './RoletaDeSorteio.vue'
 
 const props = defineProps({
   // { linhas: string[], roleta?: { kind, opcoes, resultado } }
@@ -80,7 +80,7 @@ onBeforeUnmount(() => {
     </button>
 
     <div class="roteiro__miolo">
-      <Roleta
+      <RoletaDeSorteio
         v-if="roteiro.roleta"
         :key="roteiro.roleta.resultado"
         :kind="roteiro.roleta.kind"
