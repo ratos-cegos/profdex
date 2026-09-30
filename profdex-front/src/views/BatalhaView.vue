@@ -141,10 +141,21 @@ function goBack() {
            pixel do App.vue, o mesmo de qualquer outra tela. -->
 
       <!-- Convite enviado: fica na tela principal, já que o modal fecha ao enviar -->
-      <p v-if="battle.outgoingInvite" class="outgoing" aria-live="polite">
-        Desafio enviado para <strong>{{ battle.outgoingInvite.to.name }}</strong> ·
-        {{ secondsLeft(battle.outgoingInvite.expiresAt) }}s
-      </p>
+      <div v-if="battle.outgoingInvite" class="outgoing">
+        <p class="outgoing__texto" aria-live="polite">
+          Desafio enviado para <strong>{{ battle.outgoingInvite.to.name }}</strong> ·
+          {{ secondsLeft(battle.outgoingInvite.expiresAt) }}s
+        </p>
+        <!-- Mandou sem querer: dá para desistir sem esperar os 60s. -->
+        <button
+          class="outgoing__cancelar"
+          type="button"
+          :aria-label="`Cancelar desafio para ${battle.outgoingInvite.to.name}`"
+          @click="battle.cancelInvite()"
+        >
+          ✕
+        </button>
+      </div>
 
       <section class="battle-options" aria-label="Opções de batalha">
         <button
@@ -238,11 +249,23 @@ function goBack() {
             >
               EM BATALHA
             </span>
+            <!-- No lugar do DESAFIAR, enquanto o desafio espera resposta: a
+                 contagem e o ✕ para desistir dele. -->
             <span
               v-else-if="battle.outgoingInvite?.to.id === player.id"
-              class="pixel lobby__status lobby__status--waiting"
+              class="lobby__aguardando"
             >
-              {{ secondsLeft(battle.outgoingInvite.expiresAt) }}s…
+              <span class="pixel lobby__status lobby__status--waiting">
+                {{ secondsLeft(battle.outgoingInvite.expiresAt) }}s…
+              </span>
+              <button
+                class="lobby__cancelar"
+                type="button"
+                :aria-label="`Cancelar desafio para ${player.name}`"
+                @click="battle.cancelInvite()"
+              >
+                ✕
+              </button>
             </span>
             <button
               v-else
@@ -428,13 +451,59 @@ function goBack() {
 /* Convite enviado (fica na tela principal, fora do modal) */
 .outgoing {
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin: 0;
-  padding: 10px 14px;
+  padding: 4px 4px 4px 14px;
   border-radius: var(--radius);
   background: var(--bg-card);
   border: 1px solid var(--yellow);
   color: var(--text);
   font-size: 13px;
+}
+
+.outgoing__texto {
+  margin: 0;
+  min-width: 0;
+}
+
+/* ✕ de cancelar: alvo de 44px (dedo em movimento), discreto até o toque. */
+.outgoing__cancelar,
+.lobby__cancelar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.outgoing__cancelar:focus-visible,
+.lobby__cancelar:focus-visible {
+  outline: 2px solid var(--unifil-gold);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .outgoing__cancelar:hover,
+  .lobby__cancelar:hover {
+    border-color: var(--red-light);
+    color: var(--text);
+  }
+}
+
+.lobby__aguardando {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 /* Modal de jogadores online */

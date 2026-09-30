@@ -460,6 +460,20 @@ export const useBattleStore = defineStore('battle', () => {
     return command('invite:decline', { inviteId })
   }
 
+  /**
+   * Desiste do desafio ENVIADO (mandado sem querer, ou para a pessoa errada).
+   * Otimista como a recusa: a contagem some na hora e o botão DESAFIAR volta.
+   * O destinatário recebe `invite:cancelled` (`withdrawn`) e o aviso some da
+   * tela dele. Se o servidor responder que o convite já não existia (expirou
+   * ou foi aceito no mesmo instante), não há o que desfazer.
+   */
+  async function cancelInvite() {
+    const invite = outgoingInvite.value
+    if (!invite) return { ok: true }
+    dropInvite(invite.inviteId)
+    return command('invite:cancel', { inviteId: invite.inviteId })
+  }
+
   function dropInvite(inviteId) {
     if (outgoingInvite.value?.inviteId === inviteId) outgoingInvite.value = null
     incomingInvites.value = incomingInvites.value.filter((i) => i.inviteId !== inviteId)
@@ -643,6 +657,7 @@ export const useBattleStore = defineStore('battle', () => {
     sendInvite,
     acceptInvite,
     declineInvite,
+    cancelInvite,
     refreshInvites,
     startRaid,
     pickTeam,

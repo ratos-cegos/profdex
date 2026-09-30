@@ -67,6 +67,21 @@ describe('InviteService', () => {
     expect(onExpire).not.toHaveBeenCalled();
   });
 
+  it('only the sender can withdraw the invite, and it frees the slot', () => {
+    const result = service.create('ana', 'bia', onExpire);
+    if (!result.ok) throw new Error('should create');
+
+    expect(service.takeAsSender(result.invite.id, 'bia')).toBeNull();
+    expect(service.takeAsSender(result.invite.id, 'intrusa')).toBeNull();
+    expect(service.takeAsSender(result.invite.id, 'ana')?.toId).toBe('bia');
+    // retirado: some para o alvo, não expira depois e a saída de Ana libera
+    expect(service.takeAsSender(result.invite.id, 'ana')).toBeNull();
+    expect(service.takeAsTarget(result.invite.id, 'bia')).toBeNull();
+    jest.advanceTimersByTime(INVITE_TTL_MS);
+    expect(onExpire).not.toHaveBeenCalled();
+    expect(service.create('ana', 'clara', onExpire).ok).toBe(true);
+  });
+
   it('cancels everything involving a user who went offline', () => {
     const sent = service.create('ana', 'bia', onExpire);
     service.create('clara', 'ana', onExpire);
