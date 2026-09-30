@@ -10,7 +10,7 @@
  * Funções puras, sem Prisma e sem socket, para o teste ser direto.
  */
 
-import { Combatant } from './engine/engine';
+import { BattleEvent, Combatant } from './engine/engine';
 import { Move } from './engine/moves';
 
 export const MAX_TEAM_SIZE = 3;
@@ -117,4 +117,31 @@ export function publicMemberView(m: TeamMember) {
 /** A mesma visão, mais o `captureId` — só para o DONO do time. */
 export function ownMemberView(m: TeamMember) {
   return { ...publicMemberView(m), captureId: m.captureId };
+}
+
+/**
+ * O evento de troca, com QUEM entra: professor, tipos e HP no instante da
+ * entrada.
+ *
+ * Só o nome não bastava. O `you`/`foe` da rodada chega com o estado FINAL
+ * (depois dos golpes), e a arena anima a fila antes de chegar lá: sem os dados
+ * de quem entrou, ela trocava o sprite cedo demais e descontava o dano seguinte
+ * do HP de quem SAIU — o substituto aparecia tombado, com a animação de queda
+ * de outro. Aqui vai a visão pública (a mesma do banco de reservas), nunca
+ * golpes nem IVs, e o evento é o mesmo para os dois lados.
+ */
+export function switchEvent(
+  target: 'player' | 'enemy',
+  m: TeamMember,
+): Extract<BattleEvent, { type: 'switch' }> {
+  const { professor, types, hp, maxHp } = publicMemberView(m);
+  return {
+    type: 'switch',
+    target,
+    name: m.professor.name,
+    professor,
+    types,
+    hp,
+    maxHp,
+  };
 }

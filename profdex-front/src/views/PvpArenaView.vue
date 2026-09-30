@@ -6,6 +6,12 @@ import BancoDeReservas from '../components/BancoDeReservas.vue'
 import MoveButton from '../components/MoveButton.vue'
 import ProfessorFace from '../components/ProfessorFace.vue'
 import RoteiroOverlay from '../components/RoteiroOverlay.vue'
+import {
+  aplicarEvento,
+  chaveDoOcupante,
+  ocupanteDoServidor,
+} from '../composables/battleOcupante'
+import { esperar, TEMPO } from '../composables/battleTiming'
 import { useBattleStore } from '../stores/battle'
 
 // Arena PvP: o servidor resolve tudo; esta tela só envia a intenção de golpe
@@ -16,13 +22,17 @@ const router = useRouter()
 const battle = useBattleStore()
 
 // Estado exibido (a "verdade" chega pronta do servidor; isto aqui só anima).
-const youHp = ref(0)
-const foeHp = ref(0)
+//
+// Quem está em campo de cada lado — professor, tipos, HP, caído — é estado
+// PRÓPRIO da tela, que só muda quando a fila de eventos passa pela troca ou pelo
+// golpe correspondente. Ver battleOcupante.js: ligado direto no `you`/`foe` do
+// servidor, o substituto aparecia antes da hora e herdava a queda de quem saiu.
+const exibido = ref({ player: ocupanteDoServidor(null), enemy: ocupanteDoServidor(null) })
+const youFainted = computed(() => exibido.value.player.fainted)
+const foeFainted = computed(() => exibido.value.enemy.fainted)
 const message = ref('')
 const youHit = ref(false)
 const foeHit = ref(false)
-const youFainted = ref(false)
-const foeFainted = ref(false)
 const animating = ref(false)
 const showResult = ref(false)
 const youFeedback = ref([])
@@ -128,10 +138,14 @@ async function trocarPara(membro) {
   }
 }
 
+// Travado enquanto a queda ainda anima: o servidor responde à entrada na hora
+// (a rodada seguinte chega antes do ack), e escolher no meio da animação
+// embaralhava a ordem do que a tela mostra. "Entra em campo!" é o servidor
+// quem anuncia, na fila; aqui fica só a confirmação do toque.
 async function entrarCom(membro) {
-  if (!precisaEntrar.value) return
+  if (!precisaEntrar.value || animating.value) return
   const ack = await battle.enterWith(membro.captureId)
-  if (ack.ok) message.value = `${membro.professor.name} entra em campo!`
+  if (ack.ok) message.value = `${membro.professor.name} vai entrar!`
 }
 
 // ── Os dois lados do palco ─────────────────────────────────────────────────
@@ -144,36 +158,43 @@ async function entrarCom(membro) {
 // tamanho do personagem era o espaço que sobrava, e o banco de reservas do
 // rival, empilhado acima do sprite dele, era o que mais espremia.
 // Quem resolve costas/frente também é o palco.
-const ladoRival = computed(() => ({
-  professor: pvp.value?.foe?.professor,
-  // Só a raid manda isto, e só durante o evento do NDE: quatro professores
-  // dividindo um corpo. O palco desenha os quatro quando o campo existe.
-  professores: pvp.value?.foe?.professores ?? null,
-  // `nomeEmCampo` vem antes do nome do professor porque quem está no assento
-  // pode ser o grupo ("NDE da Coordenação"), não um professor.
-  name:
-    pvp.value?.foe?.nomeEmCampo ??
-    pvp.value?.foe?.professor?.name ??
-    pvp.value?.opponent?.name ??
-    '',
-  types: pvp.value?.foe?.types ?? [],
-  hp: foeHp.value,
-  maxHp: pvp.value?.foe?.maxHp ?? 0,
-  hit: foeHit.value,
-  fainted: foeFainted.value,
-  feedback: foeFeedback.value,
-}))
+const ladoRival = computed(() => {
+  const o = exibido.value.enemy
+  return {
+    professor: o.professor,
+    // Só a raid manda isto, e só durante o evento do NDE: quatro professores
+    // dividindo um corpo. O palco desenha os quatro quando o campo existe.
+    // Do OCUPANTE, como a barra: lidos do `foe` final, grupo e nome trocavam
+    // antes da fila chegar à troca (o NDE surgia com a vida do chefe, e o
+    // chefe voltava a tempo de "cair" no lugar do NDE).
+    professores: o.grupo,
+    // O nome em campo vem antes do nome do professor porque quem está no
+    // assento pode ser o grupo ("NDE da Coordenação"), não um professor.
+    name: o.nome ?? o.professor?.name ?? pvp.value?.opponent?.name ?? '',
+    types: o.types,
+    hp: o.hp,
+    maxHp: o.maxHp,
+    hit: foeHit.value,
+    fainted: o.fainted,
+    feedback: foeFeedback.value,
+    chave: chaveDoOcupante(o),
+  }
+})
 
-const ladoSeu = computed(() => ({
-  professor: pvp.value?.you?.professor,
-  name: pvp.value?.you?.professor?.name ?? 'Você',
-  types: pvp.value?.you?.types ?? [],
-  hp: youHp.value,
-  maxHp: pvp.value?.you?.maxHp ?? 0,
-  hit: youHit.value,
-  fainted: youFainted.value,
-  feedback: youFeedback.value,
-}))
+const ladoSeu = computed(() => {
+  const o = exibido.value.player
+  return {
+    professor: o.professor,
+    name: o.professor?.name ?? 'Você',
+    types: o.types,
+    hp: o.hp,
+    maxHp: o.maxHp,
+    hit: youHit.value,
+    fainted: o.fainted,
+    feedback: youFeedback.value,
+    chave: chaveDoOcupante(o),
+  }
+})
 
 /**
  * A mensagem de turno como a faixa mostra.
@@ -241,7 +262,12 @@ const ratingDeltaText = computed(() => {
   return `ELO ${delta >= 0 ? '+' : ''}${delta}`
 })
 
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+// ── A fila de eventos ──────────────────────────────────────────────────────
+// Cada rodada que chega entra no FIM da fila, e um único laço a consome em
+// ordem. Antes, uma rodada que chegava enquanto a anterior ainda animava era
+// ignorada e depois apagada pelo `consumeEvents()` — com a entrada pós-nocaute
+// respondida na hora pelo servidor, era justamente a troca que se perdia.
+const fila = []
 
 // ── Roteiro ──────────────────────────────────────────────────────────────────
 // Os eventos `roteiro` (virada de estágio da raid, NDE, Ricardo) saem da faixa
@@ -269,40 +295,42 @@ function soltarRoteiroPendente() {
   fecharRoteiro?.()
 }
 
-// Reproduz a fila de eventos de uma rodada (mesmos tipos do motor).
-async function play(events) {
+async function drenarFila() {
+  if (animating.value) return
   animating.value = true
+  while (fila.length) await play(fila.shift())
+  fimDaFila()
+}
+
+// Reproduz os eventos de uma rodada (mesmos tipos do motor). Os tempos vêm de
+// battleTiming.js, compartilhados com o treino.
+async function play(events) {
   for (const ev of events) {
     switch (ev.type) {
       case 'message':
         message.value = ev.text
-        await delay(850)
+        await esperar(TEMPO.mensagem)
         break
       case 'damage': {
         lastDamageTarget = ev.target
         showFeedback(ev.target, { amount: ev.amount, kind: 'dano' })
-        const isYou = ev.target === 'player'
-        const flag = isYou ? youHit : foeHit
+        const flag = ev.target === 'player' ? youHit : foeHit
         flag.value = true
-        if (isYou) youHp.value = Math.max(0, youHp.value - ev.amount)
-        else foeHp.value = Math.max(0, foeHp.value - ev.amount)
-        if (isYou && youHp.value <= 0) youFainted.value = true
-        if (!isYou && foeHp.value <= 0) foeFainted.value = true
-        await delay(450)
+        exibido.value = aplicarEvento(exibido.value, ev)
+        await esperar(TEMPO.danoImpacto)
         flag.value = false
         message.value = `Causou ${ev.amount} de dano!`
-        await delay(650)
+        await esperar(TEMPO.danoTexto)
         break
       }
       case 'heal': {
         showFeedback(ev.target, { amount: ev.amount, kind: 'cura' })
-        if (ev.target === 'player') youHp.value += ev.amount
-        else foeHp.value += ev.amount
-        await delay(600)
+        exibido.value = aplicarEvento(exibido.value, ev)
+        await esperar(TEMPO.cura)
         break
       }
       case 'status':
-        await delay(300)
+        await esperar(TEMPO.status)
         break
       case 'effectiveness':
         showFeedback(lastDamageTarget, {
@@ -321,21 +349,21 @@ async function play(events) {
             weak: 'Não foi muito eficaz…',
             weak4: 'Mal arranhou… (×¼)',
           }[ev.level] || ''
-        await delay(800)
+        await esperar(TEMPO.eficacia)
         break
+      // A queda é SÓ de quem o evento aponta; o tempo a mais deixa a animação
+      // do palco terminar antes da próxima frase.
       case 'faint':
-        if (ev.target === 'player') youFainted.value = true
-        if (ev.target === 'enemy') foeFainted.value = true
-        await delay(300)
+        exibido.value = aplicarEvento(exibido.value, ev)
+        await esperar(TEMPO.queda)
         break
-      // A troca sai da SALA, não do motor: quem entra assume o lugar em campo.
-      // O sprite e a barra vêm do `you`/`foe` já atualizados no fim da fila, e
-      // aqui só se limpa o estado de "caído" do slot, que agora é de outro.
+      // A troca sai da SALA, não do motor: o evento traz quem entra, e é AQUI —
+      // no ponto certo da fila — que o sprite, os tipos e a barra passam para
+      // ele, com o HP dele e de pé (sprite novo, ver `chave` no ArenaPalco).
+      // Sem texto próprio: o "X entra em campo!" vem logo atrás, do servidor.
       case 'switch':
-        if (ev.target === 'player') youFainted.value = false
-        if (ev.target === 'enemy') foeFainted.value = false
-        message.value = `${ev.name} entra em campo!`
-        await delay(700)
+        exibido.value = aplicarEvento(exibido.value, ev)
+        await esperar(TEMPO.troca)
         break
       // Momento de roteiro: sai da faixa e vai para o overlay, no ritmo do
       // jogador. O `await` mantém o resto da rodada em espera.
@@ -346,10 +374,12 @@ async function play(events) {
         break
     }
   }
-  // Fim da fila: alinha com os valores autoritativos do servidor.
+}
+
+// Fila vazia: alinha com os valores autoritativos do servidor e anuncia a fase.
+function fimDaFila() {
   syncFromServer()
   animating.value = false
-  battle.consumeEvents()
 
   if (pvp.value?.phase === 'done') {
     showResult.value = true
@@ -362,16 +392,23 @@ async function play(events) {
   }
 }
 
+/**
+ * O ocupante do servidor, mantendo a identidade do <img> se é o mesmo
+ * professor em campo — senão, o sprite remontaria a cada fim de rodada.
+ */
+function alinhar(atual, lado) {
+  const mesmo = (atual.professor?.id ?? null) === (lado?.professor?.id ?? null)
+  return ocupanteDoServidor(lado, mesmo ? atual.entrada : atual.entrada + 1)
+}
+
 function syncFromServer() {
   if (!pvp.value?.you) return
-  youHp.value = pvp.value.you.hp
-  foeHp.value = pvp.value.foe.hp
-  // Atribuição, não `if (…) = true`: com o time, quem está em campo MUDA. Só
-  // ligar a bandeira deixava o sprite caído para sempre — depois do primeiro
-  // nocaute, todo substituto entrava cinza e tombado, como se já estivesse
-  // morto, porque nada nunca a desligava.
-  youFainted.value = youHp.value <= 0
-  foeFainted.value = foeHp.value <= 0
+  // Atribuição completa, não `if (…) = true`: com o time, quem está em campo
+  // MUDA. Só ligar a bandeira de caído deixava o sprite tombado para sempre.
+  exibido.value = {
+    player: alinhar(exibido.value.player, pvp.value.you),
+    enemy: alinhar(exibido.value.enemy, pvp.value.foe),
+  }
   // O banco só acompanha depois que a animação alcança o servidor (ver
   // `timeExibido`): o HP dos reservas é a mesma verdade da barra grande.
   sincronizarTimeExibido()
@@ -392,11 +429,16 @@ function backToLobby() {
   router.push({ name: eraRaid ? 'profdex' : 'batalha' })
 }
 
-// Novas rodadas chegam pelo store; anima assim que houver fila.
+// Novas rodadas chegam pelo store: vão para o fim da fila local e o store é
+// esvaziado na hora, para a próxima rodada nunca sobrescrever uma que ainda
+// não foi mostrada.
 watch(
   () => pvp.value?.pendingEvents,
   (events) => {
-    if (events?.length && !animating.value) play([...events])
+    if (!events?.length) return
+    fila.push([...events])
+    battle.consumeEvents()
+    drenarFila()
   },
   { immediate: true },
 )
@@ -418,7 +460,7 @@ watch(
 watch(
   () => pvp.value?.phase,
   (phase) => {
-    if (phase === 'done' && !animating.value && !pvp.value?.pendingEvents?.length) {
+    if (phase === 'done' && !animating.value && !fila.length && !pvp.value?.pendingEvents?.length) {
       syncFromServer()
       showResult.value = true
     }
@@ -514,6 +556,7 @@ onUnmounted(() => {
                 :key="m.captureId"
                 class="entrada__opcao"
                 type="button"
+                :disabled="animating"
                 @click="entrarCom(m)"
               >
                 <ProfessorFace class="entrada__face" :professor="m.professor" />

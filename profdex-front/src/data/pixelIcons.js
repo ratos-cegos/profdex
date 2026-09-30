@@ -258,6 +258,14 @@ const SETA_CIMA = [
   '............',
 ]
 
+/** Gira a grade 90° no sentido horário: a seta para cima vira a seta para a direita. */
+function girarHorario(grade) {
+  const n = grade.length
+  return grade.map((_, linha) =>
+    Array.from({ length: n }, (_, coluna) => grade[n - 1 - coluna][linha]).join(''),
+  )
+}
+
 // "Recolher para o canto": um traço, o sinal de minimizar de qualquer janela.
 const MINIMIZAR = [
   '............',
@@ -308,6 +316,7 @@ export const ICONES = {
   fechar: { grade: FECHAR },
   'seta-cima': { grade: SETA_CIMA },
   'seta-baixo': { grade: [...SETA_CIMA].reverse() },
+  'seta-direita': { grade: girarHorario(SETA_CIMA) },
   minimizar: { grade: MINIMIZAR },
   check: { grade: CHECK },
 }

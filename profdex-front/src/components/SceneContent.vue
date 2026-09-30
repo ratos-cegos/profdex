@@ -1,9 +1,9 @@
 <script setup>
 import { shallowRef, watch } from 'vue'
 import { useLoop } from '@tresjs/core'
-import { GLTFModel } from '@tresjs/cientos'
 import { Box3 } from 'three'
 import { enquadramentoDe } from '../composables/enquadrarModelo.js'
+import ModeloGlb from './ModeloGlb.vue'
 
 // Este componente vive DENTRO do <TresCanvas> (ver Stage3D.vue).
 // Só aqui dentro o contexto do Tres existe — por isso o useLoop
@@ -15,6 +15,10 @@ const props = defineProps({
   // Gira o professor no próprio eixo — é a revelação da bancada.
   spin: { type: Boolean, default: false },
 })
+
+// Só repassa o que o ModeloGlb avisa: quem decide o que fazer com a falha é a
+// tela (a bancada troca o palco pelo sprite).
+const emit = defineEmits(['pronto', 'erro'])
 
 /** Radianos por segundo: uma volta a cada ~10s, tempo de ler o nome na ficha. */
 const VELOCIDADE_GIRO = 0.6
@@ -72,6 +76,9 @@ onBeforeRender(({ delta }) => {
     enquadrado = enquadrar(modeloRef.value)
     // Ainda carregando: não gira, para a próxima medição pegar o eixo parado.
     if (!enquadrado) return
+    // `pronto` só depois de enquadrar, e não quando o GLB chega: quem esconde o
+    // palco até aqui não mostra nenhum frame do modelo fora de escala.
+    emit('pronto')
   }
   if (props.spin && eixoRef.value) eixoRef.value.rotation.y += delta * VELOCIDADE_GIRO
 })
@@ -86,7 +93,7 @@ onBeforeRender(({ delta }) => {
        reaproveitar um que ainda tem o GLB antigo pendurado. -->
   <TresGroup ref="eixoRef">
     <TresGroup v-if="modelPath" :key="modelPath" ref="modeloRef">
-      <GLTFModel :path="modelPath" cast-shadow />
+      <ModeloGlb :path="modelPath" @erro="emit('erro')" />
     </TresGroup>
   </TresGroup>
 

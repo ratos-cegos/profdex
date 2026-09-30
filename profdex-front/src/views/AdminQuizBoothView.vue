@@ -15,19 +15,14 @@
  * O cronômetro daqui é conforto visual: quem decide se o tempo acabou é o
  * servidor, na hora de conferir a resposta.
  */
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../services/api'
 import { MATRICULA_MAX_DIGITOS } from '../services/matricula-rules'
+import PalcoRevelacao from '../components/PalcoRevelacao.vue'
 import TypeIcon from '../components/TypeIcon.vue'
 import TelaDeDescanso from '../components/TelaDeDescanso.vue'
 import { TYPE_CYCLE, getType, legibleColor } from '../data/types'
-import { spriteFrenteDe, temModeloProprio } from '../data/professorArte'
-
-// O 3D chega só quando aparece um professor para revelar. A bancada passa o dia
-// inteiro aberta e roda em modo `ficha` na maior parte do evento: carregar o
-// three.js no boot seria ~700KB que a maioria das rodadas nunca usa.
-const Stage3D = defineAsyncComponent(() => import('../components/Stage3D.vue'))
 
 const router = useRouter()
 
@@ -166,17 +161,6 @@ function encerrarQr() {
 
 // Sem timer órfão, como o cronômetro da questão já trata.
 onBeforeUnmount(pararPolling)
-
-/** O que a revelação desenha: o modelo próprio, ou o sprite do professor certo. */
-const arteRevelada = computed(() => {
-  const p = revelado.value ?? raroLiberado.value
-  if (!p) return null
-  return temModeloProprio(p)
-    ? { tipo: '3d', modelPath: p.modelUrl }
-    : // NUNCA o GLB padrão: `modeloDe` cai no Gustavo, e mostrar o professor
-      // errado ao lado do QR é pior que não mostrar 3D (decisão 17).
-      { tipo: 'sprite', src: spriteFrenteDe(p), pixel: Boolean(p.pixelArt) }
-})
 
 // ── Cooldown dos temas, contando na tela ────────────────────────────────────
 // O servidor diz quantos segundos faltam NO MOMENTO da consulta; daí em diante
@@ -555,25 +539,7 @@ function formatarEspera(s) {
            "vaza" para a fila, e é aceito — quem a vê é quem já está lendo
            ENTREGUE A FICHA ✦ FULANO em caixa alta, no mesmo segundo. -->
       <div v-if="qr" class="entrega entrega--raro">
-        <figure class="palco-revelacao">
-          <component
-            :is="Stage3D"
-            v-if="arteRevelada?.tipo === '3d'"
-            :config="{
-              modelPath: arteRevelada.modelPath,
-              clearColor: '#1b1408',
-              autoRotate: true,
-              interactive: false,
-            }"
-          />
-          <img
-            v-else-if="arteRevelada"
-            class="palco-revelacao__sprite"
-            :class="{ 'palco-revelacao__sprite--pixel': arteRevelada.pixel }"
-            :src="arteRevelada.src"
-            :alt="raroLiberado.name"
-          />
-        </figure>
+        <PalcoRevelacao :professor="revelado ?? raroLiberado" clear-color="#1b1408" />
         <div class="entrega__qr">
           <p class="entrega__dono">
             <strong>{{ aluno?.name }}</strong>
@@ -658,25 +624,7 @@ function formatarEspera(s) {
       </div>
 
       <div v-else-if="revelado" class="entrega entrega--revelada">
-        <figure class="palco-revelacao">
-          <component
-            :is="Stage3D"
-            v-if="arteRevelada?.tipo === '3d'"
-            :config="{
-              modelPath: arteRevelada.modelPath,
-              clearColor: '#10121a',
-              autoRotate: true,
-              interactive: false,
-            }"
-          />
-          <img
-            v-else-if="arteRevelada"
-            class="palco-revelacao__sprite"
-            :class="{ 'palco-revelacao__sprite--pixel': arteRevelada.pixel }"
-            :src="arteRevelada.src"
-            :alt="revelado.name"
-          />
-        </figure>
+        <PalcoRevelacao :professor="revelado" clear-color="#10121a" />
         <div class="revelacao__ficha">
           <p class="revelacao__eyebrow">CAPTURADO</p>
           <h3 class="revelacao__nome">{{ revelado.name }}</h3>
@@ -1378,44 +1326,6 @@ function formatarEspera(s) {
   font-size: clamp(14px, 2vw, 24px);
   color: var(--success-text, #7bd88f);
   letter-spacing: 2px;
-}
-
-/* O palco da revelação. Altura fixa porque o <TresCanvas> herda o tamanho do
-   pai — sem ela o canvas nasce com 0px e o professor não aparece. */
-.palco-revelacao {
-  margin: 0;
-  width: clamp(200px, 32vh, 340px);
-  height: clamp(200px, 32vh, 340px);
-  display: grid;
-  place-items: center;
-}
-
-.palco-revelacao__sprite {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  /* Balanço leve: sem 3D, é o que dá vida à revelação. */
-  animation: revelacao-balanco 2.4s ease-in-out infinite;
-}
-
-.palco-revelacao__sprite--pixel {
-  image-rendering: pixelated;
-}
-
-@keyframes revelacao-balanco {
-  0%,
-  100% {
-    transform: translateY(0) rotate(-1.5deg);
-  }
-  50% {
-    transform: translateY(-8px) rotate(1.5deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .palco-revelacao__sprite {
-    animation: none;
-  }
 }
 
 .revelacao__ficha {

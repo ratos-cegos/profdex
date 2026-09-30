@@ -541,6 +541,30 @@ export class BattleGateway
     return { ok: true };
   }
 
+  /**
+   * O remetente desiste do desafio (mandou sem querer, ou para a pessoa
+   * errada). O destinatário recebe `invite:cancelled` com `withdrawn` e o aviso
+   * some da tela dele; as outras abas do remetente também, para nenhuma ficar
+   * mostrando uma contagem regressiva que já não existe.
+   */
+  @SubscribeMessage('invite:cancel')
+  onInviteCancel(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: unknown,
+  ): Ack {
+    const me = this.userOf(client);
+    const inviteId = this.readString(body, 'inviteId');
+    if (!inviteId) return { ok: false, message: 'Convite inválido.' };
+
+    const invite = this.invites.takeAsSender(inviteId, me.id);
+    if (!invite) return { ok: false, message: 'Esse convite não existe mais.' };
+
+    const payload = { inviteId: invite.id, reason: 'withdrawn' };
+    this.emitToUser(invite.toId, 'invite:cancelled', payload);
+    this.emitToUser(invite.fromId, 'invite:cancelled', payload);
+    return { ok: true };
+  }
+
   private onInviteExpired(invite: Invite): void {
     const payload = { inviteId: invite.id };
     this.emitToUser(invite.fromId, 'invite:expired', payload);

@@ -97,7 +97,22 @@ export type BattleEvent =
   // Emitido pela SALA (team.ts / battle-room.service.ts), nunca pelo motor: o
   // motor não sabe que existe time. Fica no tipo porque a fila de eventos é o
   // contrato único entre servidor e UI, e é ela que anima a troca.
-  | { type: 'switch'; target: CombatantKey; name: string }
+  //
+  // Carrega quem ENTRA (professor, tipos, HP no instante da troca): a arena
+  // precisa disso para trocar o sprite e a barra no momento certo da fila, e
+  // não no fim da rodada. Ver `switchEvent` em team.ts. Os campos são opcionais
+  // porque o NDE da raid entra como grupo, sem um professor só para mostrar.
+  | {
+      type: 'switch';
+      target: CombatantKey;
+      name: string;
+      professor?: unknown;
+      /** Só o NDE da raid: os quatro que entram juntos, no lugar de `professor`. */
+      professores?: unknown[];
+      types?: string[];
+      hp?: number;
+      maxHp?: number;
+    }
   // Idem: emitido só pela sala da RAID (`raid-room.service.ts`), para os
   // momentos de roteiro — virada de estágio, chegada do NDE, chegada do
   // Ricardo. A UI o trata num overlay separado, com toque para avançar, em vez

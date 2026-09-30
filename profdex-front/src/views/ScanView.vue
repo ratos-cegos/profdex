@@ -3,6 +3,7 @@ import jsQR from 'jsqr'
 import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BottomSheet from '../components/BottomSheet.vue'
+import PixelIcon from '../components/PixelIcon.vue'
 import { COMO_FUNCIONA_QR } from '../data/comoFunciona.js'
 import { spriteFrenteDe } from '../data/professorArte.js'
 import { useProfessorsStore } from '../stores/professors'
@@ -184,6 +185,23 @@ async function onQRDetected(data) {
   }
 }
 
+/**
+ * Volta para a mira depois de uma captura. Na fila da bancada o aluno quase
+ * sempre tem outra ficha na mão, e sair para o ProfDex e voltar reabria a
+ * câmera do zero. A câmera e o loop de leitura nunca pararam (só param no
+ * unmount); basta tirar o cartão da frente.
+ *
+ * A mesma ficha ainda parada na frente da câmera não é recapturada: a janela
+ * de RELEITURA_MS continua valendo, e depois dela o servidor responde 409.
+ */
+function continuarNoScan() {
+  captured.value = false
+  foundProfessor.value = null
+  captureAvatarError.value = false
+  clearTimeout(avisoTimer)
+  aviso.value = null
+}
+
 // ── Loop de scanning (BarcodeDetector ou jsQR) ────────────────────────────
 function startScanLoop() {
   const video = videoRef.value
@@ -348,9 +366,17 @@ onUnmounted(() => {
             <p class="capture-copy">
               Adicionado ao seu ProfDex!
             </p>
-            <button class="btn btn-primary capture-action" type="button" @click="router.push({ name: 'profdex' })">
-              <span class="pixel">VER PROFDEX</span>
-            </button>
+            <!-- Continuar é o caminho principal: na fila, o aluno quase sempre
+                 tem outra ficha para escanear. -->
+            <div class="capture-acoes">
+              <button class="btn-pixel capture-continuar" type="button" @click="continuarNoScan">
+                CONTINUAR NO SCAN
+                <PixelIcon nome="seta-direita" :escala="2" />
+              </button>
+              <button class="capture-profdex" type="button" @click="router.push({ name: 'profdex' })">
+                Ver meu ProfDex
+              </button>
+            </div>
           </div>
         </div>
 
@@ -712,7 +738,47 @@ onUnmounted(() => {
 .capture-emoji { font-size: 42px; animation: pulse 1s ease-in-out infinite; }
 .capture-title { color: var(--yellow); font-size: 13px; letter-spacing: 2px; }
 .capture-copy { color: rgba(255, 255, 255, 0.76); font-size: 12px; line-height: 1.6; text-align: center; }
-.capture-action { margin-top: 4px; }
+.capture-acoes {
+  width: 100%;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+/* O toque que o aluno repete a cada ficha da fila: o botão de console da casa
+   (.btn-pixel), largo e alto para o polegar. A fonte pixel é larga, então o
+   texto não quebra e cabe até em 320px. */
+.capture-continuar {
+  width: 100%;
+  min-height: 52px;
+  gap: 12px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+/* A saída é um texto, não um segundo botão: fica à mão sem competir com o
+   principal. A altura mínima mantém o alvo de toque de 44px. */
+.capture-profdex {
+  min-height: 44px;
+  padding: 0 12px;
+  background: none;
+  border: 0;
+  color: var(--yellow);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+@media (hover: hover) {
+  .capture-profdex:hover { color: var(--text-primary); }
+}
+.capture-profdex:focus-visible {
+  outline: 3px solid var(--unifil-gold);
+  outline-offset: 2px;
+}
 .capture-avatar { width: 96px; height: 96px; }
 .capture-img {
   width: 96px; height: 96px;
@@ -788,7 +854,9 @@ onUnmounted(() => {
     padding: 14px 18px;
   }
   .capture-emoji { display: none; }
-  .capture-title, .capture-name, .capture-copy, .capture-action { grid-column: 2; }
+  .capture-title, .capture-name, .capture-copy, .capture-acoes { grid-column: 2; }
+  .capture-acoes { gap: 2px; }
+  .capture-continuar { min-height: 46px; }
   .capture-avatar { grid-column: 1; grid-row: 1 / span 4; }
 }
 

@@ -760,6 +760,13 @@ describe('RaidRoomService — o evento do NDE', () => {
     expect(comNde).toBeDefined();
     expect(comNde!.payload.foe.professores).toHaveLength(4);
     expect(comNde!.payload.foe.nomeEmCampo).toBe('NDE da Coordenação');
+    // O `switch` do NDE leva os quatro: é por ele que a arena troca as sprites
+    // no ponto certo da fila, e não no fim da rodada.
+    const trocaDoNde = eventos(ctx).find(
+      (ev) => ev.type === 'switch' && ev.name === 'NDE da Coordenação',
+    );
+    expect(trocaDoNde?.professores).toHaveLength(4);
+    expect(trocaDoNde?.professor).toBeUndefined();
     expect(comNde!.payload.foe.maxHp).toBe(100);
     // O chefe fica no banco do lado inimigo, vivo — é ali que o aluno vê a
     // barra dele subir enquanto se cura.
@@ -808,6 +815,28 @@ describe('RaidRoomService — o evento do NDE', () => {
 
     expect(depois).toBeDefined();
     expect(depois!.payload.foe.nomeEmCampo).toBe('Tânia');
+  });
+
+  // A arena anima a troca no ponto certo da fila com os dados que o `switch`
+  // traz (battleOcupante.js). Só com o nome, a barra seguia a de quem saiu: o
+  // chefe voltava com o 0 de HP do NDE até a rodada acabar.
+  it('as trocas do NDE e do chefe trazem a barra de quem entra', async () => {
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const trocas = eventos(ctx).filter(
+      (ev) => ev.type === 'switch' && ev.target === 'enemy',
+    );
+    const entradaDoNde = trocas.find((ev) => ev.name === 'NDE da Coordenação');
+    expect(entradaDoNde).toMatchObject({ hp: 100, maxHp: 100 });
+    expect(entradaDoNde.types).toEqual(expect.any(Array));
+
+    const voltaDoChefe = trocas.find((ev) => ev.name === 'Tânia');
+    expect(voltaDoChefe).toBeDefined();
+    expect(voltaDoChefe.professor).toMatchObject({ name: 'Tânia' });
+    expect(voltaDoChefe.hp).toBeGreaterThan(0);
+    expect(voltaDoChefe.maxHp).toBeGreaterThanOrEqual(voltaDoChefe.hp);
   });
 
   it('o NDE ataca com o Golpe do NDE, e o golpe não está no movepool', async () => {
