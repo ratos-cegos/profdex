@@ -75,6 +75,18 @@ test('servidor antigo, sem dados de quem entra: ao menos desfaz a queda', () => 
   assert.equal(fim.enemy.fainted, false)
 })
 
+// A raid: o NDE entra como grupo (sem UM professor), mas com a barra dele.
+test('grupo sem professor: a barra passa a ser a de quem entrou', () => {
+  const fim = aplicarEvento(inicio(), {
+    type: 'switch', target: 'enemy', name: 'NDE da Coordenação', types: ['gestao'], hp: 60, maxHp: 60,
+  })
+  assert.equal(fim.enemy.professor, mario) // a arte do grupo vem de `foe.professores`
+  assert.equal(fim.enemy.hp, 60)
+  assert.equal(fim.enemy.maxHp, 60)
+  assert.deepEqual(fim.enemy.types, ['gestao'])
+  assert.equal(fim.enemy.fainted, false)
+})
+
 test('cura não passa do máximo; eventos sem alvo não mudam nada', () => {
   const estado = inicio()
   const curado = aplicarEvento(estado, { type: 'heal', target: 'player', amount: 500 })

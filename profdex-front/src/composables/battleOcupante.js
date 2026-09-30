@@ -57,18 +57,31 @@ export function aplicarEvento(estado, ev) {
       proximo = { ...atual, hp: 0, fainted: true }
       break
     case 'switch':
-      // Servidor antigo (sem os dados de quem entra): pelo menos não deixa o
-      // substituto tombado; o sprite e a barra se acertam no fim da fila.
-      proximo = ev.professor
-        ? {
-            professor: ev.professor,
-            types: ev.types ?? [],
-            hp: Math.max(0, ev.hp ?? 0),
-            maxHp: ev.maxHp ?? 0,
-            fainted: false,
-            entrada: atual.entrada + 1,
-          }
-        : { ...atual, fainted: false, entrada: atual.entrada + 1 }
+      if (ev.professor) {
+        proximo = {
+          professor: ev.professor,
+          types: ev.types ?? [],
+          hp: Math.max(0, ev.hp ?? 0),
+          maxHp: ev.maxHp ?? 0,
+          fainted: false,
+          entrada: atual.entrada + 1,
+        }
+      } else if (Number.isFinite(ev.hp)) {
+        // Um grupo em campo (o NDE da raid): não há UM professor para mostrar
+        // — a arte vem de `foe.professores` —, mas a barra já é a dele.
+        proximo = {
+          ...atual,
+          types: ev.types ?? atual.types,
+          hp: Math.max(0, ev.hp),
+          maxHp: ev.maxHp ?? atual.maxHp,
+          fainted: false,
+          entrada: atual.entrada + 1,
+        }
+      } else {
+        // Servidor antigo (sem os dados de quem entra): pelo menos não deixa o
+        // substituto tombado; o sprite e a barra se acertam no fim da fila.
+        proximo = { ...atual, fainted: false, entrada: atual.entrada + 1 }
+      }
       break
     default:
       return estado

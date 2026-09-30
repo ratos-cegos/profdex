@@ -688,11 +688,9 @@ export class RaidRoomService implements OnModuleDestroy {
       events.push({ type: 'faint', target: CHEFE });
       events.push(roteiroDaQuedaDoNde(room.boss.professor.name));
       this.sentaOChefe(room);
-      events.push({
-        type: 'switch',
-        target: CHEFE,
-        name: room.boss.professor.name,
-      });
+      // Com quem volta (arte, tipos, HP de agora): a arena troca o ocupante no
+      // ponto certo da fila, e não mostraria o chefe com a barra zerada do NDE.
+      events.push(switchEvent(CHEFE, room.boss));
     }
 
     // A vida do chefe se lê no CORPO dele, nunca no assento: a Semana de Provas
@@ -923,7 +921,16 @@ export class RaidRoomService implements OnModuleDestroy {
     this.logger.log(`Raid ${room.id}: o NDE entrou em campo`);
     return [
       roteiroDaChegadaDoNde(room.boss.professor.name, room.elenco.nde),
-      { type: 'switch', target: CHEFE, name: room.nde.combatant.name },
+      // Sem `professor`: são quatro, e a arte vem de `foe.professores`. Tipos e
+      // HP vão junto para a barra passar a ser a do NDE já nesta troca.
+      {
+        type: 'switch',
+        target: CHEFE,
+        name: room.nde.combatant.name,
+        types: room.nde.combatant.types,
+        hp: room.nde.combatant.hp,
+        maxHp: room.nde.combatant.maxHp,
+      },
     ];
   }
 
