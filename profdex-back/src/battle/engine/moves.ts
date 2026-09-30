@@ -116,14 +116,30 @@ const accuracyGain = (inc = 0.08): Effect => ({
 });
 const comboBonus = (mult = 1.5): Effect => ({ kind: EFFECT.COMBO_BONUS, mult });
 const weakPoint = (mult = 1.5): Effect => ({ kind: EFFECT.WEAK_POINT, mult });
-const buff = (stat: Stat, delta = 1, turns = 0): Effect => ({
+/**
+ * Prazo padrão de buff e debuff.
+ *
+ * Era 0 — ou seja, PERMANENTE pelo resto da estada em campo. Com 20 golpes de
+ * estágio no movepool e um estágio valendo ×1,5 (contra ×1,05 do IV inteiro), a
+ * partida virava corrida de setup: quem empilhasse primeiro ganhava um
+ * multiplicador que o adversário não tinha como remover. Pior nos seis debuffs
+ * de Velocidade, que têm `accuracy: 1` e nunca erram — e Velocidade paga duas
+ * vezes, na ordem do turno e na esquiva.
+ *
+ * Com prazo, estágio volta a ser vantagem de janela: dá tempo de aproveitar, e
+ * o outro lado tem como esperar passar. Também é o que devolve sentido ao
+ * `comboBonus`, cuja condição só voltava a ser falsa se nada nunca expirasse.
+ */
+const STAGE_TURNS = 4;
+
+const buff = (stat: Stat, delta = 1, turns = STAGE_TURNS): Effect => ({
   kind: EFFECT.STAT_CHANGE,
   stat,
   delta,
   target: 'self',
   turns,
 });
-const debuff = (stat: Stat, delta = -1, turns = 0): Effect => ({
+const debuff = (stat: Stat, delta = -1, turns = STAGE_TURNS): Effect => ({
   kind: EFFECT.STAT_CHANGE,
   stat,
   delta,
@@ -139,7 +155,16 @@ const growPerTurn = (stat: Stat, delta = 1, turns = 4): Effect => ({
 const heal = (fraction = 0.3): Effect => ({ kind: EFFECT.HEAL, fraction });
 const cleanse = (): Effect => ({ kind: EFFECT.CLEANSE });
 const resetDebuffs = (): Effect => ({ kind: EFFECT.RESET_DEBUFFS });
-const shield = (mode: ShieldMode, amount = 0.5, turns = 1): Effect => ({
+/**
+ * Prazo padrão do escudo, em turnos do próprio dono.
+ *
+ * Era 1, mas `turns` do escudo nunca era decrementado — o escudo durava a
+ * partida inteira até ser consumido. Agora que expira (ver `upkeep`), 1 turno
+ * não serviria: a ordem do turno é moeda ponderada, então com prazo 1 o escudo
+ * sumiria antes de ver um golpe em ~metade dos casos. Com 2, ele cobre com
+ * segurança o próximo ataque do adversário, que é o que a descrição promete.
+ */
+const shield = (mode: ShieldMode, amount = 0.5, turns = 2): Effect => ({
   kind: EFFECT.SHIELD,
   mode,
   amount,
@@ -406,7 +431,10 @@ const MOVE_SEEDS: Record<string, MoveSeed[]> = {
       name: 'Viajou na Maionese',
       category: CATEGORY.STATUS,
       power: null,
-      accuracy: 1,
+      // Confusão garantida por 3 turnos é o utilitário mais forte do jogo — era
+      // inofensivo só porque o golpe era no-op. Com o motor consertado, o preço
+      // é a precisão.
+      accuracy: ACC.BAIXA,
       raw: 'confunde',
       description:
         'Alucinação de IA generativa: resposta errada com toda a confiança confunde o alvo.',
@@ -867,7 +895,9 @@ const MOVE_SEEDS: Record<string, MoveSeed[]> = {
       name: 'Abraço Mortal',
       category: CATEGORY.STATUS,
       power: null,
-      accuracy: 1,
+      // Paralisia garantida por 3 turnos, idem `viajou-na-maionese`: o preço de
+      // o golpe passar a funcionar é a precisão.
+      accuracy: ACC.BAIXA,
       raw: 'trava alvo',
       description:
         'Deadlock: dois processos se travam mutuamente e o alvo fica preso.',

@@ -4,6 +4,24 @@ import { runInNewContext } from 'node:vm';
 
 import { TYPE_CYCLE } from './types';
 import { MOVES_BY_TYPE, type Move } from './moves';
+import {
+  CONFUSION_SELF_HIT_CHANCE,
+  CONFUSION_SELF_HIT_FRACTION,
+  DAMAGE_SCALE,
+  DEFAULT_MAX_HP,
+  DOT_DEFAULT_POWER,
+  DOT_DEFAULT_TURNS,
+  EVASION_PER_STAGE,
+  GROW_TICK_TURNS,
+  IV_BONUS_MAX,
+  MIN_HIT_CHANCE,
+  PARALYSIS_SKIP_CHANCE,
+  STAB,
+  STAGE_MAX,
+  STAGE_MIN,
+  VARIANCE_MIN,
+  WEAK_POINT_CAP,
+} from './engine';
 
 /**
  * O motor existe em duas cópias: esta (autoridade no PvP) e a do front
@@ -37,11 +55,43 @@ function carregaDoFront<T>(arquivo: string, exportados: string[]): T {
 
 type TipoDoFront = { id: string; label: string; color: string };
 
+/**
+ * Constantes de balanceamento, do lado do back. O espelho do front vive em
+ * `profdex-front/src/data/battle-constants.js` — num arquivo separado do motor
+ * justamente para o loader acima conseguir lê-lo (ele não resolve import).
+ *
+ * Antes daqui, este teste comparava só os DADOS dos golpes: trocar
+ * `DAMAGE_SCALE` ou `STAB` de um lado só passava batido, e o mesmo golpe tirava
+ * um tanto de dano no treino e outro na arena.
+ */
+const CONSTANTES_DO_BACK = {
+  DEFAULT_MAX_HP,
+  DAMAGE_SCALE,
+  STAB,
+  STAGE_MIN,
+  STAGE_MAX,
+  IV_BONUS_MAX,
+  GROW_TICK_TURNS,
+  WEAK_POINT_CAP,
+  PARALYSIS_SKIP_CHANCE,
+  CONFUSION_SELF_HIT_CHANCE,
+  CONFUSION_SELF_HIT_FRACTION,
+  DOT_DEFAULT_POWER,
+  DOT_DEFAULT_TURNS,
+  EVASION_PER_STAGE,
+  MIN_HIT_CHANCE,
+  VARIANCE_MIN,
+};
+
 const front = {
   ...carregaDoFront<{ TYPE_CYCLE: TipoDoFront[] }>('types.js', ['TYPE_CYCLE']),
   ...carregaDoFront<{ MOVES_BY_TYPE: Record<string, Move[]> }>('moves.js', [
     'MOVES_BY_TYPE',
   ]),
+  constantes: carregaDoFront<Record<string, number>>(
+    'battle-constants.js',
+    Object.keys(CONSTANTES_DO_BACK),
+  ),
 };
 
 describe('paridade entre os dois motores', () => {
@@ -72,6 +122,20 @@ describe('paridade entre os dois motores', () => {
       expect(front.MOVES_BY_TYPE[tipo].map(mecanica)).toEqual(
         MOVES_BY_TYPE[tipo].map(mecanica),
       );
+    }
+  });
+
+  it('as constantes de balanceamento batem nos dois motores', () => {
+    expect(front.constantes).toEqual(CONSTANTES_DO_BACK);
+  });
+
+  it('nenhuma constante do back ficou de fora da comparação', () => {
+    // Guarda contra o próprio teste envelhecer: se alguém adicionar uma
+    // constante ao `engine.ts` e esquecer de listá-la em CONSTANTES_DO_BACK, a
+    // comparação acima passa sem olhar para ela. Aqui o `undefined` denuncia.
+    for (const [nome, valor] of Object.entries(CONSTANTES_DO_BACK)) {
+      expect(valor).toEqual(expect.any(Number));
+      expect(front.constantes[nome]).toBeDefined();
     }
   });
 });
