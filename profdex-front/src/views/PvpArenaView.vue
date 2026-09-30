@@ -146,7 +146,16 @@ async function entrarCom(membro) {
 // Quem resolve costas/frente também é o palco.
 const ladoRival = computed(() => ({
   professor: pvp.value?.foe?.professor,
-  name: pvp.value?.foe?.professor?.name ?? pvp.value?.opponent?.name ?? '',
+  // Só a raid manda isto, e só durante o evento do NDE: quatro professores
+  // dividindo um corpo. O palco desenha os quatro quando o campo existe.
+  professores: pvp.value?.foe?.professores ?? null,
+  // `nomeEmCampo` vem antes do nome do professor porque quem está no assento
+  // pode ser o grupo ("NDE da Coordenação"), não um professor.
+  name:
+    pvp.value?.foe?.nomeEmCampo ??
+    pvp.value?.foe?.professor?.name ??
+    pvp.value?.opponent?.name ??
+    '',
   types: pvp.value?.foe?.types ?? [],
   hp: foeHp.value,
   maxHp: pvp.value?.foe?.maxHp ?? 0,
