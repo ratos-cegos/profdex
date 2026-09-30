@@ -2,6 +2,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { DEFAULT_MAX_HP } from './engine/engine';
 import { MOVES_BY_TYPE } from './engine/moves';
+import { SLUG_DO_RICARDO, SLUGS_DO_NDE } from './raid-eventos';
 import { RaidRoomService } from './raid-room.service';
 import { RaidService } from './raid.service';
 
@@ -29,32 +30,84 @@ const ALUNO = { userId: 'ana', name: 'Ana' };
  * o teste da vitória mediria o balanceamento da roda em vez do que ele quer
  * medir — que o desfecho "venceu" entrega o exemplar.
  */
-const CAPTURAS = ['c1', 'c2', 'c3'].map((id) => ({
-  id,
-  moves: [], // vazio → a sala monta o deck a partir dos tipos
-  ivHp: 0,
-  ivRigor: 0,
-  ivDidatica: 0,
-  ivRaciocinio: 0,
-  professor: {
-    id: `p-${id}`,
-    name: `Prof ${id}`,
-    slug: `p-${id}`,
-    types: ['humanas'],
+const capturas = (tipo = 'humanas') =>
+  ['c1', 'c2', 'c3'].map((id) => ({
+    id,
+    moves: [], // vazio → a sala monta o deck a partir dos tipos
+    ivHp: 0,
+    ivRigor: 0,
+    ivDidatica: 0,
+    ivRaciocinio: 0,
+    professor: {
+      id: `p-${id}`,
+      name: `Prof ${id}`,
+      slug: `p-${id}`,
+      types: [tipo],
+    },
+    variant: { types: [tipo] },
+  }));
+
+/**
+ * `ia` é a mão RUIM contra o chefe de `matematica`: leva 2× e devolve 0,5×.
+ *
+ * Existe porque com `humanas` (a mão boa) o aluno ganha sem perder ninguém, e
+ * um teste do evento do Ricardo — que dispara na queda do PENÚLTIMO — nunca
+ * veria o gatilho.
+ */
+const TIPO_EM_DESVANTAGEM = 'ia';
+
+/**
+ * O elenco dos eventos, como `PUBLIC_PROFESSOR_SELECT` o entrega.
+ *
+ * Os slugs são os de produção: é por eles que `carregaElenco` acha o elenco, e
+ * um slug errado aqui não quebraria teste nenhum — o carregamento degrada em
+ * silêncio de propósito. Trocá-los desligaria os eventos sem ninguém notar, e é
+ * por isso que os testes abaixo afirmam que os eventos ACONTECEM.
+ */
+const ELENCO = [
+  ...SLUGS_DO_NDE.map((slug, i) => ({
+    id: `nde-${i}`,
+    slug,
+    name: `NDE ${i}`,
+    types: ['arquitetura'],
+    spriteFrontUrl: `/uploads/${slug}-frente.png?v=1`,
+    spriteBackUrl: `/uploads/${slug}-costas.png?v=1`,
+    modelUrl: `/uploads/${slug}.glb?v=1`,
+    pixelArt: false,
+    active: true,
+  })),
+  {
+    id: 'ricardo-1',
+    slug: SLUG_DO_RICARDO,
+    name: 'Ricardo Infiltrado',
+    types: ['ia'],
+    spriteFrontUrl: '/uploads/ricardo-infiltrado-frente.png?v=1',
+    spriteBackUrl: '/uploads/ricardo-infiltrado-costas.png?v=1',
+    modelUrl: '/uploads/ricardo-infiltrado.glb?v=1',
+    pixelArt: false,
+    active: true,
   },
-  variant: { types: ['humanas'] },
-}));
+];
 
 function montar({
   hpMultiplier = 4,
   legendaryIv = 15,
   turnCap = 60,
-}: { hpMultiplier?: number; legendaryIv?: number; turnCap?: number } = {}) {
+  elenco = ELENCO,
+  tipoDoAluno = 'humanas',
+}: {
+  hpMultiplier?: number;
+  legendaryIv?: number;
+  turnCap?: number;
+  elenco?: unknown[];
+  tipoDoAluno?: string;
+} = {}) {
   const emitidos: { userId: string; event: string; payload: any }[] = [];
 
   const prisma = {
-    capture: { findMany: jest.fn().mockResolvedValue(CAPTURAS) },
+    capture: { findMany: jest.fn().mockResolvedValue(capturas(tipoDoAluno)) },
     raidAttempt: { count: jest.fn().mockResolvedValue(3) },
+    professor: { findMany: jest.fn().mockResolvedValue(elenco) },
     professorVariant: {
       findFirst: jest.fn().mockResolvedValue({ id: 'var-1' }),
     },
@@ -278,7 +331,9 @@ describe('RaidRoomService — recusas', () => {
 
   it('recusa exemplar que não é do aluno', async () => {
     const ctx = montar();
-    (ctx.prisma.capture.findMany as jest.Mock).mockResolvedValue([CAPTURAS[0]]);
+    (ctx.prisma.capture.findMany as jest.Mock).mockResolvedValue([
+      capturas()[0],
+    ]);
     await ctx.service.start(ALUNO);
 
     await expect(
@@ -289,7 +344,9 @@ describe('RaidRoomService — recusas', () => {
   /** 1 a 3, como no PvP — exigir exatamente 3 seria validação divergente. */
   it('aceita time de um exemplar só', async () => {
     const ctx = montar();
-    (ctx.prisma.capture.findMany as jest.Mock).mockResolvedValue([CAPTURAS[0]]);
+    (ctx.prisma.capture.findMany as jest.Mock).mockResolvedValue([
+      capturas()[0],
+    ]);
     await ctx.service.start(ALUNO);
 
     await expect(
@@ -624,6 +681,39 @@ describe('RaidRoomService — os três estágios', () => {
     expect(nomes).toContain('Blindagem'); // robotica, estágio 2
   });
 
+  it('o efeito do estágio não corre enquanto o NDE segura', async () => {
+    // O estágio 3 deste sorteio é ENSW ("Refatoração Contínua", cura 15/turno) e
+    // o evento do NDE também cura o chefe. Somar as duas era exatamente o que se
+    // combinou não fazer — uma fonte de cura por vez.
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    // A janela se mede na fila INTEIRA de eventos, não só nas mensagens: a
+    // chegada e a queda do NDE são `roteiro`, e procurá-las entre `message`
+    // devolvia -1 — a fatia ia até o fim da luta e pegava a cura legítima de
+    // depois que o chefe voltou.
+    const fila = ctx.emitidos.flatMap(
+      (e) => (e.payload?.events ?? []) as any[],
+    );
+    const temLinha = (ev: any, trecho: string) =>
+      ev.type === 'roteiro' &&
+      (ev.linhas ?? []).some((l: string) => l.includes(trecho));
+
+    const iChegada = fila.findIndex((ev) => temLinha(ev, 'NDE DA COORDENAÇÃO'));
+    const iQueda = fila.findIndex((ev) => temLinha(ev, 'O NDE caiu'));
+    expect(iChegada).toBeGreaterThanOrEqual(0);
+    expect(iQueda).toBeGreaterThan(iChegada);
+
+    const durante = fila
+      .slice(iChegada, iQueda)
+      .filter((ev) => ev.type === 'message')
+      .map((ev) => ev.text as string);
+
+    expect(durante.some((t) => t.includes('atrás do NDE'))).toBe(true);
+    expect(durante.some((t) => t.includes('refatora e recupera'))).toBe(false);
+  });
+
   it('o chefe ainda cai: três estágios não tornam a raid invencível', async () => {
     // Guarda de balanceamento. O estágio 3 deste sorteio é ENSW, que cura 15
     // por turno — se a soma dos efeitos passar do dano que um time consegue
@@ -634,5 +724,203 @@ describe('RaidRoomService — os três estágios', () => {
     const fim = await jogarAteOFim(ctx);
 
     expect(fim.result).toBe('win');
+  });
+});
+
+describe('RaidRoomService — o evento do NDE', () => {
+  const randomOriginal = Math.random;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    Math.random = () => 0;
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    Math.random = randomOriginal;
+  });
+
+  /** Índice da emissão que contém um evento aprovado pelo predicado. */
+  const indiceDaEmissaoCom = (
+    ctx: ReturnType<typeof montar>,
+    ok: (ev: any) => boolean,
+  ) =>
+    ctx.emitidos.findIndex((e) =>
+      ((e.payload?.events ?? []) as any[]).some(ok),
+    );
+
+  const eventos = (ctx: ReturnType<typeof montar>) =>
+    ctx.emitidos.flatMap((e) => (e.payload?.events ?? []) as any[]);
+
+  it('os quatro entram no último estágio e assumem o lado do inimigo', async () => {
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const comNde = ctx.emitidos.find((e) => e.payload?.foe?.evento === 'nde');
+    expect(comNde).toBeDefined();
+    expect(comNde!.payload.foe.professores).toHaveLength(4);
+    expect(comNde!.payload.foe.nomeEmCampo).toBe('NDE da Coordenação');
+    expect(comNde!.payload.foe.maxHp).toBe(100);
+    // O chefe fica no banco do lado inimigo, vivo — é ali que o aluno vê a
+    // barra dele subir enquanto se cura.
+    expect(comNde!.payload.foe.team[0].fainted).toBe(false);
+  });
+
+  it('REGRESSÃO: derrubar o NDE não ganha a raid', async () => {
+    // `state.enemy.hp <= 0` significava vitória. Com o NDE ocupando o assento,
+    // sem a guarda isso entregaria o lendário ao aluno de graça — o pior bug
+    // possível nesta entrega.
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const iQueda = indiceDaEmissaoCom(
+      ctx,
+      (ev) =>
+        ev.type === 'roteiro' &&
+        ev.linhas?.some((l: string) => l.includes('O NDE caiu')),
+    );
+    const iFim = ctx.emitidos.findIndex((e) => e.event === 'battle:end');
+
+    expect(iQueda).toBeGreaterThanOrEqual(0);
+    expect(iFim).toBeGreaterThan(iQueda);
+    // E a luta continuou de verdade: houve rodada depois da queda deles.
+    const rodadasDepois = ctx.emitidos
+      .slice(iQueda + 1)
+      .filter((e) => e.event === 'battle:round');
+    expect(rodadasDepois.length).toBeGreaterThan(0);
+  });
+
+  it('o chefe volta ao assento quando os quatro caem', async () => {
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const iQueda = indiceDaEmissaoCom(
+      ctx,
+      (ev) =>
+        ev.type === 'roteiro' &&
+        ev.linhas?.some((l: string) => l.includes('O NDE caiu')),
+    );
+    const depois = ctx.emitidos
+      .slice(iQueda)
+      .find((e) => e.payload?.foe && e.payload.foe.evento === null);
+
+    expect(depois).toBeDefined();
+    expect(depois!.payload.foe.nomeEmCampo).toBe('Tânia');
+  });
+
+  it('o NDE ataca com o Golpe do NDE, e o golpe não está no movepool', async () => {
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0 });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const usou = eventos(ctx).some(
+      (ev) => ev.type === 'message' && ev.text?.includes('usou Golpe do NDE'),
+    );
+    expect(usou).toBe(true);
+    // Não pode ter entrado no catálogo: o movepool é 9 tipos × 8 golpes, número
+    // que `moves.spec.ts` afirma e o teste de paridade compara com o front.
+    expect(MOVES_BY_TYPE.humanas.map((m) => m.id)).not.toContain(
+      'golpe-do-nde',
+    );
+  });
+
+  it('sem o elenco no banco, o evento simplesmente não acontece', async () => {
+    const ctx = montar({ hpMultiplier: 1, legendaryIv: 0, elenco: [] });
+    await atePrimeiroTurno(ctx);
+
+    const fim = await jogarAteOFim(ctx);
+
+    expect(
+      eventos(ctx).some(
+        (ev) => ev.type === 'roteiro' && ev.linhas?.[0]?.includes('NDE'),
+      ),
+    ).toBe(false);
+    // E a raid termina normal: degradar não pode virar travamento.
+    expect(fim.result).toBe('win');
+  });
+});
+
+describe('RaidRoomService — o evento do Ricardo', () => {
+  const randomOriginal = Math.random;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    Math.random = () => 0;
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    Math.random = randomOriginal;
+  });
+
+  const roteirosDeBuff = (ctx: ReturnType<typeof montar>) =>
+    ctx.emitidos
+      .flatMap((e) => (e.payload?.events ?? []) as any[])
+      .filter((ev) => ev.type === 'roteiro' && ev.roleta?.kind === 'buff');
+
+  it('chega quando cai o penúltimo do time, com a roleta de buffs', async () => {
+    // Chefe cheio (4×120, IV 15) contra três exemplares: o aluno perde, e no
+    // caminho o penúltimo cai — que é o gatilho.
+    const ctx = montar({ tipoDoAluno: TIPO_EM_DESVANTAGEM });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const [roteiro] = roteirosDeBuff(ctx);
+    expect(roteiro).toBeDefined();
+    expect(roteiro.roleta.opcoes).toHaveLength(9);
+    expect(roteiro.roleta.opcoes).toContain(roteiro.roleta.resultado);
+    expect(roteiro.linhas.join(' ')).toContain('Ricardo Infiltrado');
+  });
+
+  it('chega uma vez só', async () => {
+    const ctx = montar({ tipoDoAluno: TIPO_EM_DESVANTAGEM });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    expect(roteirosDeBuff(ctx)).toHaveLength(1);
+  });
+
+  it('o buff cai em quem ENTRA, não em quem acabou de tombar', async () => {
+    // Com `Math.random = () => 0` a roleta sempre dá Ponto Extra (+1 nos três
+    // atributos). O que importa é o roteiro sair no mesmo lote do `switch` do
+    // aluno: é isso que garante que o alvo é o substituto.
+    const ctx = montar({ tipoDoAluno: TIPO_EM_DESVANTAGEM });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const lote = ctx.emitidos.find((e) =>
+      ((e.payload?.events ?? []) as any[]).some(
+        (ev) => ev.type === 'roteiro' && ev.roleta?.kind === 'buff',
+      ),
+    );
+    const tipos = ((lote!.payload.events ?? []) as any[]).map((ev) => ev.type);
+    const iSwitch = tipos.indexOf('switch');
+    const iRoteiro = tipos.indexOf('roteiro');
+
+    expect(iSwitch).toBeGreaterThanOrEqual(0);
+    expect(iRoteiro).toBeGreaterThan(iSwitch);
+  });
+
+  it('não chega com time de um só exemplar', async () => {
+    // Com um exemplar, a primeira queda já é o fim da raid: não há substituto
+    // para receber o buff, e o gatilho não pode disparar.
+    const ctx = montar({ tipoDoAluno: TIPO_EM_DESVANTAGEM });
+    await ctx.service.start(ALUNO);
+    await ctx.service.pickTeam(ALUNO.userId, ['c1']);
+    ctx.service.chooseLead(ALUNO.userId, 'c1');
+    await jogarAteOFim(ctx);
+
+    expect(roteirosDeBuff(ctx)).toHaveLength(0);
+  });
+
+  it('sem o Ricardo no banco, o evento não acontece', async () => {
+    const ctx = montar({ elenco: [], tipoDoAluno: TIPO_EM_DESVANTAGEM });
+    await atePrimeiroTurno(ctx);
+
+    const fim = await jogarAteOFim(ctx);
+
+    expect(roteirosDeBuff(ctx)).toHaveLength(0);
+    expect(fim).toBeDefined();
   });
 });
