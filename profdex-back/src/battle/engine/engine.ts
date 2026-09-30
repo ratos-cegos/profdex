@@ -97,7 +97,20 @@ export type BattleEvent =
   // Emitido pela SALA (team.ts / battle-room.service.ts), nunca pelo motor: o
   // motor não sabe que existe time. Fica no tipo porque a fila de eventos é o
   // contrato único entre servidor e UI, e é ela que anima a troca.
-  | { type: 'switch'; target: CombatantKey; name: string };
+  | { type: 'switch'; target: CombatantKey; name: string }
+  // Idem: emitido só pela sala da RAID (`raid-room.service.ts`), para os
+  // momentos de roteiro — virada de estágio, chegada do NDE, chegada do
+  // Ricardo. A UI o trata num overlay separado, com toque para avançar, em vez
+  // da faixa de mensagem que os golpes usam: a faixa tem 56px travados e
+  // sobrescreve a cada 850ms, então roteiro nela seria destruído antes de ser
+  // lido. Cliente antigo ignora (o `play()` termina em `default: break`).
+  | {
+      type: 'roteiro';
+      /** Narradas uma a uma, cada uma esperando o toque do jogador. */
+      linhas: string[];
+      /** Gira ANTES das linhas. `opcoes` é a ordem em que a roleta desfila. */
+      roleta?: { kind: 'tipo' | 'buff'; opcoes: string[]; resultado: string };
+    };
 
 interface Shield {
   mode: 'block' | 'reduce' | 'reflect' | 'evade';

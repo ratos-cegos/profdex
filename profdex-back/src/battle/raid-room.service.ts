@@ -15,8 +15,17 @@ import {
   upkeep,
 } from './engine/engine';
 import { buildMoveset, getMoveById, Move } from './engine/moves';
+import { TYPE_CYCLE } from './engine/types';
 import { PUBLIC_PROFESSOR_SELECT } from '../professors/public-professor.select';
 import { fraseDaAbertura } from './raid-opening';
+import {
+  costuraEfeitos,
+  efeitoDoTipo,
+  estagioDoHp,
+  limpaCampoDoChefe,
+  tiposDosEstagios,
+  TOTAL_DE_ESTAGIOS,
+} from './raid-estagios';
 import { RaidService } from './raid.service';
 import {
   Action,
@@ -63,6 +72,17 @@ interface RaidRoom {
   rules: { hpMultiplier: number; legendaryIv: number; turnCap: number };
   attemptId: string;
   attempts: number;
+  /**
+   * Tipos de cada estágio, sorteados no nascimento da sala (ver
+   * `tiposDosEstagios`). Sorteia uma vez e guarda: sortear na virada faria o
+   * resultado depender de quando a virada aconteceu, e um `resync` depois de um
+   * F5 devolveria uma raid diferente da que o aluno estava jogando.
+   */
+  estagios: string[][];
+  /** Estágio atual, 1..TOTAL_DE_ESTAGIOS. */
+  estagio: number;
+  /** Turnos já passados dentro do estágio atual — alimenta os efeitos. */
+  turnoDoEstagio: number;
 }
 
 export interface RaidEmitter {
@@ -167,7 +187,12 @@ export class RaidRoomService implements OnModuleDestroy {
     const types = legendary.variants[0]?.types?.length
       ? legendary.variants[0].types
       : legendary.types;
-    const moves = buildMoveset(types);
+    // Os três estágios saem sorteados já aqui. O estágio 1 fica com os tipos do
+    // banco — os mesmos da ficha da Profdex, que é o que o aluno usou para
+    // montar o time.
+    const estagios = tiposDosEstagios(types);
+    const tiposDoEstagio1 = estagios[0];
+    const moves = this.movesetDoEstagio(tiposDoEstagio1);
     const iv = rules.legendaryIv;
 
     const boss: TeamMember = {
@@ -178,12 +203,12 @@ export class RaidRoomService implements OnModuleDestroy {
       // lendário. A consulta já trazia tudo (`PUBLIC_PROFESSOR_SELECT`); era o
       // literal que jogava fora.
       professor: legendary,
-      types,
+      types: tiposDoEstagio1,
       moves,
       ivs: { ivHp: iv, ivRigor: iv, ivDidatica: iv, ivRaciocinio: iv },
       combatant: createCombatant({
         name: legendary.name,
-        types,
+        types: tiposDoEstagio1,
         moves,
         ivs: { ivHp: iv, ivRigor: iv, ivDidatica: iv, ivRaciocinio: iv },
         // O `maxHp` explícito SUBSTITUI a fórmula de IV do motor — por isso o
@@ -213,6 +238,9 @@ export class RaidRoomService implements OnModuleDestroy {
       rules,
       attemptId,
       attempts,
+      estagios,
+      estagio: 1,
+      turnoDoEstagio: 0,
     };
     room.timer = setTimeout(
       () => this.onPickTimeout(room),
@@ -529,6 +557,11 @@ export class RaidRoomService implements OnModuleDestroy {
       events.push(...this.applySwitch(room, room.pending.captureId));
     }
 
+    // 1.5. Efeito do estágio, ANTES da fase de ação: é o que permite ao efeito
+    //      de redes marcar `forceMiss` no aluno antes de o golpe dele resolver,
+    //      e deixa a cura de ENSW e o dano de humanas visíveis no topo do turno.
+    events.push(...this.tiqueDoEstagio(room));
+
     // 2. O chefe SEMPRE age: ele nunca troca (é um só) e nunca fica sem
     //    escolher. Quem pode perder o turno é o aluno.
     const golpeDoAluno =
@@ -537,7 +570,21 @@ export class RaidRoomService implements OnModuleDestroy {
             (m) => m.id === (room.pending as { moveId: string }).moveId,
           ) ?? null)
         : null;
-    const golpeDoChefe = chooseBotMove(state, CHEFE);
+
+    // O estágio de banco devolve o último ataque do aluno em vez de o chefe
+    // escolher o seu. Sem ataque registrado ainda, cai no bot normal.
+    const efeitoAtual = this.efeitoDoEstagio(room);
+    const copiado =
+      efeitoAtual?.copiaGolpeDoAluno && state.player.lastAttackId
+        ? (getMoveById(state.player.lastAttackId) ?? null)
+        : null;
+    if (copiado) {
+      events.push({
+        type: 'message',
+        text: `${state.enemy.name} consultou o log e devolveu ${copiado.name}!`,
+      });
+    }
+    const golpeDoChefe = copiado ?? chooseBotMove(state, CHEFE);
 
     const order = turnOrder(state, golpeDoAluno, golpeDoChefe);
     for (const entry of order) {
@@ -572,6 +619,11 @@ export class RaidRoomService implements OnModuleDestroy {
       return;
     }
 
+    // 3.5. Virada de estágio. Vem DEPOIS do nocaute do chefe (não há
+    //      transformação para quem já caiu) e ANTES do nocaute do aluno, para o
+    //      roteiro sair no mesmo lote de eventos da troca forçada.
+    events.push(...this.viraEstagioSePreciso(room));
+
     if (alunoCaiu) {
       benchCombatant(state.player);
       if (!hasAlive(room.team)) {
@@ -599,8 +651,103 @@ export class RaidRoomService implements OnModuleDestroy {
     }
 
     room.turn += 1;
+    room.turnoDoEstagio += 1;
     this.armTurnTimer(room);
     this.emitRound(room, 'battle:round', events);
+  }
+
+  // ── Estágios ──────────────────────────────────────────────────────────────
+
+  /** Os tipos do estágio atual. */
+  private tiposDoEstagio(room: RaidRoom): string[] {
+    return room.estagios[room.estagio - 1] ?? room.estagios[0];
+  }
+
+  /**
+   * O efeito de um estágio vem do PRIMEIRO tipo dele.
+   *
+   * Só importa no estágio 1, o único que pode ter dois tipos (os do banco); os
+   * sorteados têm um só. Dois efeitos ao mesmo tempo dobrariam a dificuldade da
+   * abertura sem o aluno ter como prever.
+   */
+  private efeitoDoEstagio(room: RaidRoom) {
+    return efeitoDoTipo(this.tiposDoEstagio(room)[0]);
+  }
+
+  /** Moveset do estágio: sorteado dos tipos dele, com os efeitos costurados. */
+  private movesetDoEstagio(tipos: string[]): Move[] {
+    return costuraEfeitos(
+      buildMoveset(tipos),
+      efeitoDoTipo(tipos[0])?.injetaNosGolpes,
+    );
+  }
+
+  private tiqueDoEstagio(room: RaidRoom): BattleEvent[] {
+    const efeito = this.efeitoDoEstagio(room);
+    if (!efeito?.porTurno) return [];
+    const state = room.state!;
+    return efeito.porTurno({
+      chefe: state.enemy,
+      aluno: state.player,
+      chefeKey: CHEFE,
+      alunoKey: ALUNO,
+      turnoDoEstagio: room.turnoDoEstagio,
+      random: Math.random,
+    });
+  }
+
+  /**
+   * Transforma o chefe quando a barra cruza um terço.
+   *
+   * Duas regras, as duas aprendidas de um teste:
+   *
+   * 1. Só AVANÇA. A barra pode subir — o bot tem golpe de cura e o efeito de
+   *    ENSW cura por turno — e voltar de estágio destransformaria o chefe na
+   *    cara do aluno, apagando um marco que ele conquistou.
+   *
+   * 2. Avança UM estágio por vez, nunca direto para o que o HP indica. Um golpe
+   *    forte pode cruzar os dois limiares na mesma rodada, e ir direto ao 3
+   *    fazia o estágio 2 não existir: nem a transformação, nem o efeito, nem a
+   *    sprite. Como esta checagem roda toda rodada, a fila se resolve sozinha no
+   *    turno seguinte — o chefe pode passar uma rodada no estágio 2 com vida de
+   *    estágio 3, e isso é melhor que sumir com um terço da luta.
+   */
+  private viraEstagioSePreciso(room: RaidRoom): BattleEvent[] {
+    const state = room.state!;
+    const alvo = estagioDoHp(state.enemy.hp, state.enemy.maxHp);
+    if (alvo <= room.estagio) return [];
+
+    room.estagio += 1;
+    room.turnoDoEstagio = 0;
+
+    const tipos = this.tiposDoEstagio(room);
+    const efeito = efeitoDoTipo(tipos[0]);
+    const moves = this.movesetDoEstagio(tipos);
+
+    // O que o estágio anterior construiu sai; vida e status ficam.
+    limpaCampoDoChefe(state.enemy);
+    state.enemy.types = tipos;
+    state.enemy.moves = moves;
+    room.boss.types = tipos;
+    room.boss.moves = moves;
+
+    const eventos: BattleEvent[] = [
+      {
+        type: 'roteiro',
+        roleta: { kind: 'tipo', opcoes: [...TYPE_CYCLE], resultado: tipos[0] },
+        linhas: [
+          `${room.boss.professor.name} não vai mais segurar.`,
+          `Estágio ${alvo} de ${TOTAL_DE_ESTAGIOS} — ele agora é ${tipos.join(' / ')}!`,
+          ...(efeito ? [efeito.anuncio] : []),
+        ],
+      },
+    ];
+    if (efeito?.aoEntrar) eventos.push(...efeito.aoEntrar(state.enemy, CHEFE));
+
+    this.logger.log(
+      `Raid ${room.id}: estágio ${alvo} (${tipos.join('+')}) — ${efeito?.nome ?? 'sem efeito'}`,
+    );
+    return eventos;
   }
 
   private applySwitch(room: RaidRoom, captureId: string): BattleEvent[] {
@@ -869,6 +1016,12 @@ export class RaidRoomService implements OnModuleDestroy {
         maxHp: c.maxHp,
         status: statusLabel(c.status),
         team: [publicMemberView(room.boss)],
+        // O front usa `estagio` para escolher o par de sprites do estágio e
+        // para rotular a fase; `efeitoDoEstagio` é o nome exibido da regra em
+        // vigor, que sem isso só existiria na mensagem que passa e some.
+        estagio: room.estagio,
+        totalDeEstagios: TOTAL_DE_ESTAGIOS,
+        efeitoDoEstagio: this.efeitoDoEstagio(room)?.nome ?? null,
       };
     }
     const active = room.team[room.activeIndex];
