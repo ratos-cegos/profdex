@@ -11,7 +11,7 @@
  * código, porque um raro que exige 7 e outro 5 é regra que ninguém explica de
  * pé, na fila (tarefa 15, decisão 3).
  *
- * São DOIS tipos de ajuste, e o `kind` é o discriminante:
+ * São TRÊS tipos de ajuste, e o `kind` é o discriminante:
  *
  * - `number` — os dois cooldowns, usados como número (`* 60_000`). Virar tudo
  *   `string` para acomodar o terceiro espalharia `Number(...)` por todo código
@@ -19,6 +19,10 @@
  * - `enum` — uma escolha entre opções fixas, como o modo de entrega do QR.
  *   `AppSetting.value` já é `String` no schema, então isto não custa migração:
  *   o que muda é o catálogo e quem o lê.
+ * - `datetime` — um instante do calendário, como a abertura da raid. Não é
+ *   `number` porque "faltam 1.240 minutos" não é uma coisa que alguém digita
+ *   num painel às pressas: o operador pensa em "dia 1, 19h", e a faixa que
+ *   protege um cooldown (min/max) não diz nada sobre uma data.
  */
 
 interface SettingBase {
@@ -46,7 +50,95 @@ export interface EnumSetting extends SettingBase {
   default: string;
 }
 
-export type SettingSpec = NumberSetting | EnumSetting;
+/**
+ * Instante do calendário. Sem `unit` e sem faixa: o que limita uma data é o
+ * calendário, e quem a valida é `parseDateTimeSetting`.
+ *
+ * O valor circula como TEXTO ISO com o offset do evento explícito
+ * (`2026-10-01T19:00:00-03:00`), nunca como epoch: é o que faz `app_settings`
+ * continuar legível por quem abrir o banco, e o que impede que uma data gravada
+ * pelo painel signifique três horas antes só porque o servidor roda em UTC.
+ */
+export interface DateTimeSetting extends SettingBase {
+  kind: 'datetime';
+  default: string;
+}
+
+export type SettingSpec = NumberSetting | EnumSetting | DateTimeSetting;
+
+/**
+ * Fuso do evento, como offset fixo — o mesmo de `admin-metrics.service.ts`, e
+ * pelo mesmo motivo: o Brasil aboliu o horário de verão em 2019, então São
+ * Paulo não tem mais salto, e montar o instante a partir do offset é o que
+ * deixa "19h" sendo 19h de Londrina mesmo com o servidor de produção em UTC.
+ *
+ * Fica aqui, e não importado de lá, porque `settings.ts` é módulo PURO e não
+ * deve depender do módulo de métricas para saber que hora é no estande.
+ */
+export const OFFSET_DO_EVENTO = '-03:00';
+
+/**
+ * Quanto somar a um instante para LER suas partes no fuso do evento.
+ *
+ * Derivado do próprio offset em vez de um `-3 * 3_600_000` à parte: dois
+ * números que precisam concordar são um número que um dia vai discordar.
+ */
+const DESLOCAMENTO_MS = -new Date(
+  `1970-01-01T00:00:00${OFFSET_DO_EVENTO}`,
+).getTime();
+
+/**
+ * O formato aceito num ajuste de data e hora.
+ *
+ * `2026-10-01T19:00` é o que o `<input type="datetime-local">` do painel manda
+ * — sem fuso, porque o navegador não o envia. Sem offset, a hora é lida no fuso
+ * do EVENTO e não no do servidor: é a única leitura que o operador quis dizer.
+ * Com offset (`-03:00`, `Z`) é respeitado, e é o formato em que o valor volta
+ * para o banco.
+ */
+export const PADRAO_DATA_HORA =
+  /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2}))?(Z|[+-]\d{2}:\d{2})?$/;
+
+/**
+ * Lê uma data e hora de ajuste e devolve a forma CANÔNICA (com o offset do
+ * evento), ou `null` se não for uma data do calendário.
+ *
+ * Pura, e é ela que carrega as duas armadilhas do assunto:
+ *
+ * 1. **Texto sem fuso é hora do evento**, nunca hora do processo. `new
+ *    Date('2026-10-01T19:00')` num servidor em UTC dá 16h de Londrina — a raid
+ *    abriria três horas antes do combinado, e ninguém descobriria testando
+ *    local, onde o relógio da máquina é o certo por acidente.
+ * 2. **Data inexistente não é recusada pelo `Date`: ela ROLA.** `31/02` vira
+ *    2 de março em silêncio. Comparar o canônico com o que foi escrito é o que
+ *    pega isso — só faz sentido quando o texto não trouxe offset próprio, caso
+ *    em que a diferença é legítima (o instante foi reescrito no fuso daqui).
+ */
+export function parseDateTimeSetting(raw: string): string | null {
+  const partes = PADRAO_DATA_HORA.exec(raw.trim());
+  if (!partes) return null;
+
+  const [, data, hora, segundos, offset] = partes;
+  const instante = new Date(
+    `${data}T${hora}:${segundos ?? '00'}${offset ?? OFFSET_DO_EVENTO}`,
+  );
+  if (Number.isNaN(instante.getTime())) return null;
+
+  const canonico = formatarNoFusoDoEvento(instante);
+  if (!offset && !canonico.startsWith(`${data}T${hora}`)) return null;
+  return canonico;
+}
+
+/** O instante de um ajuste de data e hora, em epoch ms. */
+export function dateTimeSettingMs(valor: string): number {
+  return new Date(valor).getTime();
+}
+
+/** `2026-10-01T19:00:00-03:00` — o instante escrito no fuso do evento. */
+function formatarNoFusoDoEvento(instante: Date): string {
+  const deslocado = new Date(instante.getTime() + DESLOCAMENTO_MS);
+  return `${deslocado.toISOString().slice(0, 19)}${OFFSET_DO_EVENTO}`;
+}
 
 export const SETTINGS = {
   /**
@@ -199,6 +291,35 @@ export const SETTINGS = {
       'de rede ou restart do servidor não consomem. 0 desliga.',
   },
   /**
+   * A hora em que a raid do lendário ABRE para todo mundo.
+   *
+   * É uma trava GLOBAL, e a única do jogo que não depende do que o aluno fez:
+   * quem fechou a Profdex às 15h vê o card do lendário com a contagem, não o
+   * botão. O motivo é de evento, não de balanceamento — o lendário é o momento
+   * de palco da feira, e ele só acontece se houver plateia na hora marcada, em
+   * vez de o primeiro aluno a fechar a coleção vencer sozinho às três da tarde.
+   *
+   * O padrão é **1º de outubro, 19h** (horário do evento). Está no painel e não
+   * no código porque é exatamente o tipo de horário que atrasa quarenta minutos
+   * no dia: abrir mais cedo ou empurrar meia hora é um clique, e não um deploy
+   * com o estande cheio.
+   *
+   * **Para abrir agora, ponha uma data no passado** — é o interruptor de
+   * emergência deste ajuste, o equivalente ao `0` dos cooldowns. Não existe
+   * valor "desligado" de propósito: um campo vazio no banco significaria
+   * "ausente" e cairia neste padrão, que é uma trava.
+   */
+  raidOpensAt: {
+    kind: 'datetime',
+    key: 'raid.opens_at',
+    default: '2026-10-01T19:00:00-03:00',
+    label: 'Abertura da raid do lendário',
+    help:
+      'Antes desta hora ninguém desafia o lendário — quem fechou a Profdex vê ' +
+      'o card com a contagem até abrir. A hora é a do evento (Londrina). ' +
+      'Para liberar agora, escolha uma data já passada.',
+  },
+  /**
    * Como a ficha de QR chega ao aluno que acertou.
    *
    * O padrão é `ficha`, que é o comportamento histórico: a mesa entrega o papel
@@ -235,7 +356,9 @@ export const SETTING_NAMES = Object.keys(SETTINGS) as SettingName[];
  */
 type ValueOf<S> = S extends { kind: 'enum'; options: readonly (infer O)[] }
   ? O
-  : number;
+  : S extends { kind: 'datetime' }
+    ? string
+    : number;
 
 export type SettingValue<N extends SettingName> = ValueOf<(typeof SETTINGS)[N]>;
 
@@ -275,9 +398,34 @@ export function parseSetting<N extends SettingName>(
     ) as SettingValue<N>;
   }
 
+  // Data ilegível cai na trava padrão, e NÃO em "aberto": este ajuste é um
+  // bloqueio, e o modo de falhar de um bloqueio é continuar bloqueando.
+  if (spec.kind === 'datetime') {
+    return (parseDateTimeSetting(raw) ?? spec.default) as SettingValue<N>;
+  }
+
   const valor = Number(raw);
   if (!Number.isFinite(valor)) return spec.default as SettingValue<N>;
   return clamp(spec, Math.round(valor)) as SettingValue<N>;
+}
+
+/**
+ * O texto que vai para o banco, ou `null` quando o valor não é aceitável.
+ *
+ * Só a data tem o que normalizar, e tem: o painel manda `2026-10-01T19:00` (o
+ * `<input type="datetime-local">` não envia fuso), e gravar isso cru deixaria
+ * em `app_settings` um valor que só significa algo com o offset do evento na
+ * mão de quem lê. Guardar a forma canônica é o que faz a linha do banco ser
+ * autoexplicativa — e o que faz o valor sobreviver a uma mudança de fuso do
+ * servidor.
+ */
+export function serializeSetting<N extends SettingName>(
+  name: N,
+  valor: SettingValue<N>,
+): string | null {
+  const spec: SettingSpec = SETTINGS[name];
+  if (spec.kind !== 'datetime') return String(valor);
+  return parseDateTimeSetting(String(valor));
 }
 
 export function clampSetting(name: NumberSettingName, valor: number): number {

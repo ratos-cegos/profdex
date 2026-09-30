@@ -231,6 +231,27 @@ describe('RaidRoomService — recusas', () => {
     expect(ctx.raid.openAttempt).not.toHaveBeenCalled();
   });
 
+  /**
+   * A recusa por horário diz a HORA, não "faltam 214 minutos": é o texto que o
+   * aluno repete para o amigo na fila, e é ele que põe os dois na frente do
+   * estande na hora certa. A hora é a do evento — ver `raid-opening.ts`.
+   */
+  it('diz a hora em que a raid abre quando ainda está fechada', async () => {
+    const ctx = montar();
+    ctx.raid.canStart = jest.fn().mockResolvedValue({
+      ok: false,
+      code: 'RAID_FECHADA',
+      retryAt: Date.parse('2026-10-01T22:00:00Z'), // 19h em Londrina
+    });
+
+    const ack = await ctx.service.start(ALUNO);
+
+    // Só `19h`, e não o dia: o dia entra na frase apenas quando a abertura não é
+    // hoje, e travar isso aqui faria o teste falhar no dia 1º de outubro.
+    expect((ack as { message: string }).message).toMatch(/abre.*19h/);
+    expect(ctx.raid.openAttempt).not.toHaveBeenCalled();
+  });
+
   it('traduz o cooldown em minutos na mensagem', async () => {
     const ctx = montar();
     ctx.raid.canStart = jest.fn().mockResolvedValue({

@@ -197,6 +197,31 @@ telas de arena só foram exercitados por teste de unidade e build.
   evento, decidido dentro da transação do prêmio; falha de envio vira linha de
   auditoria, nunca exceção.
 
+- **A raid do lendário tem hora para abrir (29/09/2026):** `raid.opens_at` no
+  painel, padrão **01/10 às 19h** no horário de Londrina. Antes dela ninguém
+  desafia o lendário — quem fechou a Profdex vê o card `???` com a hora no lugar
+  do botão (`ABRE 01/10 19H`) e, na última hora, a contagem ao minuto. É a
+  **única trava do jogo que não depende do que o aluno fez**, e por isso vem
+  ANTES do gate da coleção na ordem das recusas: antes das 19h todo mundo ouve
+  "a raid do lendário abre às 19h", inclusive quem ainda não fechou a dex — o
+  contrário mandaria quem já fechou procurar um professor que não falta. O
+  destravamento continua acontecendo normalmente antes da hora (a linha de
+  `raid_unlocks` é gravada como sempre). **Para abrir agora, ponha uma data no
+  passado** — é o interruptor de emergência, como o `0` dos cooldowns; não existe
+  valor "desligado" de propósito, porque uma linha vazia no banco significaria
+  "ausente" e cairia no padrão, que é uma trava. Duas armadilhas resolvidas de
+  uma vez, e ambas valem para o cooldown da raid junto: (1) **a hora é a do
+  EVENTO** — produção roda em UTC, onde `19:00` sem fuso seria 16h de Londrina, e
+  por isso o valor é guardado com o offset explícito
+  (`2026-10-01T19:00:00-03:00`) e o texto é escrito no servidor
+  (`battle/raid-opening.ts`), não no aparelho; (2) **a contagem na tela corre
+  pelo relógio do SERVIDOR** — `/raid/status` devolve `now` e o app conta a
+  partir dele com um relógio monotônico (`performance.now()`), porque o público
+  é aluno de computação com DevTools aberto e um relógio adiantado faria o card
+  mostrar `CAPTURAR` às 18h para levar uma recusa no clique, o que parece bug e
+  não regra. Quem DECIDE sempre foi `RaidService.canStart`, com o relógio do
+  servidor. O painel ganhou o terceiro tipo de ajuste (`datetime`) para isto.
+
 ## Achados em aberto
 
 Defeitos encontrados de passagem, que **não** foram corrigidos junto com a

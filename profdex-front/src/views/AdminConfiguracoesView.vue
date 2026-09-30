@@ -13,9 +13,9 @@ import api from '../services/api'
 //    apoio vêm do SERVIDOR, que é quem valida. Repetir os limites aqui criaria
 //    a chance de a tela aceitar o que a API recusa — ou pior, o contrário.
 //
-// Por isso nenhum ajuste é reconhecido pelo NOME aqui: o que decide o controle
-// é o formato que veio. Ajuste com `options` vira um seletor, ajuste com
-// `min`/`max` vira o campo numérico de sempre.
+// Por isso nenhum ajuste é reconhecido pelo NOME aqui: quem decide o controle é
+// o `kind` que veio do servidor. `enum` vira um seletor, `datetime` vira um
+// campo de data e hora, e o resto é o campo numérico de sempre.
 
 const carregando = ref(true)
 const erro = ref('')
@@ -46,20 +46,49 @@ async function carregar() {
 
 function aplicar(settings) {
   itens.value = settings
-  rascunho.value = Object.fromEntries(settings.map((s) => [s.name, s.value]))
+  rascunho.value = Object.fromEntries(
+    settings.map((s) => [s.name, paraCampo(s, s.value)]),
+  )
 }
 
-// Escolha fechada (`options`) ou número (`min`/`max`): é o que o servidor
-// mandou que decide, nunca o nome do ajuste.
-const ehEscolha = (item) => Array.isArray(item.options)
+const ehEscolha = (item) => item.kind === 'enum'
+const ehData = (item) => item.kind === 'datetime'
 
-// O `<select>` já devolve uma das opções; só o `<input type=number>` precisa da
-// conversão, e ela tem de acontecer antes da comparação — senão "10" digitado
-// nunca bate com o 10 salvo.
+// O `<input type="datetime-local">` fala `AAAA-MM-DDTHH:MM`, sem fuso; o
+// servidor guarda e devolve a forma canônica, com o offset do evento
+// (`2026-10-01T19:00:00-03:00`). Cortar em 16 é a tradução — e o fuso fica do
+// lado de quem sabe qual é, que é o servidor.
+const paraCampo = (item, valor) =>
+  ehData(item) ? String(valor ?? '').slice(0, 16) : valor
+
+const DATA_HORA = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/
+
+/**
+ * `01/10/2026 às 19:00`, para o operador ler.
+ *
+ * Sem passar por `new Date`: o texto já ESTÁ no fuso do evento, e um `Date`
+ * aqui só criaria a chance de o navegador do operador reinterpretá-lo no fuso
+ * dele — que num notebook configurado errado é o bug mais difícil de acreditar.
+ */
+function textoDoValor(item, valor) {
+  if (!ehData(item)) {
+    return `${valor}${item.unit ? ` ${item.unit}` : ''}`
+  }
+  const partes = DATA_HORA.exec(String(valor ?? ''))
+  if (!partes) return String(valor ?? '')
+  const [, ano, mes, dia, hora, minuto] = partes
+  return `${dia}/${mes}/${ano} às ${hora}:${minuto}`
+}
+
+// O `<select>` e o campo de data já devolvem texto; só o `<input type=number>`
+// precisa da conversão, e ela tem de acontecer antes da comparação — senão "10"
+// digitado nunca bate com o 10 salvo.
 const valorDoRascunho = (item) =>
-  ehEscolha(item) ? rascunho.value[item.name] : Number(rascunho.value[item.name])
+  ehEscolha(item) || ehData(item)
+    ? rascunho.value[item.name]
+    : Number(rascunho.value[item.name])
 
-const alterado = (item) => valorDoRascunho(item) !== item.value
+const alterado = (item) => valorDoRascunho(item) !== paraCampo(item, item.value)
 
 async function salvar(item) {
   const valor = valorDoRascunho(item)
@@ -68,6 +97,11 @@ async function salvar(item) {
   if (ehEscolha(item)) {
     if (!item.options.includes(valor)) {
       erro.value = `${item.label}: escolha uma das opções (${item.options.join(', ')}).`
+      return
+    }
+  } else if (ehData(item)) {
+    if (!DATA_HORA.test(String(valor))) {
+      erro.value = `${item.label}: informe a data e a hora.`
       return
     }
   } else if (!Number.isInteger(valor) || valor < item.min || valor > item.max) {
@@ -81,7 +115,7 @@ async function salvar(item) {
   try {
     const { data } = await api.patch('/admin/settings', { [item.name]: valor })
     aplicar(data.settings)
-    ok.value = `${item.label}: agora ${valor}${item.unit ? ` ${item.unit}` : ''}. Vale para todo mundo em até 10 segundos.`
+    ok.value = `${item.label}: agora ${textoDoValor(item, valor)}. Vale para todo mundo em até 10 segundos.`
   } catch (e) {
     erro.value = mensagemDeErro(e, 'Não foi possível salvar a configuração.')
   } finally {
@@ -90,11 +124,11 @@ async function salvar(item) {
 }
 
 function restaurar(item) {
-  rascunho.value[item.name] = item.default
+  rascunho.value[item.name] = paraCampo(item, item.default)
 }
 
 function cancelar(item) {
-  rascunho.value[item.name] = item.value
+  rascunho.value[item.name] = paraCampo(item, item.value)
 }
 
 onMounted(carregar)
@@ -123,9 +157,7 @@ onMounted(carregar)
     <section v-for="item in itens" v-else :key="item.name" class="bloco">
       <div class="bloco__head">
         <h2 class="bloco__titulo">{{ item.label }}</h2>
-        <span class="bloco__meta">
-          padrão: {{ item.default }}<template v-if="item.unit"> {{ item.unit }}</template>
-        </span>
+        <span class="bloco__meta">padrão: {{ textoDoValor(item, item.default) }}</span>
       </div>
 
       <p class="ajuda">{{ item.help }}</p>
@@ -139,6 +171,20 @@ onMounted(carregar)
             </option>
           </select>
         </label>
+        <template v-else-if="ehData(item)">
+          <label class="campo-rotulo">
+            <span class="sr-only">{{ item.label }}</span>
+            <input
+              v-model="rascunho[item.name]"
+              class="campo campo--data"
+              type="datetime-local"
+              @keyup.enter="salvar(item)"
+            />
+          </label>
+          <!-- O campo não mostra fuso nenhum (o navegador não o exibe), então
+               o rótulo diz de qual hora se está falando: a do estande. -->
+          <span class="faixa">horário do evento (Londrina)</span>
+        </template>
         <template v-else>
           <label class="campo-rotulo">
             <span class="sr-only">{{ item.label }} em {{ item.unit }}</span>
@@ -166,7 +212,7 @@ onMounted(carregar)
             Cancelar
           </button>
           <button
-            v-if="rascunho[item.name] !== item.default"
+            v-if="rascunho[item.name] !== paraCampo(item, item.default)"
             class="botao botao--pequeno"
             type="button"
             @click="restaurar(item)"
@@ -186,7 +232,7 @@ onMounted(carregar)
 
       <p v-if="alterado(item)" class="pendente">
         Não salvo — em uso continua
-        <strong>{{ item.value }}<template v-if="item.unit"> {{ item.unit }}</template></strong>.
+        <strong>{{ textoDoValor(item, item.value) }}</strong>.
       </p>
     </section>
   </div>
@@ -282,6 +328,13 @@ onMounted(carregar)
 .campo--escolha {
   width: auto;
   min-width: 160px;
+}
+
+/* Data e hora juntas são o controle mais largo da tela — no mobile o campo
+   nativo quebra se não couber inteiro. */
+.campo--data {
+  width: auto;
+  min-width: 220px;
 }
 
 .unidade {

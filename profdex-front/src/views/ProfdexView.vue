@@ -38,8 +38,27 @@ async function load(recarregar = false) {
   }
 }
 
+/**
+ * Voltar ao app depois de um tempo com a tela apagada REANCORA o relógio.
+ *
+ * A contagem da abertura corre sobre um relógio monotônico ancorado na última
+ * resposta do servidor, e em alguns navegadores esse relógio congela junto com
+ * a aba. Sem isto, quem guarda o celular às 18h30 e volta às 19h30 leria "abre
+ * em 25min" com a raid já aberta.
+ *
+ * Só pede quando há card na tela para corrigir: a grande maioria dos alunos
+ * nunca fecha a Profdex, e não faz sentido uma requisição a cada vez que eles
+ * trocam de app.
+ */
+function aoVoltarParaOApp() {
+  if (document.visibilityState !== 'visible') return
+  if (!raid.value.unlocked || raid.value.captured) return
+  store.fetchRaid().catch(() => {})
+}
+
 onMounted(async () => {
-  relogio = setInterval(() => (agora.value = Date.now()), 1000)
+  relogio = setInterval(() => (agora.value = store.agoraDoServidor()), 1000)
+  document.addEventListener('visibilitychange', aoVoltarParaOApp)
   await load()
   // Depois da grade existir: `scrollTop` num elemento ainda vazio é engolido em
   // silêncio, e a coleção voltaria ao topo mesmo assim.
@@ -53,6 +72,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (relogio) clearInterval(relogio)
   relogio = null
+  document.removeEventListener('visibilitychange', aoVoltarParaOApp)
 })
 
 // ── Contagem ────────────────────────────────────────────────────────────────
@@ -89,9 +109,14 @@ const total = computed(
 // ── Raid do lendário ────────────────────────────────────────────────────────
 const raid = computed(() => store.raid)
 
-// Relógio vivo para o cooldown. Sem ele, quem perde e fica na tela vê "aguarde
-// 30 min" congelado e precisa dar F5 para descobrir que já pode tentar.
-const agora = ref(Date.now())
+// Relógio vivo para o cooldown e para a abertura. Sem ele, quem perde e fica na
+// tela vê "aguarde 30 min" congelado e precisa dar F5 para descobrir que já
+// pode tentar.
+//
+// É o relógio do SERVIDOR (ver `agoraDoServidor` na store): os dois prazos são
+// timestamps dele, e comparar com a hora do aparelho deixaria a tela à mercê de
+// um relógio adiantado — de propósito ou não.
+const agora = ref(store.agoraDoServidor())
 let relogio = null
 
 const esperaRestante = computed(() => {
@@ -108,8 +133,43 @@ const esperaTexto = computed(() => {
   return `${segundos}s`
 })
 
+// ── A hora de abrir ─────────────────────────────────────────────────────────
+// A raid tem uma trava de HORÁRIO além da coleção: quem fecha a Profdex de
+// tarde vê o card com a contagem, e o botão só existe depois da hora marcada
+// (`raid.opens_at`, no painel). Quem decide é o servidor — isto aqui é a mesma
+// verdade desenhada, para o aluno não descobrir a trava apertando o botão.
+//
+// O mesmo relógio do cooldown move as duas contagens.
+const abreEm = computed(() => raid.value.opensAt ?? 0)
+const aberturaRestante = computed(() => Math.max(0, abreEm.value - agora.value))
+const aberto = computed(() => aberturaRestante.value <= 0)
+
+// A hora vem ESCRITA do servidor (`19H`, ou `01/10 19H` quando não é hoje).
+// Formatar aqui a partir de `opensAt` deixaria o texto à mercê do fuso do
+// aparelho: quem trocasse o fuso no celular leria "abre às 22h" e iria embora.
+const horaDeAbrir = computed(() =>
+  (raid.value.opensAtLabel ?? '').toUpperCase(),
+)
+
+const aberturaTexto = computed(() => {
+  const ms = aberturaRestante.value
+  if (ms <= 0) return ''
+  // Na última hora a contagem fica viva, ao minuto: é ela que junta a fila na
+  // frente do estande antes de abrir. Antes disso, a hora marcada — um relógio
+  // de 4h20min parado na tela não diz nada a quem vai embora e volta.
+  if (ms >= 3_600_000) return `ABRE ${horaDeAbrir.value}`
+  const minutos = Math.floor(ms / 60000)
+  return minutos >= 1
+    ? `ABRE EM ${minutos}MIN`
+    : `ABRE EM ${Math.floor(ms / 1000)}S`
+})
+
 const podeDesafiar = computed(
-  () => raid.value.unlocked && !raid.value.captured && esperaRestante.value <= 0,
+  () =>
+    raid.value.unlocked &&
+    !raid.value.captured &&
+    aberto.value &&
+    esperaRestante.value <= 0,
 )
 
 const iniciando = ref(false)
@@ -251,7 +311,15 @@ function goDetails(prof) {
 
             <!-- Ainda não: silhueta com `???` piscando colorido. Não há nome,
                  tipo nem arte para mostrar — o servidor nunca os enviou. -->
-            <div v-else class="lendario" aria-label="Professor lendário — desafie a raid">
+            <div
+              v-else
+              class="lendario"
+              :aria-label="
+                aberto
+                  ? 'Professor lendário — desafie a raid'
+                  : `Professor lendário — a raid abre: ${raid.opensAtLabel}`
+              "
+            >
               <span class="lendario__raio" aria-hidden="true">⚡</span>
               <span class="lendario__texto">???</span>
 
@@ -262,6 +330,9 @@ function goDetails(prof) {
                 @click="desafiarLendario"
               >
                 <template v-if="iniciando">ABRINDO…</template>
+                <!-- A abertura vem antes do cooldown porque é trava de todo
+                     mundo: antes da hora não há tentativa para esperar. -->
+                <template v-else-if="!aberto">{{ aberturaTexto }}</template>
                 <template v-else-if="esperaRestante > 0">{{ esperaTexto }}</template>
                 <template v-else>CAPTURAR</template>
               </button>

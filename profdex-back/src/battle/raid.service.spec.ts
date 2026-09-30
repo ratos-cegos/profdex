@@ -6,6 +6,7 @@ import { EMAIL_DO_PRIMEIRO } from './raid-first-clear.mail';
 import {
   RAID_BLOQUEADA,
   RAID_EM_COOLDOWN,
+  RAID_FECHADA,
   RAID_JA_CAPTURADO,
   RAID_SEM_LENDARIO,
   RaidService,
@@ -87,13 +88,19 @@ function criarPrisma(over: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * `opensAt` no passado (`0`) é o padrão dos testes: a trava de horário é assunto
+ * de dois deles, e os outros vinte estão testando outra coisa.
+ */
 function criar(
   prisma: ReturnType<typeof criarPrisma>,
   cooldownMs = 30 * 60_000,
+  opensAt = 0,
 ) {
   const metrics = { record: jest.fn() };
   const settings = {
     raidCooldownMs: jest.fn().mockResolvedValue(cooldownMs),
+    raidOpensAtMs: jest.fn().mockResolvedValue(opensAt),
   };
   const mail = { send: jest.fn().mockResolvedValue(true) };
   const service = new RaidService(
@@ -302,6 +309,99 @@ describe('RaidService — canStart', () => {
     const { service } = criar(prisma);
 
     await expect(service.canStart('ana')).resolves.toMatchObject({ ok: true });
+  });
+});
+
+/**
+ * A trava de HORÁRIO (`raid.opens_at`). É a única do jogo que não depende do que
+ * o aluno fez: o lendário é o momento de palco da feira e só acontece com
+ * plateia na hora marcada.
+ *
+ * Quem decide é sempre este serviço, com o relógio do SERVIDOR. O front recebe
+ * `opensAt` para desenhar a contagem, e nada mais — mexer na hora do aparelho
+ * (que este público mexe) não atravessa esta função.
+ */
+describe('RaidService — a hora de abrir', () => {
+  const EM_UMA_HORA = () => Date.now() + 3_600_000;
+
+  it('recusa antes da hora e diz QUANDO abre', async () => {
+    const prisma = criarPrisma();
+    const abre = EM_UMA_HORA();
+    const { service } = criar(prisma, 30 * 60_000, abre);
+
+    await expect(service.canStart('ana')).resolves.toEqual({
+      ok: false,
+      code: RAID_FECHADA,
+      retryAt: abre,
+    });
+  });
+
+  /**
+   * A ordem das recusas é a resposta que se quer dar: antes das 19h todo mundo
+   * ouve "abre às 19h", inclusive quem ainda não fechou a Profdex. O contrário
+   * mandaria quem já fechou procurar um professor que não falta.
+   */
+  it('a hora vem antes da coleção na ordem das recusas', async () => {
+    const prisma = criarPrisma();
+    prisma.capture.findMany = jest
+      .fn()
+      .mockResolvedValue([{ professorId: 'a' }]);
+    const { service } = criar(prisma, 30 * 60_000, EM_UMA_HORA());
+
+    await expect(service.canStart('ana')).resolves.toMatchObject({
+      code: RAID_FECHADA,
+    });
+  });
+
+  it('depois da hora, a trava não existe mais', async () => {
+    const prisma = criarPrisma();
+    const { service } = criar(prisma, 30 * 60_000, Date.now() - 1);
+
+    await expect(service.canStart('ana')).resolves.toMatchObject({ ok: true });
+  });
+
+  /**
+   * O card precisa de três coisas para desenhar a contagem em vez do botão: o
+   * instante, a hora escrita (no fuso do EVENTO, não no do aparelho) e o relógio
+   * do servidor para contar a partir dele.
+   */
+  it('o status leva a hora, o rótulo e o relógio do servidor', async () => {
+    const prisma = criarPrisma();
+    const abre = Date.parse('2026-10-01T22:00:00Z'); // 19h em Londrina
+    const { service } = criar(prisma, 30 * 60_000, abre);
+
+    const status = await service.status('ana');
+
+    expect(status).toMatchObject({
+      unlocked: true,
+      opensAt: abre,
+      opensAtLabel: '01/10 19h',
+      open: false,
+    });
+    expect(Math.abs(status.now - Date.now())).toBeLessThan(1_000);
+  });
+
+  it('o status abre quando a hora já passou', async () => {
+    const prisma = criarPrisma();
+    const { service } = criar(prisma, 30 * 60_000, Date.now() - 60_000);
+
+    await expect(service.status('ana')).resolves.toMatchObject({ open: true });
+  });
+
+  /**
+   * A trava é do EVENTO, não do aluno: quem já capturou continua com o lendário
+   * na coleção, e destravar a Profdex continua acontecendo antes das 19h — o
+   * aluno fecha a dex de tarde e encontra o card com a contagem esperando.
+   */
+  it('não impede a Profdex de destravar antes da hora', async () => {
+    const prisma = criarPrisma();
+    const { service } = criar(prisma, 30 * 60_000, EM_UMA_HORA());
+
+    await expect(service.status('ana')).resolves.toMatchObject({
+      unlocked: true,
+      open: false,
+    });
+    expect(prisma.raidUnlock.create).toHaveBeenCalled();
   });
 });
 
