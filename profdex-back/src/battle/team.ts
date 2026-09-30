@@ -1,11 +1,13 @@
 /**
- * Regras de TIME do PvP — o que acontece entre os exemplares de um jogador.
+ * Regras de TIME — o que acontece entre os exemplares de um jogador, nas três
+ * salas do servidor: PvP, raid e treino contra o bot (1 ou 3 de cada lado).
  *
  * Vive fora do motor de propósito. O motor (`engine/engine.ts`) resolve um
  * combatente contra outro e tem uma cópia gêmea no front
  * (`profdex-front/src/composables/battleEngine.js`) que precisa continuar
- * idêntica nas regras de combate. Composição de time é regra de SALA: o treino
- * contra o bot continua 1 contra 1 e não deve herdar nada daqui.
+ * idêntica nas regras de combate. Composição de time é regra de SALA. O único
+ * combate que não passa por aqui é o treino SEM exemplar (o boneco da
+ * `ArenaView`), que roda só no front.
  *
  * Funções puras, sem Prisma e sem socket, para o teste ser direto.
  */

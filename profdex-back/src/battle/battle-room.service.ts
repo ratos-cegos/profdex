@@ -2,26 +2,24 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { carregaTime, recusaDoPedido } from './build-team';
 import { pairKeyOf } from './cooldown.service';
 import {
   BattleEvent,
   BattleState,
   CombatantKey,
-  createCombatant,
   performMove,
   statusLabel,
   turnOrder,
   upkeep,
 } from './engine/engine';
-import { buildMoveset, getMoveById, Move } from './engine/moves';
-import { PUBLIC_PROFESSOR_SELECT } from '../professors/public-professor.select';
+import { Move } from './engine/moves';
 import { RatingOutcome, RatingService } from './rating.service';
 import {
   Action,
   benchCombatant,
   hasAlive,
   isAlive,
-  MAX_TEAM_SIZE,
   nextAliveIndex,
   ownMemberView,
   publicMemberView,
@@ -217,99 +215,24 @@ export class BattleRoomService implements OnModuleDestroy {
       return { ok: false, message: 'Você já escolheu.' };
     }
 
-    if (!Array.isArray(captureIds) || captureIds.length === 0) {
-      return { ok: false, message: 'Escolha pelo menos um professor.' };
-    }
-    if (captureIds.length > MAX_TEAM_SIZE) {
-      return {
-        ok: false,
-        message: `Seu time pode ter no máximo ${MAX_TEAM_SIZE} professores.`,
-      };
-    }
-    if (new Set(captureIds).size !== captureIds.length) {
-      return {
-        ok: false,
-        message: 'O mesmo exemplar não pode entrar duas vezes no time.',
-      };
-    }
+    const recusa = recusaDoPedido(captureIds);
+    if (recusa) return { ok: false, message: recusa };
 
     // Só vale exemplar CAPTURADO pelo próprio usuário — validação no banco,
-    // nunca no cliente. O `userId` no where é o que impede levar para a arena
-    // o exemplar de outra pessoa.
+    // nunca no cliente (ver `carregaTime`).
     me.picking = true;
-    const captures = await this.prisma.capture
-      .findMany({
-        where: { id: { in: captureIds }, userId },
-        select: {
-          id: true,
-          moves: true,
-          ivHp: true,
-          ivRigor: true,
-          ivDidatica: true,
-          ivRaciocinio: true,
-          // A allowlist pública inteira: este objeto atravessa o socket até a
-          // arena do adversário, que desenha o professor com a arte do banco.
-          professor: { select: PUBLIC_PROFESSOR_SELECT },
-          variant: { select: { types: true } },
-        },
-      })
-      .catch((error: Error) => {
-        // Banco fora do ar não pode deixar o jogador travado sem poder tentar
-        // de novo até o timeout da fase.
-        this.logger.error(`Falha buscando capturas de ${userId}`, error);
-        return null;
-      });
-
-    if (captures === null) {
+    const carregado = await carregaTime(
+      this.prisma,
+      userId,
+      captureIds,
+      (error) =>
+        this.logger.error(`Falha buscando capturas de ${userId}`, error),
+    );
+    if (!carregado.ok) {
       me.picking = false;
-      return {
-        ok: false,
-        message: 'Não deu para confirmar o time. Tente de novo.',
-      };
+      return { ok: false, message: carregado.message };
     }
-    if (captures.length !== captureIds.length) {
-      me.picking = false;
-      return {
-        ok: false,
-        message: 'Você só pode usar professores que capturou.',
-      };
-    }
-
-    // A ordem do PEDIDO é a do time — `findMany` não garante ordem, e essa
-    // ordem é o fallback do lead e da entrada após nocaute.
-    const byId = new Map(captures.map((c) => [c.id, c]));
-    me.team = captureIds.map((id) => {
-      const capture = byId.get(id)!;
-      // Tipos e deck vêm gravados na captura — é a variante que o aluno pegou,
-      // não os tipos atuais do professor: editar a tabela não pode reescrever o
-      // exemplar. O fallback cobre capturas anteriores a este modelo, que o
-      // seed ainda não corrigiu, e aí sim vale o que o professor diz hoje.
-      const types = capture.variant?.types?.length
-        ? capture.variant.types
-        : capture.professor.types;
-      const moves = capture.moves
-        .map((moveId) => getMoveById(moveId))
-        .filter((move): move is Move => move !== null);
-      const ivs = {
-        ivHp: capture.ivHp,
-        ivRigor: capture.ivRigor,
-        ivDidatica: capture.ivDidatica,
-        ivRaciocinio: capture.ivRaciocinio,
-      };
-      return {
-        captureId: capture.id,
-        professor: capture.professor,
-        types,
-        moves: moves.length ? moves : buildMoveset(types),
-        ivs,
-        combatant: createCombatant({
-          name: capture.professor.name,
-          types,
-          moves: moves.length ? moves : buildMoveset(types),
-          ivs,
-        }),
-      };
-    });
+    me.team = carregado.team;
 
     me.missedPhases = 0;
     // O oponente sabe QUE você escolheu, nunca O QUÊ (pick às cegas).

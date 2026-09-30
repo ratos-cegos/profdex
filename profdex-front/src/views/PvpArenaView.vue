@@ -13,6 +13,7 @@ import {
 } from '../composables/battleOcupante'
 import { esperar, TEMPO } from '../composables/battleTiming'
 import { useBattleStore } from '../stores/battle'
+import { contraBot, rotaDeSaida } from '../stores/battle-resync'
 
 // Arena PvP: o servidor resolve tudo; esta tela só envia a intenção de golpe
 // e ANIMA a fila de eventos de cada rodada (mesma linguagem do useBattle.js).
@@ -130,8 +131,8 @@ async function trocarPara(membro) {
   trocaAberta.value = false
   const ack = await battle.switchTo(membro.captureId)
   if (ack.ok) {
-    message.value = naRaid.value
-      ? 'Resolvendo…' // na raid o chefe já agiu: nunca há por quem esperar
+    message.value = semRivalHumano.value
+      ? 'Resolvendo…' // contra o servidor o outro lado já agiu: nunca há espera
       : pvp.value?.foeMoved
         ? 'Resolvendo…'
         : 'Aguardando o rival…'
@@ -207,7 +208,9 @@ const ladoSeu = computed(() => {
 const mensagemExibida = computed(() => {
   const p = pvp.value
   if (p?.phase === 'active' && p.youMoved && !animating.value) {
-    return p.foeMoved ? 'Resolvendo a rodada…' : `Aguardando ${p.opponent.name}…`
+    return p.foeMoved || semRivalHumano.value
+      ? 'Resolvendo a rodada…'
+      : `Aguardando ${p.opponent.name}…`
   }
   return message.value
 })
@@ -215,6 +218,10 @@ const mensagemExibida = computed(() => {
 // A raid usa esta mesma tela, mas o vocabulário é outro: não há rival, não há
 // Elo, e vencer significa CAPTURAR. Ver tarefa 18, decisão 17.
 const naRaid = computed(() => pvp.value?.mode === 'raid')
+// O treino também: o adversário é o bot, nada vale ranking, e dá para fugir.
+const naTreino = computed(() => pvp.value?.mode === 'treino')
+// Contra o servidor, o outro lado responde na hora: nunca há rival a esperar.
+const semRivalHumano = computed(() => contraBot(pvp.value?.mode))
 
 const resultText = computed(() => {
   const r = pvp.value?.result
@@ -234,6 +241,13 @@ const resultText = computed(() => {
 const resultReason = computed(() => {
   const r = pvp.value?.result
   if (!r) return ''
+  if (naTreino.value) {
+    if (r.reason === 'abandono') return 'Você saiu do treino'
+    if (r.reason === 'limite_de_turnos') return 'Por limite de turnos'
+    if (r.result === 'win') return 'O time do bot caiu'
+    if (r.result === 'loss') return 'Seu time caiu'
+    return 'Os dois times caíram juntos'
+  }
   if (r.reason === 'abandono') return 'Por abandono'
   if (r.reason === 'limite_de_turnos') {
     return naRaid.value ? 'O lendário resistiu ao tempo' : 'Por limite de turnos'
@@ -417,16 +431,53 @@ function syncFromServer() {
 async function useMove(move) {
   if (!canAct.value) return
   const ack = await battle.submitMove(move.id)
-  if (ack.ok) message.value = pvp.value?.foeMoved ? 'Resolvendo…' : 'Aguardando o rival…'
+  if (ack.ok) {
+    message.value =
+      semRivalHumano.value || pvp.value?.foeMoved ? 'Resolvendo…' : 'Aguardando o rival…'
+  }
 }
 
 function backToLobby() {
-  const eraRaid = naRaid.value
+  const saida = rotaDeSaida(pvp.value)
   battle.leaveBattle()
-  // A raid nasceu na Profdex e é lá que o resultado dela aparece (o card vira
-  // capturado, ou o cooldown começa a correr). Voltar para o lobby do PvP
+  // Cada modo volta para onde nasceu. A raid, na Profdex, é onde o resultado
+  // dela aparece; o treino, na aba de treino. Voltar para o lobby do PvP
   // largaria o aluno numa tela que ele não pediu e que não mudou.
-  router.push({ name: eraRaid ? 'profdex' : 'batalha' })
+  router.push({ name: saida })
+}
+
+// ── Treino ─────────────────────────────────────────────────────────────────
+// Mesmo formato de novo, sem voltar à aba: o `battle:start` que chega leva à
+// seleção, com o time do bot sorteado outra vez.
+const reabrindo = ref(false)
+async function treinarDeNovo() {
+  if (reabrindo.value) return
+  reabrindo.value = true
+  const tamanho = pvp.value?.tamanho ?? 1
+  battle.leaveBattle()
+  try {
+    const ack = await battle.startTreino(tamanho)
+    if (!ack.ok) router.push({ name: 'treino' })
+  } finally {
+    reabrindo.value = false
+  }
+}
+
+// Fugir encerra o treino como derrota. Sem custo nenhum, mas é o fim da
+// partida: o primeiro toque só arma, e o segundo (em até 3s) confirma.
+const fugaArmada = ref(false)
+let desarmarFuga = null
+async function fugir() {
+  if (!fugaArmada.value) {
+    fugaArmada.value = true
+    desarmarFuga = setTimeout(() => (fugaArmada.value = false), 3000)
+    return
+  }
+  clearTimeout(desarmarFuga)
+  fugaArmada.value = false
+  const ack = await battle.fugirDoTreino()
+  // Sala já fechada (fim de partida no mesmo instante): só sai da tela.
+  if (!ack.ok) backToLobby()
 }
 
 // Novas rodadas chegam pelo store: vão para o fim da fila local e o store é
@@ -452,7 +503,8 @@ watch(
     if (!syncedAt || animating.value) return
     syncFromServer()
     if (pvp.value?.phase !== 'active') return
-    message.value = pvp.value.youMoved ? 'Aguardando o rival…' : 'Escolha seu golpe!'
+    if (!pvp.value.youMoved) message.value = 'Escolha seu golpe!'
+    else message.value = semRivalHumano.value ? 'Resolvendo…' : 'Aguardando o rival…'
   },
 )
 
@@ -472,9 +524,7 @@ onMounted(() => {
   // `picking` e `preview` são as duas etapas da tela de seleção — chegar na
   // arena em qualquer uma delas é deep link ou F5 fora de hora.
   if (!pvp.value || pvp.value.phase === 'picking' || pvp.value.phase === 'preview') {
-    router.replace({
-      name: pvp.value ? 'pvp-pick' : naRaid.value ? 'profdex' : 'batalha',
-    })
+    router.replace({ name: pvp.value ? 'pvp-pick' : rotaDeSaida(pvp.value) })
     return
   }
   syncFromServer()
@@ -487,6 +537,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (clock) clearInterval(clock)
+  clearTimeout(desarmarFuga)
   soltarRoteiroPendente()
 })
 </script>
@@ -498,11 +549,28 @@ onUnmounted(() => {
     :class="{
       'pvp-arena--defeat': youFainted || resultKind === 'loss',
       'pvp-arena--victory': foeFainted || resultKind === 'win',
+      'pvp-arena--treino': naTreino,
     }"
   >
     <!-- O mesmo palco do treino: só os dois lutadores, o fundo e as barras de
          HP sobrepostas. Sem colunas flex, sem banco de reservas aqui dentro. -->
     <ArenaPalco :foe="ladoRival" :you="ladoSeu" />
+
+    <!-- Sem isto, o treino com o próprio time é idêntico ao ranqueado, e nada
+         diria que ele não mexe no Elo. -->
+    <template v-if="naTreino">
+      <p class="pixel pvp-arena__selo">TREINO — NÃO VALE RANKING</p>
+      <button
+        v-if="!showResult"
+        class="pixel pvp-arena__fugir"
+        :class="{ 'pvp-arena__fugir--armado': fugaArmada }"
+        type="button"
+        :aria-label="fugaArmada ? 'Toque de novo para sair do treino' : 'Fugir do treino'"
+        @click="fugir"
+      >
+        {{ fugaArmada ? 'SAIR MESMO?' : 'FUGIR' }}
+      </button>
+    </template>
 
     <!-- Fora da faixa de propósito: ver o comentário no topo de
          RoteiroOverlay.vue. Ele se sobrepõe ao palco e pausa a rodada. -->
@@ -521,7 +589,7 @@ onUnmounted(() => {
            dele já foi revelado no preview e o HP de cada um foi visto em campo;
            esconder não criaria segredo, só obrigaria a decorar. -->
       <div class="faixa__times">
-        <BancoDeReservas :team="timeExibido.foe" foe rotulo="RIVAL" />
+        <BancoDeReservas :team="timeExibido.foe" foe :rotulo="naTreino ? 'BOT' : 'RIVAL'" />
         <BancoDeReservas
           :team="timeExibido.you"
           :active-capture-id="pvp.you.activeCaptureId"
@@ -640,8 +708,25 @@ onUnmounted(() => {
         <p v-if="pvp.result?.rating" class="pvp-result__rating-detail">
           Novo Elo: {{ pvp.result.rating.rating }} · {{ pvp.result.rating.tier }}
         </p>
-        <button class="pixel pvp-result__btn" type="button" @click="backToLobby">
-          {{ naRaid ? 'VOLTAR À PROFDEX' : 'VOLTAR AO LOBBY' }}
+        <p v-if="naTreino" class="pvp-result__rating-detail">
+          Foi um treino: seu Elo e sua coleção não mudam.
+        </p>
+        <button
+          v-if="naTreino"
+          class="pixel pvp-result__btn"
+          type="button"
+          :disabled="reabrindo"
+          @click="treinarDeNovo"
+        >
+          {{ reabrindo ? 'PREPARANDO…' : 'TREINAR DE NOVO' }}
+        </button>
+        <button
+          class="pixel pvp-result__btn"
+          :class="{ 'pvp-result__btn--secundario': naTreino }"
+          type="button"
+          @click="backToLobby"
+        >
+          {{ naRaid ? 'VOLTAR À PROFDEX' : naTreino ? 'VOLTAR AO TREINO' : 'VOLTAR AO LOBBY' }}
         </button>
       </div>
     </div>
@@ -990,6 +1075,77 @@ onUnmounted(() => {
   border: 1px solid var(--red-light);
   color: white;
   cursor: pointer;
+}
+
+.pvp-result__btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* No treino, "treinar de novo" é o caminho principal; voltar é a saída. */
+.pvp-result__btn--secundario {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+/* ── Treino ──────────────────────────────────────────────────────────────── */
+
+/* O selo fica logo abaixo da barra do bot, como na arena do treino antigo
+   (ArenaView), e o palco recebe `--palco-foe-livre` para o sprite do bot não
+   ficar atrás dele. */
+.pvp-arena--treino {
+  --palco-foe-livre: calc(103px + env(safe-area-inset-top));
+}
+
+.pvp-arena__selo {
+  position: absolute;
+  top: calc(76px + env(safe-area-inset-top));
+  left: 12px;
+  z-index: 3;
+  max-width: 62%;
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--unifil-gold);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.72);
+  color: var(--unifil-gold);
+  font-size: 6px;
+  line-height: 1.5;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+}
+
+/* Canto superior direito, onde a arena do treino antigo tinha o "voltar". */
+.pvp-arena__fugir {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  right: 12px;
+  z-index: 3;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 8px;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.pvp-arena__fugir--armado {
+  background: var(--error);
+  border-color: var(--error);
+  color: white;
+}
+
+.pvp-arena__fugir:focus-visible {
+  outline: 3px solid var(--unifil-gold);
+  outline-offset: 2px;
 }
 
 /* O MoveButton fica mais alto em tela estreita (88px) e o nome quebra em mais

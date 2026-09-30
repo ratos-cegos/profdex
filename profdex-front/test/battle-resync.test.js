@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyResync, AVISO_SEM_SALA } from '../src/stores/battle-resync.js'
+import {
+  applyResync,
+  AVISO_SEM_SALA,
+  contraBot,
+  rotaDeSaida,
+} from '../src/stores/battle-resync.js'
 
 // Regressão do P1 de docs/BUG-BATALHA-TRAVANDO.md: o servidor passou a
 // responder SEMPRE à reconexão, e `phase: 'idle'` é o "não há sala". Sem
@@ -94,4 +99,37 @@ test('fase desconhecida não deixa o jogador preso', () => {
 
   assert.equal(pvp, null)
   assert.equal(rota, 'batalha')
+})
+
+// ── Treino contra o bot ──────────────────────────────────────────────────────
+
+test('cada modo volta para onde nasceu', () => {
+  assert.equal(rotaDeSaida({ mode: 'raid' }), 'profdex')
+  assert.equal(rotaDeSaida({ mode: 'treino' }), 'treino')
+  assert.equal(rotaDeSaida({ mode: 'pvp' }), 'batalha')
+  assert.equal(rotaDeSaida(null), 'batalha')
+})
+
+test('raid e treino são contra o servidor; o ranqueado não', () => {
+  assert.equal(contraBot('raid'), true)
+  assert.equal(contraBot('treino'), true)
+  assert.equal(contraBot('pvp'), false)
+  assert.equal(contraBot(undefined), false)
+})
+
+test('F5 no meio do treino mantém o modo e o tamanho do time', () => {
+  const { pvp, rota } = applyResync(
+    { battleId: 't1', mode: 'treino', tamanho: 3, phase: 'picking', deadline: 1, youPicked: false, foePicked: true },
+    null,
+  )
+  assert.equal(rota, 'pvp-pick')
+  assert.equal(pvp.mode, 'treino')
+  assert.equal(pvp.tamanho, 3)
+})
+
+test('sala do treino que sumiu devolve o aluno à aba de treino', () => {
+  const { pvp, rota, aviso } = applyResync({ phase: 'idle' }, { mode: 'treino', phase: 'active' })
+  assert.equal(pvp, null)
+  assert.equal(rota, 'treino')
+  assert.equal(aviso, AVISO_SEM_SALA)
 })
