@@ -58,8 +58,12 @@ export default defineConfig(async ({ mode }) => {
             //  - `model-viewer`: web-component nativo da lib de AR
             //  - `Tres*`: tags do TresJS resolvidas pelo renderer próprio dele
             //    (o `<TresCanvas>` em si continua sendo um componente Vue real)
+            //  - `primitive`: objeto do Three já pronto inserido na cena (o
+            //    GLB do ModeloGlb), também do renderer do TresJS
             isCustomElement: (tag) =>
-              tag === 'model-viewer' || (tag.startsWith('Tres') && tag !== 'TresCanvas'),
+              tag === 'model-viewer' ||
+              tag === 'primitive' ||
+              (tag.startsWith('Tres') && tag !== 'TresCanvas'),
           },
         },
       }),
@@ -115,6 +119,9 @@ export default defineConfig(async ({ mode }) => {
           globIgnores: [
             '**/models/**',
             '**/*.glb',
+            // O decodificador Draco (~570KB) só roda na bancada, quando um
+            // modelo comprimido aparece. Nenhum aluno precisa dele instalado.
+            '**/draco/**',
             '**/markers.mind',
             '**/professors/*-marker.png',
           ],
