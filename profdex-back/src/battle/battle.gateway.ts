@@ -18,6 +18,7 @@ import { CooldownService } from './cooldown.service';
 import { Invite, InviteService } from './invite.service';
 import { PresenceService, PresenceStatus } from './presence.service';
 import { RaidRoomService } from './raid-room.service';
+import { TreinoRoomService } from './treino-room.service';
 
 /** Identidade autenticada anexada ao socket após o handshake. */
 export interface SocketUser {
@@ -104,6 +105,7 @@ export class BattleGateway
     private readonly cooldown: CooldownService,
     private readonly rooms: BattleRoomService,
     private readonly raid: RaidRoomService,
+    private readonly treino: TreinoRoomService,
     private readonly prisma: PrismaService,
   ) {
     // O serviço de salas notifica jogadores por aqui — sem depender do socket.
@@ -119,6 +121,8 @@ export class BattleGateway
     // ocupado quanto um em batalha ranqueada, e sair da raid o devolve para
     // `disponivel` pela mesma porta.
     this.raid.configure(emitter);
+    // O treino também: em treino, o aluno não recebe convite de ninguém.
+    this.treino.configure(emitter);
   }
 
   /** Sem isso o timer pendente segura o processo no desligamento. */
@@ -160,21 +164,17 @@ export class BattleGateway
 
     // Reconexão no meio de uma batalha: restaura o status (o join acima entrou
     // como 'disponivel') e entrega o snapshot para a UI se reconstruir.
-    if (this.rooms.hasActiveRoom(user.id) || this.raid.hasActiveRoom(user.id))
-      this.setStatus(user.id, 'em_batalha');
+    if (this.emAlgumaSala(user.id)) this.setStatus(user.id, 'em_batalha');
 
     // O snapshot vai SEMPRE, inclusive o `{ phase: 'idle' }` de quem não tem
     // sala. Sem ele, quem voltou de uma queda com a batalha já encerrada ficava
     // com `phase: 'active'` e `youMoved: true` em memória e os botões da arena
     // mortos para sempre — nenhum outro evento chega para corrigir isso.
     // Ver docs/BUG-BATALHA-TRAVANDO.md (P1).
-    // A raid responde primeiro: quem está numa não tem sala de PvP, e o
-    // `resync` do PvP devolveria `{ phase: 'idle' }` — tirando da tela uma
-    // batalha que está viva no servidor.
-    client.emit(
-      'battle:resync',
-      this.raid.resync(user.id) ?? this.rooms.resync(user.id),
-    );
+    // Raid e treino respondem primeiro: quem está num deles não tem sala de
+    // PvP, e o `resync` do PvP devolveria `{ phase: 'idle' }` — tirando da tela
+    // uma batalha que está viva no servidor.
+    client.emit('battle:resync', this.snapshotDe(user.id));
   }
 
   handleDisconnect(client: Socket) {
@@ -377,9 +377,7 @@ export class BattleGateway
     const me = this.userOf(client);
     const captureIds = this.readStringArray(body, 'captureIds');
     if (!captureIds) return { ok: false, message: 'Escolha inválida.' };
-    return this.naRaid(me.id)
-      ? this.raid.pickTeam(me.id, captureIds)
-      : this.rooms.pickTeam(me.id, captureIds);
+    return this.salaDe(me.id).pickTeam(me.id, captureIds);
   }
 
   /** Quem entra primeiro, escolhido depois do team preview. */
@@ -391,9 +389,7 @@ export class BattleGateway
     const me = this.userOf(client);
     const captureId = this.readString(body, 'captureId');
     if (!captureId) return { ok: false, message: 'Escolha inválida.' };
-    return this.naRaid(me.id)
-      ? this.raid.chooseLead(me.id, captureId)
-      : this.rooms.chooseLead(me.id, captureId);
+    return this.salaDe(me.id).chooseLead(me.id, captureId);
   }
 
   @SubscribeMessage('battle:move')
@@ -404,9 +400,7 @@ export class BattleGateway
     const me = this.userOf(client);
     const moveId = this.readString(body, 'moveId');
     if (!moveId) return { ok: false, message: 'Golpe inválido.' };
-    return this.naRaid(me.id)
-      ? this.raid.move(me.id, moveId)
-      : this.rooms.move(me.id, moveId);
+    return this.salaDe(me.id).move(me.id, moveId);
   }
 
   /** Troca no turno — alternativa ao golpe, nunca as duas. */
@@ -418,9 +412,7 @@ export class BattleGateway
     const me = this.userOf(client);
     const captureId = this.readString(body, 'captureId');
     if (!captureId) return { ok: false, message: 'Escolha inválida.' };
-    return this.naRaid(me.id)
-      ? this.raid.switchTo(me.id, captureId)
-      : this.rooms.switchTo(me.id, captureId);
+    return this.salaDe(me.id).switchTo(me.id, captureId);
   }
 
   /** Quem entra no lugar de quem acabou de cair. */
@@ -432,9 +424,7 @@ export class BattleGateway
     const me = this.userOf(client);
     const captureId = this.readString(body, 'captureId');
     if (!captureId) return { ok: false, message: 'Escolha inválida.' };
-    return this.naRaid(me.id)
-      ? this.raid.enterWith(me.id, captureId)
-      : this.rooms.enterWith(me.id, captureId);
+    return this.salaDe(me.id).enterWith(me.id, captureId);
   }
 
   /**
@@ -446,9 +436,7 @@ export class BattleGateway
   @SubscribeMessage('battle:leave')
   onBattleLeave(@ConnectedSocket() client: Socket): Ack {
     const me = this.userOf(client);
-    return this.naRaid(me.id)
-      ? this.raid.leaveSelection(me.id)
-      : this.rooms.leaveSelection(me.id);
+    return this.salaDe(me.id).leaveSelection(me.id);
   }
 
   /**
@@ -460,10 +448,7 @@ export class BattleGateway
   @SubscribeMessage('battle:resync')
   onBattleResync(@ConnectedSocket() client: Socket): Ack {
     const me = this.userOf(client);
-    client.emit(
-      'battle:resync',
-      this.raid.resync(me.id) ?? this.rooms.resync(me.id),
-    );
+    client.emit('battle:resync', this.snapshotDe(me.id));
     return { ok: true };
   }
 
@@ -477,7 +462,7 @@ export class BattleGateway
   @SubscribeMessage('raid:start')
   async onRaidStart(@ConnectedSocket() client: Socket): Promise<Ack> {
     const me = this.userOf(client);
-    if (this.rooms.hasActiveRoom(me.id)) {
+    if (this.rooms.hasActiveRoom(me.id) || this.treino.hasActiveRoom(me.id)) {
       return { ok: false, message: 'Termine a batalha atual primeiro.' };
     }
 
@@ -488,10 +473,67 @@ export class BattleGateway
     return ack;
   }
 
-  /** Em qual das duas salas o aluno está. A raid tem precedência: ele só pode
-   * estar numa, e é a única que o PvP não conhece. */
-  private naRaid(userId: string): boolean {
-    return this.raid.hasActiveRoom(userId);
+  /**
+   * Abre um treino contra o bot: `{ tamanho: 1 | 3 }`.
+   *
+   * As recusas de conteúdo (tamanho inválido, exemplares a menos) são do
+   * `TreinoRoomService`; aqui só se garante um socket, uma sala. Quem está com
+   * convite pendente pode treinar: o aceite exige `disponivel` dos dois lados,
+   * e em treino o aluno não está.
+   */
+  @SubscribeMessage('treino:start')
+  async onTreinoStart(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: unknown,
+  ): Promise<Ack> {
+    const me = this.userOf(client);
+    if (this.emAlgumaSala(me.id)) {
+      return { ok: false, message: 'Termine a batalha atual primeiro.' };
+    }
+    const tamanho =
+      body && typeof body === 'object'
+        ? (body as Record<string, unknown>).tamanho
+        : undefined;
+    const ack = await this.treino.start(
+      { userId: me.id, name: me.name },
+      tamanho,
+    );
+    if (ack.ok) this.setStatus(me.id, 'em_batalha');
+    return ack;
+  }
+
+  /** "Fugir" do treino começado. Só existe no treino: no ranqueado, sair é abandono. */
+  @SubscribeMessage('treino:forfeit')
+  onTreinoForfeit(@ConnectedSocket() client: Socket): Ack {
+    const me = this.userOf(client);
+    return this.treino.forfeit(me.id);
+  }
+
+  /**
+   * Em qual das três salas o aluno está. Ele só pode estar numa; raid e treino
+   * vêm antes porque são as que o PvP não conhece.
+   */
+  private salaDe(userId: string) {
+    if (this.raid.hasActiveRoom(userId)) return this.raid;
+    if (this.treino.hasActiveRoom(userId)) return this.treino;
+    return this.rooms;
+  }
+
+  private emAlgumaSala(userId: string): boolean {
+    return (
+      this.rooms.hasActiveRoom(userId) ||
+      this.raid.hasActiveRoom(userId) ||
+      this.treino.hasActiveRoom(userId)
+    );
+  }
+
+  /** Raid e treino devolvem `null` sem sala; só o PvP devolve `idle`. */
+  private snapshotDe(userId: string) {
+    return (
+      this.raid.resync(userId) ??
+      this.treino.resync(userId) ??
+      this.rooms.resync(userId)
+    );
   }
 
   /**

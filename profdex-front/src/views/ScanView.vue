@@ -1,6 +1,6 @@
 <script setup>
 import jsQR from 'jsqr'
-import { onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BottomSheet from '../components/BottomSheet.vue'
 import PixelIcon from '../components/PixelIcon.vue'
@@ -14,6 +14,7 @@ const store = useProfessorsStore()
 
 const videoRef = useTemplateRef('qrVideo')
 const canvasRef = useTemplateRef('qrCanvas')
+const dicaDaMira = useTemplateRef('dicaMira')
 
 const loading = ref(true)
 const error = ref(null)
@@ -200,6 +201,9 @@ function continuarNoScan() {
   captureAvatarError.value = false
   clearTimeout(avisoTimer)
   aviso.value = null
+  // O botão tocado some com o cartão; sem isto o foco cairia no <body> e o
+  // leitor de tela não diria que a mira voltou.
+  void nextTick(() => dicaDaMira.value?.focus({ preventScroll: true }))
 }
 
 // ── Loop de scanning (BarcodeDetector ou jsQR) ────────────────────────────
@@ -373,9 +377,10 @@ onUnmounted(() => {
                 CONTINUAR NO SCAN
                 <PixelIcon nome="seta-direita" :escala="2" />
               </button>
-              <button class="capture-profdex" type="button" @click="router.push({ name: 'profdex' })">
+              <!-- Navegação é link: Ctrl+clique e o leitor de tela funcionam. -->
+              <RouterLink class="capture-profdex" :to="{ name: 'profdex' }">
                 Ver meu ProfDex
-              </button>
+              </RouterLink>
             </div>
           </div>
         </div>
@@ -396,7 +401,9 @@ onUnmounted(() => {
             </div>
             <div class="hint-copy">
               <p v-if="aviso" class="pixel hint-title hint-title--warn">{{ aviso.titulo }}</p>
-              <p v-else class="pixel hint-title">APONTE PARA O QR CODE</p>
+              <p v-else ref="dicaMira" class="pixel hint-title" tabindex="-1">
+                APONTE PARA O QR CODE
+              </p>
               <p class="hint-subtitle">
                 {{ aviso?.texto ?? 'Mantenha o código inteiro dentro da mira.' }}
               </p>
@@ -672,6 +679,9 @@ onUnmounted(() => {
 }
 .hint-copy { min-width: 0; }
 .hint-title { margin-bottom: 6px; font-size: 8px; color: var(--yellow); }
+/* Alvo do foco ao voltar para a mira: anel só para quem usa teclado. */
+.hint-title:focus { outline: none; }
+.hint-title:focus-visible { outline: 2px dashed var(--yellow); outline-offset: 4px; }
 .hint-title--warn { color: var(--red-light); }
 .hint-subtitle { font-size: 12px; color: white; line-height: 1.45; text-wrap: pretty; }
 .hint-origin { margin-top: 5px; font-size: 10px; color: rgba(255,255,255,.78); line-height: 1.35; }
@@ -759,10 +769,11 @@ onUnmounted(() => {
 /* A saída é um texto, não um segundo botão: fica à mão sem competir com o
    principal. A altura mínima mantém o alvo de toque de 44px. */
 .capture-profdex {
+  /* Link (é navegação), mas com o alvo de toque de um botão. */
+  display: inline-flex;
+  align-items: center;
   min-height: 44px;
   padding: 0 12px;
-  background: none;
-  border: 0;
   color: var(--yellow);
   font-size: 13px;
   font-weight: 700;

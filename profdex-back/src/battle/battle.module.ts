@@ -13,6 +13,7 @@ import { RaidService } from './raid.service';
 import { RankingsController } from './rankings.controller';
 import { RankingsService } from './rankings.service';
 import { RatingService } from './rating.service';
+import { TreinoRoomService } from './treino-room.service';
 
 @Module({
   imports: [
@@ -36,6 +37,8 @@ import { RatingService } from './rating.service';
     // handshakes, e a pergunta "em qual das duas ele está?" em todo lugar.
     RaidService,
     RaidRoomService,
+    // O treino contra o bot, pelo mesmo motivo: o mesmo socket, a mesma tela.
+    TreinoRoomService,
   ],
 })
 export class BattleModule {}
