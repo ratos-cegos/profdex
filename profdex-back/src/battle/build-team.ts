@@ -42,7 +42,7 @@ export function recusaDoPedido(
     return 'Escolha pelo menos um professor.';
   }
   if (captureIds.length > maximo) {
-    return `Seu time pode ter no máximo ${maximo} professores.`;
+    return `Seu time pode ter no máximo ${maximo} ${maximo === 1 ? 'professor' : 'professores'}.`;
   }
   if (new Set(captureIds).size !== captureIds.length) {
     return 'O mesmo exemplar não pode entrar duas vezes no time.';
