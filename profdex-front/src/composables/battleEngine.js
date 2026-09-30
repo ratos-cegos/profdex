@@ -279,7 +279,9 @@ function changeStage(target, targetKey, stat, delta, turns, events) {
 export function performMove(state, atkKey, move) {
   const events = []
   const attacker = state[atkKey]
-  const defKey = atkKey === 'player' ? 'enemy' : 'player'
+  // Nada de `defKey` aqui: havia uma cópia morta desde antes, duplicando a que
+  // vive em `resolveAttack`, que é onde o defensor importa. O motor do back
+  // (`engine.ts`) nunca teve a linha.
 
   attacker.usage[move.id] = (attacker.usage[move.id] || 0) + 1
   events.push({ type: 'message', text: `${attacker.name} usou ${move.name}!` })
