@@ -52,6 +52,7 @@ import {
   nextAliveIndex,
   ownMemberView,
   publicMemberView,
+  switchEvent,
   TeamMember,
 } from './team';
 
@@ -977,7 +978,7 @@ export class RaidRoomService implements OnModuleDestroy {
     const entra = room.team[index];
     room.state!.player = entra.combatant;
     return [
-      { type: 'switch', target: ALUNO, name: entra.professor.name },
+      switchEvent(ALUNO, entra),
       {
         type: 'message',
         text: `${sai.professor.name} volta! ${entra.professor.name} entra em campo!`,
@@ -1049,7 +1050,7 @@ export class RaidRoomService implements OnModuleDestroy {
 
     const entrou = room.team[room.activeIndex];
     this.emitRound(room, 'battle:round', [
-      { type: 'switch', target: ALUNO, name: entrou.professor.name },
+      switchEvent(ALUNO, entrou),
       { type: 'message', text: `${entrou.professor.name} entra em campo!` },
       // O Ricardo chega AQUI, depois de o substituto estar em campo, para o
       // buff cair em quem vai lutar.

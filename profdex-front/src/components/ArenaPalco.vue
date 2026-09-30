@@ -32,6 +32,8 @@ import { ehPixelArt, spriteFrenteDe } from '../data/professorArte.js'
  * @property {boolean} [hit] Tomou dano agora: pisca e treme.
  * @property {boolean} [fainted] Caiu: cinza, tombado.
  * @property {Array} [feedback] Popups de dano/cura deste lado.
+ * @property {string} [chave] Identidade de quem está em campo (muda a cada
+ *   entrada). Sem ela, a chave do sprite é a própria URL da arte.
  */
 const props = defineProps({
   /** O oponente: ao fundo, à esquerda, de frente. */
@@ -150,8 +152,12 @@ onUnmounted(desligarCamera)
           decoding="async"
         />
       </template>
+      <!-- `:key` por ENTRADA (ver battleOcupante.js): quem entra em campo ganha
+           um <img> novo. Reaproveitado, ele herdava a transição de queda de
+           quem saiu e o substituto "se levantava" do chão. -->
       <img
         v-else
+        :key="foe.chave ?? sprites.foe"
         class="palco__sprite"
         :class="{
           'palco__sprite--hit': foe.hit,
@@ -167,6 +173,7 @@ onUnmounted(desligarCamera)
 
     <div class="palco__quadro palco__quadro--you">
       <img
+        :key="you.chave ?? sprites.you"
         class="palco__sprite"
         :class="{
           'palco__sprite--hit': you.hit,
@@ -323,11 +330,30 @@ onUnmounted(desligarCamera)
   z-index: 1;
 }
 
+/* O TOPO do oponente nunca sobe além da barra de HP dele.
+ *
+ * A barra é fixa em px a partir do topo (e ainda desce com o safe-area do
+ * iPhone com o app instalado), enquanto o quadro era 10% do palco: em palco
+ * baixo — celular pequeno, ou o PvP, que recua o palco pela faixa mais alta —
+ * os 10% caíam ACIMA do fim da barra, e o sprite alto (os de pixel art ocupam o
+ * quadro inteiro) ficava com a cabeça escondida atrás dela.
+ *
+ * Os PÉS continuam na linha de fundo da quadra (34%, ver `.palco__cenario`):
+ * `bottom: 66%` fixa o chão, e quem cede é o topo. Em palco alto `max()` resolve
+ * nos mesmos 10% de sempre; em palco baixo o quadro encurta e o sprite encolhe
+ * com o `contain`, em pé no mesmo lugar.
+ *
+ * `--palco-foe-livre` é a primeira linha livre abaixo do que a tela desenha no
+ * topo. O padrão cobre a barra do rival; o treino, que ainda tem o selo de
+ * "treino" logo abaixo dela, passa o próprio valor. */
 .palco__quadro--foe {
-  top: 10%;
+  top: max(
+    10%,
+    var(--palco-foe-livre, calc(12px + env(safe-area-inset-top) + var(--palco-barra-altura) + 6px))
+  );
+  bottom: 66%;
   left: 6%;
   width: 38%;
-  height: 24%;
   /* Contorno vermelho discreto: drop-shadow segue a silhueta do sprite
      (o PNG é transparente), diferente de um border/outline retangular.
      --error é o vermelho real da paleta (--red do tema é marrom). */

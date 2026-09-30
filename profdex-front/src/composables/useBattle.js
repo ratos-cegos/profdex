@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { TEMPO } from './battleTiming'
 import {
   createCombatant,
   turnOrder,
@@ -64,7 +65,7 @@ export function useBattle({ player, enemy }) {
       switch (ev.type) {
         case 'message':
           message.value = ev.text
-          await delay(850)
+          await delay(TEMPO.mensagem)
           break
         case 'damage': {
           lastDamageTarget = ev.target
@@ -74,20 +75,20 @@ export function useBattle({ player, enemy }) {
           syncHp()
           if (ev.target === 'player' && playerHp.value <= 0) playerFainted.value = true
           if (ev.target === 'enemy' && enemyHp.value <= 0) enemyFainted.value = true
-          await delay(450)
+          await delay(TEMPO.danoImpacto)
           flag.value = false
           message.value = `Causou ${ev.amount} de dano!`
-          await delay(650)
+          await delay(TEMPO.danoTexto)
           break
         }
         case 'heal':
           showFeedback(ev.target, { amount: ev.amount, kind: 'cura' })
           syncHp()
-          await delay(600)
+          await delay(TEMPO.cura)
           break
         case 'status':
           syncHp()
-          await delay(300)
+          await delay(TEMPO.status)
           break
         case 'effectiveness':
           showFeedback(lastDamageTarget, {
@@ -103,13 +104,13 @@ export function useBattle({ player, enemy }) {
             weak: 'Não foi muito eficaz…',
             weak4: 'Mal arranhou… (×¼)',
           }[ev.level] || ''
-          await delay(800)
+          await delay(TEMPO.eficacia)
           break
         case 'faint':
           if (ev.target === 'player') playerFainted.value = true
           if (ev.target === 'enemy') enemyFainted.value = true
           syncHp()
-          await delay(300)
+          await delay(TEMPO.queda)
           break
         default:
           break

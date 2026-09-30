@@ -25,6 +25,7 @@ import {
   nextAliveIndex,
   ownMemberView,
   publicMemberView,
+  switchEvent,
   teamHp,
   TeamMember,
 } from './team';
@@ -684,7 +685,7 @@ export class BattleRoomService implements OnModuleDestroy {
     const entra = slot.team[index];
     room.state![key] = entra.combatant;
     return [
-      { type: 'switch', target: key, name: entra.professor.name },
+      switchEvent(key, entra),
       {
         type: 'message',
         text: `${sai.professor.name} volta! ${entra.professor.name} entra em campo!`,
@@ -804,11 +805,7 @@ export class BattleRoomService implements OnModuleDestroy {
     const eventos: BattleEvent[] = [];
     for (const key of room.entrando ?? []) {
       const entrou = this.activeOf(room, key);
-      eventos.push({
-        type: 'switch',
-        target: key,
-        name: entrou.professor.name,
-      });
+      eventos.push(switchEvent(key, entrou));
       eventos.push({
         type: 'message',
         text: `${entrou.professor.name} entra em campo!`,

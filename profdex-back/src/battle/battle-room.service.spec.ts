@@ -468,6 +468,27 @@ describe('BattleRoomService', () => {
       }
     });
 
+    // A troca voluntária resolve ANTES dos golpes. O HP no evento é o de quem
+    // entrou nesse instante — o dano que vem depois na fila é descontado dele,
+    // e não do HP de quem saiu (era isso que derrubava o substituto na tela).
+    it('o switch voluntário leva o HP de quem entra, antes do dano da rodada', async () => {
+      await startBattle([0, 1], [0]);
+      const entrando = lastPayload(ana.userId, 'battle:begin').you.team[1];
+
+      service.switchTo(ana.userId, idsDe(ana, 1)[0]);
+      service.move(bia.userId, meusGolpes(bia)[0].id);
+      await Promise.resolve();
+
+      const round = lastPayload(ana.userId, 'battle:round');
+      const troca = round.events.find((e: any) => e.type === 'switch');
+      expect(troca.professor.slug).toBe(entrando.professor.slug);
+      expect(troca.hp).toBe(entrando.hp);
+      expect(troca.maxHp).toBe(entrando.maxHp);
+      expect(troca.types).toEqual(entrando.types);
+      // O `you` final já reflete o dano; o evento guarda o HP de antes dele.
+      expect(round.you.hp).toBeLessThanOrEqual(troca.hp);
+    });
+
     it('os dois trocando: ninguém ataca', async () => {
       await startBattle([0, 1], [0, 1]);
 
@@ -548,6 +569,13 @@ describe('BattleRoomService', () => {
       expect(trocas).toHaveLength(1);
       expect(trocas[0].target).toBe('player');
       expect(trocas[0].name).toBe(capturas[ana.userId][1].professor.name);
+      // Quem entrou vem no próprio evento: a arena troca sprite e barra no
+      // ponto certo da fila, sem esperar o estado final da rodada.
+      expect(trocas[0].professor.slug).toBe(
+        capturas[ana.userId][1].professor.slug,
+      );
+      expect(trocas[0].hp).toBeGreaterThan(0);
+      expect(trocas[0].hp).toBe(trocas[0].maxHp);
 
       // Espelhado para o rival: quem entrou foi o adversário dele.
       const doRival = lastPayload(bia.userId, 'battle:round').events.filter(
