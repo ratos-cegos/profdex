@@ -9,6 +9,7 @@ import { InviteService } from './invite.service';
 import { PresenceService } from './presence.service';
 import { RaidRoomService } from './raid-room.service';
 import { RatingService } from './rating.service';
+import { TreinoRoomService } from './treino-room.service';
 
 /**
  * O gateway com a presença, os convites e as salas de VERDADE — só o banco, a
@@ -22,6 +23,7 @@ describe('BattleGateway', () => {
   let presence: PresenceService;
   let invites: InviteService;
   let rooms: BattleRoomService;
+  let treino: TreinoRoomService;
 
   /** Emissões para salas do socket.io (`user:<id>` e `lobby`). */
   let toRoom: { room: string; event: string; payload: unknown }[];
@@ -37,8 +39,39 @@ describe('BattleGateway', () => {
   );
   const battleFindFirst = jest.fn().mockResolvedValue(null); // sem cooldown
 
+  /** Elenco comum para o bot do treino. */
+  const comuns = ['eron', 'mario', 'gustavo'].map((slug) => ({
+    id: `p-${slug}`,
+    slug,
+    name: slug,
+    types: ['ia'],
+    spriteFrontUrl: `/${slug}.png`,
+    spriteBackUrl: `/${slug}-c.png`,
+    modelUrl: null,
+    pixelArt: true,
+    active: true,
+  }));
+
+  /** As capturas que o `battle:pick` do treino pede, sempre da dona. */
+  const captureFindMany = jest.fn(
+    ({ where }: { where: { id: { in: string[] }; userId: string } }) =>
+      Promise.resolve(
+        where.id.in.map((id) => ({
+          id,
+          moves: [],
+          ivHp: 0,
+          ivRigor: 0,
+          ivDidatica: 0,
+          ivRaciocinio: 0,
+          professor: comuns[0],
+          variant: { types: ['ia'] },
+        })),
+      ),
+  );
+
   const prisma = {
-    capture: { count: captureCount },
+    capture: { count: captureCount, findMany: captureFindMany },
+    professor: { findMany: jest.fn().mockResolvedValue(comuns) },
     battle: {
       findFirst: battleFindFirst,
       create: jest.fn(),
@@ -116,6 +149,9 @@ describe('BattleGateway', () => {
         hasActiveRoom: () => false,
         resync: () => null,
       } as unknown as RaidRoomService,
+      // O treino é de verdade: as regras dele que moram no gateway são as de
+      // junção — uma sala por aluno, e quem treina não recebe convite.
+      (treino = new TreinoRoomService(prisma)),
       prisma,
     );
     gateway.server = {
@@ -132,6 +168,89 @@ describe('BattleGateway', () => {
   afterEach(() => {
     gateway.onModuleDestroy();
     jest.useRealTimers();
+  });
+
+  // ── Treino contra o bot ────────────────────────────────────────────────────
+
+  describe('treino', () => {
+    it('abre o treino, ocupa o aluno e recusa convite para ele', async () => {
+      const sockAna = connect(ana);
+      const sockBia = connect(bia);
+
+      const ack = await gateway.onTreinoStart(asSocket(sockBia), {
+        tamanho: 1,
+      });
+
+      expect(ack).toMatchObject({ ok: true });
+      expect(presence.getUser(bia.id)?.status).toBe('em_batalha');
+      expect(eventsFor(bia.id, 'battle:start')[0].payload).toMatchObject({
+        mode: 'treino',
+        tamanho: 1,
+      });
+      const convite = await gateway.onInviteSend(asSocket(sockAna), {
+        toUserId: bia.id,
+      });
+      expect(convite).toEqual({ ok: false, message: 'Bia está em batalha.' });
+    });
+
+    it('recusa o treino de quem já está numa sala', async () => {
+      const sockBia = connect(bia);
+      await gateway.onTreinoStart(asSocket(sockBia), { tamanho: 1 });
+
+      const ack = await gateway.onTreinoStart(asSocket(sockBia), {
+        tamanho: 1,
+      });
+
+      expect(ack).toEqual({
+        ok: false,
+        message: 'Termine a batalha atual primeiro.',
+      });
+    });
+
+    it('a seleção do treino vai para a sala do treino, não para o PvP', async () => {
+      const sockBia = connect(bia);
+      await gateway.onTreinoStart(asSocket(sockBia), { tamanho: 1 });
+
+      const ack = await gateway.onBattlePick(asSocket(sockBia), {
+        captureIds: ['cap-1'],
+      });
+
+      expect(ack).toEqual({ ok: true });
+      expect(eventsFor(bia.id, 'battle:preview')[0].payload).toMatchObject({
+        mode: 'treino',
+      });
+      expect(rooms.hasActiveRoom(bia.id)).toBe(false);
+    });
+
+    it('fugir encerra o treino e devolve o aluno ao lobby', async () => {
+      const sockBia = connect(bia);
+      await gateway.onTreinoStart(asSocket(sockBia), { tamanho: 1 });
+      await gateway.onBattlePick(asSocket(sockBia), { captureIds: ['cap-1'] });
+      await gateway.onBattleLead(asSocket(sockBia), { captureId: 'cap-1' });
+
+      const ack = gateway.onTreinoForfeit(asSocket(sockBia));
+
+      expect(ack).toEqual({ ok: true });
+      expect(treino.hasActiveRoom(bia.id)).toBe(false);
+      expect(presence.getUser(bia.id)?.status).toBe('disponivel');
+      expect(eventsFor(bia.id, 'battle:end')[0].payload).toMatchObject({
+        mode: 'treino',
+        result: 'loss',
+        reason: 'abandono',
+        rating: null,
+      });
+    });
+
+    it('a reconexão no meio do treino devolve o snapshot do treino', async () => {
+      const sockBia = connect(bia);
+      await gateway.onTreinoStart(asSocket(sockBia), { tamanho: 1 });
+
+      const reconectado = connect(bia);
+
+      const snap = reconectado.emitted.find((e) => e.event === 'battle:resync');
+      expect(snap?.payload).toMatchObject({ mode: 'treino', phase: 'picking' });
+      expect(presence.getUser(bia.id)?.status).toBe('em_batalha');
+    });
   });
 
   // ── 14.1: convite sem professor ────────────────────────────────────────────
@@ -318,7 +437,10 @@ describe('BattleGateway', () => {
       gateway.onInviteCancel(asSocket(sockAna), { inviteId });
 
       const ack = await gateway.onInviteAccept(asSocket(sockBia), { inviteId });
-      expect(ack).toEqual({ ok: false, message: 'Esse convite não existe mais.' });
+      expect(ack).toEqual({
+        ok: false,
+        message: 'Esse convite não existe mais.',
+      });
     });
 
     it('depois de cancelar, dá para desafiar de novo na hora', async () => {

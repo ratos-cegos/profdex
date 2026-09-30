@@ -5,7 +5,7 @@ import router from '../router'
 import { useAuthStore } from './auth'
 import { useAvisosStore } from './avisos'
 import { applyMoveAck } from './battle-move'
-import { applyResync } from './battle-resync'
+import { applyResync, contraBot, rotaDeSaida } from './battle-resync'
 import { checarSocketVivo, ensureSocket } from './battle-socket'
 
 // Estado do PvP: conexão com o lobby de batalha via Socket.IO.
@@ -170,12 +170,14 @@ export const useBattleStore = defineStore('battle', () => {
     // em `battle:start`/`preview`/`begin` e atravessa os estados seguintes: as
     // telas são as mesmas, mas o texto ("rival" vs "o lendário"), a saída e o
     // fim mudam. Ausente = 'pvp', que é o que o ranqueado continua mandando.
-    socket.on('battle:start', ({ battleId, mode, pickDeadline, opponent }) => {
+    socket.on('battle:start', ({ battleId, mode, tamanho, pickDeadline, opponent }) => {
       outgoingInvite.value = null
       incomingInvites.value = []
       pvp.value = {
         battleId,
         mode: mode ?? 'pvp',
+        // Só o treino manda: quantos a seleção pede (1 ou 3). Nulo = até 3.
+        tamanho: tamanho ?? null,
         opponent,
         phase: 'picking',
         pickDeadline,
@@ -205,9 +207,9 @@ export const useBattleStore = defineStore('battle', () => {
         you,
         foe,
         youPicked: false, // volta a significar "já escolhi o lead?"
-        // Na raid o chefe nunca está "escolhendo": sem isto a tela ficaria em
-        // "AGUARDANDO O RIVAL…" para sempre depois de escolher o lead.
-        foePicked: modo === 'raid',
+        // Contra o servidor (raid, treino) ninguém está "escolhendo": sem isto a
+        // tela ficaria em "AGUARDANDO O RIVAL…" para sempre depois do lead.
+        foePicked: contraBot(modo),
         pendingEvents: [],
         result: null,
       }
@@ -222,7 +224,9 @@ export const useBattleStore = defineStore('battle', () => {
     // e `byYou` diz de que lado: quem clicou em "sair" não precisa de aviso
     // nenhum, quem ficou precisa saber por que a tela voltou.
     socket.on('battle:cancelled', ({ reason, byYou } = {}) => {
-      const eraRaid = pvp.value?.mode === 'raid'
+      const anterior = pvp.value
+      const eraRaid = anterior?.mode === 'raid'
+      const eraTreino = anterior?.mode === 'treino'
       pvp.value = null
       if (reason === 'left') {
         if (!byYou) falhar('O rival saiu da seleção.')
@@ -230,18 +234,22 @@ export const useBattleStore = defineStore('battle', () => {
         falhar(
           eraRaid
             ? 'O servidor reiniciou — a tentativa não contou.'
-            : 'O servidor reiniciou — a batalha foi anulada.',
+            : eraTreino
+              ? 'O servidor reiniciou — o treino foi encerrado.'
+              : 'O servidor reiniciou — a batalha foi anulada.',
         )
       } else {
         falhar(
           eraRaid
             ? 'A preparação expirou — a tentativa não contou.'
-            : 'A seleção expirou — batalha cancelada.',
+            : eraTreino
+              ? 'A seleção expirou — o treino foi cancelado.'
+              : 'A seleção expirou — batalha cancelada.',
         )
       }
-      // A raid nasce na Profdex e volta para lá: mandar quem desistiu dela
-      // para o lobby do PvP o largaria numa tela que ele não pediu.
-      router.push({ name: eraRaid ? 'profdex' : 'batalha' })
+      // Cada modo volta para onde nasceu: mandar quem desistiu da raid ou do
+      // treino para o lobby do PvP o largaria numa tela que ele não pediu.
+      router.push({ name: rotaDeSaida(anterior) })
     })
 
     socket.on('battle:begin', ({ battleId, mode, turn, deadline, you, foe }) => {
@@ -597,6 +605,29 @@ export const useBattleStore = defineStore('battle', () => {
     return ack
   }
 
+  /**
+   * Abre um treino contra o bot com o próprio time: `tamanho` 1 ou 3.
+   *
+   * Mesmo caminho da raid: conecta, pede, e o `battle:start` que chega em
+   * seguida leva à seleção do ranqueado com `mode: 'treino'`. As recusas
+   * (exemplares a menos, sala já aberta) vêm do servidor.
+   */
+  async function startTreino(tamanho) {
+    connect()
+    if (!(await esperarConexao(1000))) {
+      falhar('Sem conexão com o servidor. Tente de novo.')
+      return { ok: false, message: lastError.value }
+    }
+    const ack = await command('treino:start', { tamanho })
+    if (!ack.ok) falhar(ack.message, ack.code)
+    return ack
+  }
+
+  /** "Fugir" do treino começado: encerra como derrota, sem custo nenhum. */
+  function fugirDoTreino() {
+    return command('treino:forfeit')
+  }
+
   /** Resolve true assim que o socket conectar, ou false no estouro do prazo. */
   function esperarConexao(timeoutMs) {
     if (socket?.connected) return Promise.resolve(true)
@@ -664,6 +695,8 @@ export const useBattleStore = defineStore('battle', () => {
     cancelInvite,
     refreshInvites,
     startRaid,
+    startTreino,
+    fugirDoTreino,
     pickTeam,
     chooseLead,
     leaveSelection,

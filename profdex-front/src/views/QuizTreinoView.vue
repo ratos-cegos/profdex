@@ -40,6 +40,8 @@ const escolhida = ref(null)
 const acertos = ref(0)
 
 const botaoProxima = ref(null)
+const enunciado = ref(null)
+const tituloDoFim = ref(null)
 
 const questaoAtual = computed(() => questoes.value[indice.value] ?? null)
 const ultimaQuestao = computed(() => indice.value + 1 >= questoes.value.length)
@@ -143,9 +145,13 @@ function proxima() {
   escolhida.value = null
   if (ultimaQuestao.value) {
     etapa.value = 'fim'
-    return
+  } else {
+    indice.value += 1
   }
-  indice.value += 1
+  // A seta some junto com a questão; sem isto o foco cairia no <body>. O
+  // enunciado (ou o placar, no fim) recebe o foco e sobe para a tela — no
+  // celular o aluno rolou para baixo para alcançar a seta.
+  void nextTick(() => (etapa.value === 'fim' ? tituloDoFim : enunciado).value?.focus())
 }
 
 function trocarTema() {
@@ -248,7 +254,7 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
           ></div>
         </div>
 
-        <h2 class="enunciado">{{ questaoAtual.prompt }}</h2>
+        <h2 ref="enunciado" class="enunciado" tabindex="-1">{{ questaoAtual.prompt }}</h2>
 
         <div class="opcoes">
           <button
@@ -295,7 +301,7 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
 
       <!-- 3. Fim da rodada -->
       <section v-else-if="etapa === 'fim'" class="quadro quadro--fim">
-        <div class="quadro__titulo">Fim da rodada</div>
+        <div ref="tituloDoFim" class="quadro__titulo" tabindex="-1">Fim da rodada</div>
         <p class="placar">
           <strong>{{ acertos }}</strong> de {{ questoes.length }}
         </p>
@@ -516,6 +522,18 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
   line-height: 1.6;
   color: var(--text-primary);
   font-weight: normal;
+}
+
+/* Alvos de foco programático (a próxima questão, o placar): anel da paleta
+   só para quem navega pelo teclado, nunca o padrão do navegador. */
+.enunciado:focus,
+.quadro__titulo:focus {
+  outline: none;
+}
+.enunciado:focus-visible,
+.quadro__titulo:focus-visible {
+  outline: 2px dashed var(--unifil-gold);
+  outline-offset: 4px;
 }
 
 .opcoes {

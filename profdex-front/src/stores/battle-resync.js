@@ -33,6 +33,8 @@ export function applyResync(snap, atual) {
     // arena voltaria a chamar o lendário de "rival" e a saída cairia no lobby
     // do PvP. O servidor manda `mode` em todos os snapshots de raid.
     mode: snap.mode ?? atual?.mode ?? 'pvp',
+    // Só o treino manda: é o que diz à seleção quantos escolher (1 ou 3).
+    tamanho: snap.tamanho ?? atual?.tamanho ?? null,
     opponent: snap.opponent,
     phase: snap.phase,
     pendingEvents: [],
@@ -79,7 +81,15 @@ export function applyResync(snap, atual) {
   return { pvp: null, rota: rotaDeSaida(atual), aviso: AVISO_SEM_SALA }
 }
 
-/** Para onde voltar quando não há mais sala: a raid nasceu na Profdex. */
-function rotaDeSaida(atual) {
-  return atual?.mode === 'raid' ? 'profdex' : 'batalha'
+/**
+ * Para onde voltar quando não há mais sala: cada modo volta para onde nasceu —
+ * a raid na Profdex, o treino na aba de treino, o ranqueado no lobby.
+ */
+export function rotaDeSaida(atual) {
+  if (atual?.mode === 'raid') return 'profdex'
+  if (atual?.mode === 'treino') return 'treino'
+  return 'batalha'
 }
+
+/** Contra o servidor (raid ou treino): não há rival humano escolhendo nada. */
+export const contraBot = (modo) => modo === 'raid' || modo === 'treino'
