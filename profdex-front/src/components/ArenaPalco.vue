@@ -4,7 +4,7 @@ import BattleHpBar from './BattleHpBar.vue'
 import DamagePopup from './DamagePopup.vue'
 import { spritesDaBatalha } from '../composables/battleSprites.js'
 import { openBackCamera } from '../composables/useBackCamera.js'
-import { ehPixelArt } from '../data/professorArte.js'
+import { ehPixelArt, spriteFrenteDe } from '../data/professorArte.js'
 
 /**
  * O palco de uma batalha por turnos: fundo, os dois lutadores e as barras de HP.
@@ -52,6 +52,25 @@ const emit = defineEmits(['ar-indisponivel'])
 // costas, o rival de frente. O PvP usava o sprite de FRENTE nos dois lados e o
 // jogador via a própria cara em primeiro plano.
 const sprites = computed(() => spritesDaBatalha(props.you?.professor, props.foe?.professor))
+
+// O bloco do NDE: quando o lado do inimigo é um GRUPO, não um professor.
+//
+// A raid manda `foe.professores` com os quatro; eles têm uma poça de vida só e
+// uma barra só, porque no motor são um corpo (ver `raid-eventos.ts`). Aqui o
+// quadro do inimigo passa a desenhar quatro sprites em fila. `null` para
+// qualquer outro combate — o PvP e o treino nunca passam o campo.
+const blocoDoInimigo = computed(() => {
+  const lista = props.foe?.professores
+  if (!Array.isArray(lista) || lista.length < 2) return null
+  // `spriteFrenteDe` direto e não `spritesDaBatalha`: o grupo está sempre no
+  // lado do inimigo, então só a perspectiva de frente interessa aqui.
+  return lista.map((professor, i) => ({
+    key: professor?.slug ?? i,
+    src: spriteFrenteDe(professor),
+    pixel: ehPixelArt(professor),
+    nome: professor?.name ?? '',
+  }))
+})
 
 const camVideo = useTemplateRef('camVideo')
 let camStream = null
@@ -110,8 +129,29 @@ onUnmounted(desligarCamera)
     </picture>
     <img class="palco__marca" src="/marca/logotipo-branco.png" alt="UNIFIL" />
 
-    <div class="palco__quadro palco__quadro--foe">
+    <div
+      class="palco__quadro palco__quadro--foe"
+      :class="{ 'palco__quadro--bloco': blocoDoInimigo }"
+    >
+      <!-- Um grupo (o NDE) ou um professor. Os quatro reagem JUNTOS ao dano,
+           porque no motor eles são um corpo com uma poça de vida só. -->
+      <template v-if="blocoDoInimigo">
+        <img
+          v-for="membro in blocoDoInimigo"
+          :key="membro.key"
+          class="palco__sprite"
+          :class="{
+            'palco__sprite--hit': foe.hit,
+            'palco__sprite--fainted': foe.fainted,
+            'palco__sprite--pixel': membro.pixel,
+          }"
+          :src="membro.src"
+          :alt="`Prof. ${membro.nome} em batalha`"
+          decoding="async"
+        />
+      </template>
       <img
+        v-else
         class="palco__sprite"
         :class="{
           'palco__sprite--hit': foe.hit,
@@ -292,6 +332,24 @@ onUnmounted(desligarCamera)
      (o PNG é transparente), diferente de um border/outline retangular.
      --error é o vermelho real da paleta (--red do tema é marrom). */
   filter: drop-shadow(0 0 1px var(--error)) drop-shadow(0 0 2px var(--error));
+}
+
+/* O bloco do NDE: quatro professores dividindo o quadro do inimigo.
+ *
+ * O quadro ALARGA (quatro sprites na largura de um seriam ilegíveis num celular
+ * de 480px) mas continua na MESMA faixa vertical, 10%–34%: é o que garante que
+ * o grupo não cruze com o jogador, que ocupa 35%–71%. */
+.palco__quadro--bloco {
+  width: 82%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1%;
+}
+
+.palco__quadro--bloco .palco__sprite {
+  width: 24%;
+  height: 100%;
 }
 
 /* Jogador à direita: a barra de HP dele é ancorada à esquerda (máx. 58% de

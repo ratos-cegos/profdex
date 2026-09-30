@@ -14,9 +14,12 @@ import {
   turnOrder,
   upkeep,
 } from './engine/engine';
-import { buildMoveset, getMoveById, Move } from './engine/moves';
+import { buildMoveset, EFFECT, getMoveById, Move } from './engine/moves';
 import { TYPE_CYCLE } from './engine/types';
-import { PUBLIC_PROFESSOR_SELECT } from '../professors/public-professor.select';
+import {
+  PUBLIC_PROFESSOR_SELECT,
+  PublicProfessor,
+} from '../professors/public-professor.select';
 import { fraseDaAbertura } from './raid-opening';
 import {
   costuraEfeitos,
@@ -26,9 +29,22 @@ import {
   tiposDosEstagios,
   TOTAL_DE_ESTAGIOS,
 } from './raid-estagios';
+import {
+  BlocoDoNde,
+  criaBlocoDoNde,
+  curaDoChefeForaDeCampo,
+  roteiroDaChegadaDoNde,
+  roteiroDaChegadaDoRicardo,
+  roteiroDaQuedaDoNde,
+  SLUG_DO_RICARDO,
+  SLUGS_DO_NDE,
+  sorteiaBuffDoRicardo,
+  tiqueDaMonitoria,
+} from './raid-eventos';
 import { RaidService } from './raid.service';
 import {
   Action,
+  BattleProfessor,
   benchCombatant,
   hasAlive,
   isAlive,
@@ -83,6 +99,24 @@ interface RaidRoom {
   estagio: number;
   /** Turnos já passados dentro do estágio atual — alimenta os efeitos. */
   turnoDoEstagio: number;
+
+  /**
+   * O elenco dos eventos, carregado do banco no nascimento da sala.
+   *
+   * Carregado UMA vez e congelado, como as `rules`: buscar na hora do evento
+   * faria uma consulta no meio do turno e, pior, deixaria o evento depender de
+   * o banco estar de pé naquele segundo. Lista vazia = evento simplesmente não
+   * acontece (ver `carregaElenco`).
+   */
+  elenco: { nde: BattleProfessor[]; ricardo: BattleProfessor | null };
+  /** Os quatro em campo. Enquanto existe, ELE é o `state.enemy`. */
+  nde: BlocoDoNde | null;
+  /** Cada evento acontece uma vez por raid. */
+  ndeJaVeio: boolean;
+  ricardoJaVeio: boolean;
+  /** Concessões do Ricardo que vivem na sala, não no combatente. */
+  monitoria: boolean;
+  golpesCerteiros: number;
 }
 
 export interface RaidEmitter {
@@ -241,6 +275,12 @@ export class RaidRoomService implements OnModuleDestroy {
       estagios,
       estagio: 1,
       turnoDoEstagio: 0,
+      elenco: await this.carregaElenco(),
+      nde: null,
+      ndeJaVeio: false,
+      ricardoJaVeio: false,
+      monitoria: false,
+      golpesCerteiros: 0,
     };
     room.timer = setTimeout(
       () => this.onPickTimeout(room),
@@ -560,20 +600,51 @@ export class RaidRoomService implements OnModuleDestroy {
     // 1.5. Efeito do estágio, ANTES da fase de ação: é o que permite ao efeito
     //      de redes marcar `forceMiss` no aluno antes de o golpe dele resolver,
     //      e deixa a cura de ENSW e o dano de humanas visíveis no topo do turno.
-    events.push(...this.tiqueDoEstagio(room));
+    //
+    //      Com o NDE em campo o efeito do estágio NÃO corre: ele é do chefe, e o
+    //      chefe está fora. No estágio de ENSW as duas curas (a do efeito e a do
+    //      evento) somariam ~29 por turno, que era exatamente o que se combinou
+    //      não fazer — uma fonte de cura por vez.
+    if (room.nde) {
+      events.push(...curaDoChefeForaDeCampo(room.boss.combatant));
+    } else {
+      events.push(...this.tiqueDoEstagio(room));
+    }
+
+    // 1.6. Monitoria (buff do Ricardo): cura o ativo por turno até o fim.
+    if (room.monitoria) {
+      events.push(...tiqueDaMonitoria(state.player, ALUNO));
+    }
 
     // 2. O chefe SEMPRE age: ele nunca troca (é um só) e nunca fica sem
     //    escolher. Quem pode perder o turno é o aluno.
-    const golpeDoAluno =
+    let golpeDoAluno =
       room.pending?.kind === 'move'
         ? (room.team[room.activeIndex].moves.find(
             (m) => m.id === (room.pending as { moveId: string }).moveId,
           ) ?? null)
         : null;
 
+    // Gabarito Vazado (buff do Ricardo): os próximos golpes não erram e furam a
+    // Defesa. Não mexe na lista de golpes que o cliente recebe — só no objeto
+    // entregue ao motor nesta resolução.
+    if (golpeDoAluno && room.golpesCerteiros > 0) {
+      room.golpesCerteiros -= 1;
+      golpeDoAluno = {
+        ...golpeDoAluno,
+        accuracy: 1,
+        effects: [...golpeDoAluno.effects, { kind: EFFECT.IGNORE_DEFENSE }],
+      };
+      events.push({
+        type: 'message',
+        text: `O gabarito vazado guia o golpe! (${room.golpesCerteiros} restam)`,
+      });
+    }
+
     // O estágio de banco devolve o último ataque do aluno em vez de o chefe
-    // escolher o seu. Sem ataque registrado ainda, cai no bot normal.
-    const efeitoAtual = this.efeitoDoEstagio(room);
+    // escolher o seu. Sem ataque registrado ainda, cai no bot normal — e não
+    // vale com o NDE em campo, porque quem está no assento não é o chefe.
+    const efeitoAtual = room.nde ? null : this.efeitoDoEstagio(room);
     const copiado =
       efeitoAtual?.copiaGolpeDoAluno && state.player.lastAttackId
         ? (getMoveById(state.player.lastAttackId) ?? null)
@@ -608,7 +679,25 @@ export class RaidRoomService implements OnModuleDestroy {
     room.pending = undefined;
 
     // 3. Nocaute.
-    const chefeCaiu = state.enemy.hp <= 0;
+    //
+    // A guarda do NDE vem antes de tudo: enquanto os quatro ocupam o assento,
+    // `state.enemy.hp <= 0` quer dizer que ELES caíram, não que a raid acabou.
+    // Sem ela, derrubar o NDE entregaria o lendário de graça ao aluno.
+    if (room.nde && state.enemy.hp <= 0) {
+      events.push({ type: 'faint', target: CHEFE });
+      events.push(roteiroDaQuedaDoNde(room.boss.professor.name));
+      this.sentaOChefe(room);
+      events.push({
+        type: 'switch',
+        target: CHEFE,
+        name: room.boss.professor.name,
+      });
+    }
+
+    // A vida do chefe se lê no CORPO dele, nunca no assento: a Semana de Provas
+    // (buff do Ricardo) pode derrubá-lo enquanto ele está fora de campo.
+    const chefeCaiu = room.boss.combatant.hp <= 0;
+    if (chefeCaiu && room.nde) this.sentaOChefe(room);
     const alunoCaiu = state.player.hp <= 0;
 
     if (chefeCaiu) {
@@ -619,10 +708,11 @@ export class RaidRoomService implements OnModuleDestroy {
       return;
     }
 
-    // 3.5. Virada de estágio. Vem DEPOIS do nocaute do chefe (não há
-    //      transformação para quem já caiu) e ANTES do nocaute do aluno, para o
-    //      roteiro sair no mesmo lote de eventos da troca forçada.
+    // 3.5. Virada de estágio e chegada do NDE. Vêm DEPOIS do nocaute do chefe
+    //      (não há transformação para quem já caiu) e ANTES do nocaute do aluno,
+    //      para o roteiro sair no mesmo lote de eventos da troca forçada.
     events.push(...this.viraEstagioSePreciso(room));
+    events.push(...this.chamaONdeSePreciso(room));
 
     if (alunoCaiu) {
       benchCombatant(state.player);
@@ -687,7 +777,8 @@ export class RaidRoomService implements OnModuleDestroy {
     if (!efeito?.porTurno) return [];
     const state = room.state!;
     return efeito.porTurno({
-      chefe: state.enemy,
+      // O corpo do chefe, nunca o assento: o assento pode estar com o NDE.
+      chefe: room.boss.combatant,
       aluno: state.player,
       chefeKey: CHEFE,
       alunoKey: ALUNO,
@@ -713,8 +804,12 @@ export class RaidRoomService implements OnModuleDestroy {
    *    estágio 3, e isso é melhor que sumir com um terço da luta.
    */
   private viraEstagioSePreciso(room: RaidRoom): BattleEvent[] {
-    const state = room.state!;
-    const alvo = estagioDoHp(state.enemy.hp, state.enemy.maxHp);
+    // Com o NDE no assento não há transformação: o chefe está fora de campo, e
+    // ler a barra do assento aqui leria a vida dos quatro.
+    if (room.nde) return [];
+
+    const chefe = room.boss.combatant;
+    const alvo = estagioDoHp(chefe.hp, chefe.maxHp);
     if (alvo <= room.estagio) return [];
 
     room.estagio += 1;
@@ -725,9 +820,9 @@ export class RaidRoomService implements OnModuleDestroy {
     const moves = this.movesetDoEstagio(tipos);
 
     // O que o estágio anterior construiu sai; vida e status ficam.
-    limpaCampoDoChefe(state.enemy);
-    state.enemy.types = tipos;
-    state.enemy.moves = moves;
+    limpaCampoDoChefe(chefe);
+    chefe.types = tipos;
+    chefe.moves = moves;
     room.boss.types = tipos;
     room.boss.moves = moves;
 
@@ -742,12 +837,133 @@ export class RaidRoomService implements OnModuleDestroy {
         ],
       },
     ];
-    if (efeito?.aoEntrar) eventos.push(...efeito.aoEntrar(state.enemy, CHEFE));
+    if (efeito?.aoEntrar) eventos.push(...efeito.aoEntrar(chefe, CHEFE));
 
     this.logger.log(
-      `Raid ${room.id}: estágio ${alvo} (${tipos.join('+')}) — ${efeito?.nome ?? 'sem efeito'}`,
+      `Raid ${room.id}: estágio ${room.estagio} (${tipos.join('+')}) — ${efeito?.nome ?? 'sem efeito'}`,
     );
     return eventos;
+  }
+
+  // ── Eventos de roteiro ────────────────────────────────────────────────────
+
+  /**
+   * Busca do banco os professores dos eventos, por slug.
+   *
+   * Por slug e não por id porque o schema trata `slug` como imutável (ele nomeia
+   * os arquivos de arte), enquanto o id é uuid gerado no cadastro.
+   *
+   * Degrada em silêncio de propósito: faltando qualquer um dos quatro do NDE, o
+   * evento simplesmente não acontece e a raid segue normal. Em noite de evento,
+   * uma raid sem a cena do NDE é muito melhor que uma raid que estoura no
+   * estágio 3. Não filtra por `active`: desativar é regra do SORTEIO de captura,
+   * e estes cinco aqui são elenco de roteiro.
+   */
+  private async carregaElenco(): Promise<RaidRoom['elenco']> {
+    try {
+      const achados = await this.prisma.professor.findMany({
+        where: { slug: { in: [...SLUGS_DO_NDE, SLUG_DO_RICARDO] } },
+        select: PUBLIC_PROFESSOR_SELECT,
+      });
+      const porSlug = new Map(achados.map((p) => [p.slug, p]));
+
+      // Ordem pelos SLUGS_DO_NDE, não pela consulta: a fila das quatro sprites
+      // na tela precisa ser a mesma em toda tentativa.
+      // O predicado narra `PublicProfessor` e não `BattleProfessor`: o primeiro
+      // tem tudo do segundo MAIS `types` e `active`, então um predicado para o
+      // tipo menor não é atribuível ao parâmetro. Atribuir a lista a
+      // `BattleProfessor[]` no retorno funciona por estrutura.
+      const nde = SLUGS_DO_NDE.map((slug) => porSlug.get(slug)).filter(
+        (p): p is PublicProfessor => !!p,
+      );
+
+      if (nde.length < SLUGS_DO_NDE.length) {
+        this.logger.warn(
+          `Evento do NDE desligado: ${nde.length}/${SLUGS_DO_NDE.length} professores no banco`,
+        );
+      }
+
+      return {
+        nde: nde.length === SLUGS_DO_NDE.length ? nde : [],
+        ricardo: porSlug.get(SLUG_DO_RICARDO) ?? null,
+      };
+    } catch (error) {
+      this.logger.error(
+        'Falha carregando o elenco dos eventos',
+        error as Error,
+      );
+      return { nde: [], ricardo: null };
+    }
+  }
+
+  /** Devolve o chefe ao assento do inimigo. */
+  private sentaOChefe(room: RaidRoom): void {
+    room.nde = null;
+    room.state!.enemy = room.boss.combatant;
+  }
+
+  /**
+   * O NDE entra quando o último estágio abre.
+   *
+   * Os quatro entram como UM corpo que ocupa o assento do inimigo — o motor tem
+   * dois assentos, e é a leitura literal de "os 4 atacam juntos e sofrem os
+   * ataques os 4 juntos". O chefe sai de campo, se cura e NÃO ataca: o evento
+   * existe para dar tempo ao aluno de se preparar.
+   */
+  private chamaONdeSePreciso(room: RaidRoom): BattleEvent[] {
+    if (room.ndeJaVeio || room.nde) return [];
+    if (room.estagio < TOTAL_DE_ESTAGIOS) return [];
+    if (!room.elenco.nde.length) return [];
+
+    room.ndeJaVeio = true;
+    room.nde = criaBlocoDoNde(room.elenco.nde);
+    room.state!.enemy = room.nde.combatant;
+
+    this.logger.log(`Raid ${room.id}: o NDE entrou em campo`);
+    return [
+      roteiroDaChegadaDoNde(room.boss.professor.name, room.elenco.nde),
+      { type: 'switch', target: CHEFE, name: room.nde.combatant.name },
+    ];
+  }
+
+  /**
+   * O Ricardo chega quando cai o PENÚLTIMO professor do aluno.
+   *
+   * Penúltimo e não "o segundo": com time de 3 é a segunda queda, com time de 2
+   * é a primeira — nos dois casos sempre sobra alguém para receber o buff. Com
+   * time de 1 nunca dispara, porque a primeira queda já é o fim da raid.
+   *
+   * Chamado de `resumeAfterSwitching`, ou seja DEPOIS de o aluno escolher quem
+   * entra: os buffs que mexem no ativo (Ponto Extra, Cola na Manga, Recurso
+   * Deferido) têm de cair em quem vai lutar, não no que acabou de tombar.
+   */
+  private chamaORicardoSePreciso(room: RaidRoom): BattleEvent[] {
+    if (room.ricardoJaVeio || !room.elenco.ricardo || !room.state) return [];
+    const caidos = room.team.filter((m) => !isAlive(m)).length;
+    if (caidos < 1 || caidos !== room.team.length - 1) return [];
+
+    room.ricardoJaVeio = true;
+    const buff = sorteiaBuffDoRicardo();
+    this.logger.log(`Raid ${room.id}: Ricardo entregou ${buff.nome}`);
+
+    return [
+      roteiroDaChegadaDoRicardo(room.elenco.ricardo.name, buff),
+      ...buff.aplica({
+        aluno: room.state.player,
+        chefe: room.boss.combatant,
+        alunoKey: ALUNO,
+        chefeKey: CHEFE,
+        time: room.team,
+        concede: {
+          monitoria: () => {
+            room.monitoria = true;
+          },
+          golpesCerteiros: (quantidade) => {
+            room.golpesCerteiros = quantidade;
+          },
+        },
+      }),
+    ];
   }
 
   private applySwitch(room: RaidRoom, captureId: string): BattleEvent[] {
@@ -835,6 +1051,9 @@ export class RaidRoomService implements OnModuleDestroy {
     this.emitRound(room, 'battle:round', [
       { type: 'switch', target: ALUNO, name: entrou.professor.name },
       { type: 'message', text: `${entrou.professor.name} entra em campo!` },
+      // O Ricardo chega AQUI, depois de o substituto estar em campo, para o
+      // buff cair em quem vai lutar.
+      ...this.chamaORicardoSePreciso(room),
     ]);
   }
 
@@ -1008,9 +1227,33 @@ export class RaidRoomService implements OnModuleDestroy {
    */
   private sideView(room: RaidRoom, key: CombatantKey, own: boolean) {
     if (key === CHEFE) {
+      // Com o NDE em campo, o lado do inimigo É o NDE: a barra, o nome e as
+      // sprites são deles. O chefe continua no BANCO do lado inimigo, curando —
+      // e é ali que o aluno vê a barra dele subir, sem precisarmos animar uma
+      // cura em quem não está no assento.
+      if (room.nde) {
+        const bloco = room.nde.combatant;
+        return {
+          professor: room.nde.professores[0],
+          professores: room.nde.professores,
+          nomeEmCampo: bloco.name,
+          evento: 'nde',
+          types: bloco.types,
+          hp: Math.max(0, bloco.hp),
+          maxHp: bloco.maxHp,
+          status: statusLabel(bloco.status),
+          team: [publicMemberView(room.boss)],
+          estagio: room.estagio,
+          totalDeEstagios: TOTAL_DE_ESTAGIOS,
+          efeitoDoEstagio: null,
+        };
+      }
       const c = room.boss.combatant;
       return {
         professor: room.boss.professor,
+        professores: null,
+        nomeEmCampo: c.name,
+        evento: null,
         types: c.types,
         hp: Math.max(0, c.hp),
         maxHp: c.maxHp,
