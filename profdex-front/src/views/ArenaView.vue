@@ -18,16 +18,27 @@ const MAX_HP = 120
 const router = useRouter()
 const store = useProfessorsStore()
 
-// Professor inimigo: FIXO (ver src/data/treino.js, que explica o porquê e é a
-// mesma fonte que o hub de treino usa para anunciar contra quem se luta — antes
-// os dois divergiam e o aluno via /arena/eron enfrentando o Gustavo).
-//
+const props = defineProps({
+  // Slug do oponente, sorteado pelo hub de treino (ver src/data/treino.js).
+  id: { type: String, default: '' },
+})
+
+/**
+ * O oponente sai da lista de COMUNS, e não do `findByKey`, que também acha raro
+ * e lendário possuídos: /arena/<slug-do-lendário> digitado à mão não vira um
+ * treino contra o lendário. Slug desconhecido cai no Gustavo, como antes.
+ */
+function oponenteDaRota(chave) {
+  const achado = store.findByKey(chave)
+  return achado && store.professors.some((p) => p.id === achado.id) ? achado : null
+}
+
 // O `beforeEnter` da rota já carregou a lista, então dá para resolver aqui no
 // setup — a batalha inteira (tipos, golpes, modelo) deriva deste objeto, e por
 // isso ele precisa estar correto ANTES de useBattle() montar os combatentes.
 // O literal é o fallback de quando a lista não veio (backend fora do ar): os
 // dados que a batalha usa são slug e nome, então ela roda igual.
-const enemyProfessor = store.findByKey(TREINO_ENEMY_KEY) || {
+const enemyProfessor = oponenteDaRota(props.id) || store.findByKey(TREINO_ENEMY_KEY) || {
   id: TREINO_ENEMY_KEY,
   name: TREINO_ENEMY_FALLBACK_NAME,
   slug: TREINO_ENEMY_KEY,
@@ -103,7 +114,7 @@ const {
 onMounted(start)
 
 // Os dois lados do palco. Cada um usa a arte do seu dono: o inimigo é o
-// professor vindo da rota (Eron, Mário, ...) e o jogador é sempre o Gustavo.
+// professor sorteado que veio na rota e o jogador é sempre o Gustavo.
 //
 // Sprite 2D e não .glb — os modelos passam de 25 MB cada (o do Gustavo, 74 MB)
 // e dois deles na mesma tela estouravam a memória da aba no celular.
