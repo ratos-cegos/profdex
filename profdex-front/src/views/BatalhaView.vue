@@ -93,9 +93,10 @@ watch(lobbySearch, (term) => {
 function challenge(player) {
   battle.clearError()
   battle.sendInvite(player.id)
-  // Fecha o modal: o estado do convite (contagem regressiva, resposta) aparece
-  // na tela principal, então manter a lista aberta só esconderia o retorno.
-  closeLobby()
+  // A lista fica ABERTA: na linha do desafiado aparecem a contagem e o ✕ para
+  // desistir. Se ele aceitar, o `battle:start` leva direto à seleção de time
+  // (e o onUnmounted desinscreve o lobby); se recusar ou expirar, o DESAFIAR
+  // volta no mesmo lugar, pronto para chamar outra pessoa.
 }
 
 // O ranking vive na rota `/ranking` (RankingView), alcançada pela aba superior.
