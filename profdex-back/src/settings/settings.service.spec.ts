@@ -32,6 +32,7 @@ describe('SettingsService', () => {
       raidLegendaryIv: 15,
       raidTurnCap: 60,
       raidCooldownMinutes: 30,
+      raidOpensAt: '2026-10-01T19:00:00-03:00',
       captureQrMode: 'ficha',
     });
   });
@@ -90,8 +91,56 @@ describe('SettingsService', () => {
       raidLegendaryIv: 15,
       raidTurnCap: 60,
       raidCooldownMinutes: 30,
+      raidOpensAt: '2026-10-01T19:00:00-03:00',
       captureQrMode: 'ficha',
     });
+  });
+
+  /**
+   * A abertura da raid, ida e volta pelo painel.
+   *
+   * O que este teste trava é a GRAVAÇÃO: o painel manda `2026-10-01T20:30` (sem
+   * fuso, que é o que o `datetime-local` envia) e o banco tem de receber a forma
+   * canônica. Com o servidor de produção em UTC, gravar o texto cru deixaria
+   * `raidOpensAtMs` três horas fora do combinado.
+   */
+  it('grava a abertura da raid com o fuso do evento explícito', async () => {
+    const prisma = criarPrisma();
+    const service = criar(prisma);
+
+    await expect(service.raidOpensAtMs()).resolves.toBe(
+      Date.parse('2026-10-01T22:00:00Z'),
+    );
+
+    await service.update({ raidOpensAt: '2026-10-01T20:30' }, 'admin-1');
+
+    expect(prisma.appSetting.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: 'raid.opens_at' },
+        create: {
+          key: 'raid.opens_at',
+          value: '2026-10-01T20:30:00-03:00',
+        },
+      }),
+    );
+    await expect(service.raidOpensAtMs()).resolves.toBe(
+      Date.parse('2026-10-01T23:30:00Z'),
+    );
+  });
+
+  /**
+   * `31/02` passa por qualquer regex de formato e o `Date` o transformaria em 2
+   * de março sem avisar. Recusar alto é o que impede a raid de "não abrir" no dia
+   * do evento com o operador jurando que configurou certo.
+   */
+  it('data inexistente é recusada antes de qualquer escrita', async () => {
+    const prisma = criarPrisma();
+    const service = criar(prisma);
+
+    await expect(
+      service.update({ raidOpensAt: '2026-02-30T19:00' }, 'admin-1'),
+    ).rejects.toThrow(/data e hora inválidas/i);
+    expect(prisma.appSetting.upsert).not.toHaveBeenCalled();
   });
 
   /**

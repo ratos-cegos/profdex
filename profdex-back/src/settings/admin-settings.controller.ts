@@ -32,9 +32,10 @@ export class AdminSettingsController {
    * de repetir tudo no Vue: assim o formulário não pode discordar da validação,
    * e mudar um limite é mexer num lugar só.
    *
-   * O que sai depende do `kind`, e é por isso que a tela sabe desenhar `select`
-   * ou `input[type=number]` sem conhecer nenhum ajuste pelo nome: ajuste com
-   * `options` é escolha, ajuste com `min`/`max` é número.
+   * O `kind` atravessa a fronteira, e é por ele — nunca pelo NOME do ajuste —
+   * que a tela decide entre `select`, `input[type=number]` e
+   * `input[type=datetime-local]`. Junto vai só o que aquele tipo precisa: faixa
+   * e unidade não existem numa data, e opções não existem num número.
    */
   @Get()
   async list() {
@@ -44,14 +45,15 @@ export class AdminSettingsController {
         const spec = SETTINGS[name];
         const comum = {
           name,
+          kind: spec.kind,
           value: valores[name],
           default: spec.default,
           label: spec.label,
           help: spec.help,
         };
-        return spec.kind === 'enum'
-          ? { ...comum, options: spec.options }
-          : { ...comum, min: spec.min, max: spec.max, unit: spec.unit };
+        if (spec.kind === 'enum') return { ...comum, options: spec.options };
+        if (spec.kind === 'datetime') return comum;
+        return { ...comum, min: spec.min, max: spec.max, unit: spec.unit };
       }),
     };
   }

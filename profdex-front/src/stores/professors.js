@@ -24,14 +24,52 @@ export const useProfessorsStore = defineStore('professors', () => {
   //
   // Depois de vencer, `legendary` vem preenchido e `captured` vira true: aí o
   // card deixa de ser silhueta e passa a ser a última entrada da coleção.
+  //
+  // `opensAt`/`open`/`opensAtLabel` são a trava de HORÁRIO da raid, que é global
+  // e não depende do aluno: antes dela o card mostra a contagem no lugar do
+  // botão. O padrão é `open: true` porque o card só existe com `unlocked`, e
+  // `unlocked` só vem do servidor — nada é liberado por este valor inicial.
   const raid = ref({
     unlocked: false,
     captured: false,
     legendary: null,
     dex: { captured: 0, total: 0 },
+    opensAt: null,
+    opensAtLabel: '',
+    open: true,
     cooldownUntil: null,
     attempts: 0,
   })
+
+  // ── O relógio do SERVIDOR ──────────────────────────────────────────────────
+  // Os prazos da raid (abertura e cooldown) chegam como timestamps do relógio
+  // do SERVIDOR, e é por ele que a tela conta — nunca pelo `Date.now()` do
+  // aparelho.
+  //
+  // O público do evento é aluno de computação com o DevTools aberto: adiantar a
+  // hora do celular para ver se o lendário abre mais cedo é a primeira coisa
+  // que alguém tenta. Quem decide sempre foi o servidor (`canStart` compara com
+  // o relógio dele), então o relógio mexido não captura nada — mas sem isto o
+  // card mostraria "CAPTURAR" às 18h e o clique voltaria uma recusa, que é a
+  // pior combinação possível: parece bug, não regra. Vale igual para o relógio
+  // honestamente errado, que num celular de campus é mais comum que o sabotado.
+  //
+  // A âncora vem do `now` de `/raid/status`; o tempo passa por
+  // `performance.now()`, que é MONOTÔNICO — mexer na hora do aparelho no meio
+  // da contagem não a move um segundo.
+  let ancora = null
+
+  function ancorarRelogio(data) {
+    if (typeof data?.now === 'number') {
+      ancora = { servidor: data.now, desde: performance.now() }
+    }
+  }
+
+  /** Agora, no relógio do servidor. Sem resposta ainda, o do aparelho. */
+  function agoraDoServidor() {
+    if (!ancora) return Date.now()
+    return ancora.servidor + (performance.now() - ancora.desde)
+  }
 
   // Onde a grade da coleção estava quando o aluno abriu a ficha de um professor.
   //
@@ -59,7 +97,10 @@ export const useProfessorsStore = defineStore('professors', () => {
       ])
       professors.value = dex.data
       rares.value = raros.data
-      if (raidStatus) raid.value = raidStatus.data
+      if (raidStatus) {
+        raid.value = raidStatus.data
+        ancorarRelogio(raidStatus.data)
+      }
     } finally {
       loading.value = false
     }
@@ -75,6 +116,7 @@ export const useProfessorsStore = defineStore('professors', () => {
   async function fetchRaid() {
     const { data } = await api.get('/raid/status')
     raid.value = data
+    ancorarRelogio(data)
     return data
   }
 
@@ -129,6 +171,7 @@ export const useProfessorsStore = defineStore('professors', () => {
     rares,
     raid,
     fetchRaid,
+    agoraDoServidor,
     loading,
     dexScroll,
     fetch,

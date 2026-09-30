@@ -16,6 +16,7 @@ import {
 } from './engine/engine';
 import { buildMoveset, getMoveById, Move } from './engine/moves';
 import { PUBLIC_PROFESSOR_SELECT } from '../professors/public-professor.select';
+import { fraseDaAbertura } from './raid-opening';
 import { RaidService } from './raid.service';
 import {
   Action,
@@ -236,6 +237,9 @@ export class RaidRoomService implements OnModuleDestroy {
 
   private mensagemDaRecusa(code: string, retryAt?: number): string {
     if (code === 'RAID_SEM_LENDARIO') return 'Não há raid disponível agora.';
+    if (code === 'RAID_FECHADA') {
+      return `A raid do lendário abre ${fraseDaAbertura(retryAt ?? Date.now())}.`;
+    }
     if (code === 'RAID_BLOQUEADA') {
       return 'Complete a Profdex para desafiar o lendário.';
     }

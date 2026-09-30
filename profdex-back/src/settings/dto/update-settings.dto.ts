@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
-import { SETTINGS } from '../settings';
+import { IsIn, IsInt, IsOptional, Matches, Max, Min } from 'class-validator';
+import { PADRAO_DATA_HORA, SETTINGS } from '../settings';
 
 /**
  * Edição dos ajustes de operação. Todos opcionais: o painel salva um campo de
@@ -45,6 +45,21 @@ export class UpdateSettingsDto {
     message: `Máximo de ${SETTINGS.battlePairCooldownHours.max} horas.`,
   })
   battlePairCooldownHours?: number;
+
+  /**
+   * A abertura da raid. Também sem `@Type(() => Number)`, pelo mesmo motivo do
+   * ajuste abaixo.
+   *
+   * O regex checa o FORMATO; quem checa se a data existe no calendário é
+   * `serializeSetting`, na gravação — `31/02` passa por qualquer regex de
+   * formato e o `Date` o transformaria em 2 de março sem avisar.
+   */
+  @IsOptional()
+  @Matches(PADRAO_DATA_HORA, {
+    message:
+      'Abertura da raid: use data e hora (ex.: 2026-10-01T19:00), no horário do evento.',
+  })
+  raidOpensAt?: string;
 
   /**
    * SEM `@Type(() => Number)`: este é o primeiro ajuste não-numérico, e uma

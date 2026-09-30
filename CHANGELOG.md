@@ -78,6 +78,40 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 
 ### Adicionado
 
+- **A raid do lendário tem hora para abrir.** Nova configuração
+  **Abertura da raid do lendário** (`raid.opens_at`), padrão **1º de outubro às
+  19h**, no horário de Londrina. Antes dela ninguém desafia o lendário: quem
+  fechou a Profdex vê o card `???` com a hora no lugar do botão (`ABRE 01/10
+  19H`), e na última hora a contagem fica viva ao minuto (`ABRE EM 12MIN`).
+
+  Existe porque o lendário é o momento de palco da feira e só acontece com
+  plateia: sem a trava, o primeiro aluno a fechar a coleção venceria sozinho às
+  três da tarde — e o e-mail do primeiro vencedor sairia no vazio. É a única
+  trava do jogo que **não depende do que o aluno fez**, e por isso ela é a
+  primeira resposta que todos ouvem antes da hora ("a raid do lendário abre às
+  19h"), na frente do "complete a Profdex".
+
+  Fica no painel, e não no código, porque é o tipo de horário que atrasa
+  quarenta minutos no dia: adiantar ou empurrar é um clique. **Para abrir agora,
+  escolha uma data já passada** — é o interruptor de emergência, o equivalente
+  ao `0` dos cooldowns.
+
+  Duas coisas que o horário obrigou a acertar, e que valem para o cooldown da
+  raid junto:
+
+  - **A hora é a do EVENTO, não a do servidor.** Produção roda em UTC, onde
+    `19:00` sem fuso significaria 16h de Londrina — a raid abriria três horas
+    antes sem quebrar nenhum teste rodado na máquina de quem programou. O valor
+    é guardado com o offset explícito (`2026-10-01T19:00:00-03:00`) e o texto é
+    escrito no servidor, no fuso do estande.
+  - **A contagem na tela corre pelo relógio do SERVIDOR.** `/raid/status` passou
+    a devolver `now`, e o app conta a partir dele com um relógio monotônico. O
+    público do evento é aluno de computação com o DevTools aberto: quem decide
+    sempre foi o servidor, mas sem isto um relógio adiantado faria o card
+    mostrar `CAPTURAR` às 18h e o clique voltar uma recusa — que parece bug, não
+    regra. Vale igual para o relógio honestamente errado, mais comum num celular
+    de campus que o sabotado.
+
 - **`SLUGS=todos` no `db:dar-capturas`.** Dá o elenco ATIVO inteiro —
   inclusive os raros e o lendário — a uma matrícula que já existe:
 
