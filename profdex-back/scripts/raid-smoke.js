@@ -1,10 +1,14 @@
 /**
  * Smoke test da RAID contra um servidor de DEV rodando (npm run start:dev).
  *
- * Percorre pela rede o fluxo inteiro: conta nova → captura de TODOS os
- * professores comuns → `/raid/status` destravando sozinho → `raid:start` →
- * seleção de time → lead → turnos até alguém cair → `battle:end` → e, se
- * venceu, a captura do lendário e a linha da fila do prêmio no banco.
+ * Percorre pela rede o fluxo inteiro: conta nova → recusa FORA DE HORA → captura
+ * de TODOS os professores comuns → `/raid/status` destravando sozinho →
+ * `raid:start` → seleção de time → lead → turnos até alguém cair → `battle:end`
+ * → e, se venceu, a captura do lendário e a linha da fila do prêmio no banco.
+ *
+ * Ele MEXE em `raid.opens_at` (a hora de abrir a raid), porque com o padrão do
+ * evento a raid está fechada e nada começaria. O valor volta ao que estava por
+ * qualquer caminho de saída — inclusive quando o smoke falha no meio.
  *
  * Uso (na pasta profdex-back, com o backend no ar):
  *   npm run raid:smoke
@@ -26,9 +30,30 @@ const WS =
   (process.env.SMOKE_API || 'http://localhost:3000').replace(/\/api$/, '') +
   '/battle';
 
+/**
+ * Encerra o smoke, e NUNCA sem desfazer o que ele mexeu.
+ *
+ * `fail` encerra o processo na hora, então um `finally` no `main` não bastaria:
+ * uma falha no turno 3 deixaria a abertura da raid no valor que o smoke
+ * escreveu — o lendário liberado para o evento inteiro por causa de um teste.
+ * Por isso a saída passa toda por aqui (ver `restaurarAbertura`).
+ */
+const encerrar = (codigo) => {
+  void restaurarAbertura()
+    .catch((e) =>
+      console.error(
+        `ATENÇÃO: não foi possível restaurar ${CHAVE_ABERTURA}. ` +
+          `Confira em /admin/configuracoes. (${e.message})`,
+      ),
+    )
+    .then(() => prisma.$disconnect())
+    .catch(() => {})
+    .then(() => process.exit(codigo));
+};
+
 const fail = (msg) => {
   console.error('FALHOU:', msg);
-  process.exit(1);
+  encerrar(1);
 };
 const ok = (msg) => console.log('OK:', msg);
 
@@ -114,7 +139,66 @@ const status = async (conta) => {
   return res.json();
 };
 
+// ── A trava de horário (`raid.opens_at`) ─────────────────────────────────────
+// O padrão do ajuste é 01/10 às 19h, então num dia qualquer a raid está FECHADA
+// e o smoke não passaria do `raid:start`. Ele abre a porta, roda o fluxo e
+// **devolve o ajuste ao que estava** — deixar a raid aberta por descuido é
+// justamente o acidente que a trava existe para evitar.
+const CHAVE_ABERTURA = 'raid.opens_at';
+
+const lerAbertura = async () => {
+  const linha = await prisma.appSetting.findUnique({
+    where: { key: CHAVE_ABERTURA },
+    select: { value: true },
+  });
+  return linha ? linha.value : null;
+};
+
+const gravarAbertura = (valor) =>
+  prisma.appSetting.upsert({
+    where: { key: CHAVE_ABERTURA },
+    update: { value: valor },
+    create: { key: CHAVE_ABERTURA, value: valor },
+  });
+
+/**
+ * O que `raid.opens_at` valia antes do smoke, e se ele chegou a mexer.
+ *
+ * O par existe porque `null` é ambíguo sozinho: "não havia linha" e "ainda não
+ * li" pareceriam iguais, e restaurar no segundo caso APAGARIA a configuração do
+ * evento — que é o oposto do que este cuidado todo quer.
+ */
+let aberturaOriginal = null;
+let mexeuNaAbertura = false;
+
+/** Grava e espera o servidor esquecer o valor antigo. */
+const definirAbertura = async (valor) => {
+  await gravarAbertura(valor);
+  mexeuNaAbertura = true;
+  // O servidor guarda os ajustes num cache de 10s (`SettingsService`) e este
+  // script escreve direto no banco, sem passar pela invalidação. Esperar é o
+  // preço de não precisar de uma conta admin só para o smoke.
+  console.log('   (aguardando o cache de ajustes do servidor, ~11s)');
+  await new Promise((resolve) => setTimeout(resolve, 11_000));
+};
+
+/** Sem espera: aqui o script está indo embora, e quem ficar relê do banco. */
+const restaurarAbertura = async () => {
+  if (!mexeuNaAbertura) return;
+  if (aberturaOriginal === null) {
+    await prisma.appSetting
+      .delete({ where: { key: CHAVE_ABERTURA } })
+      // Já não existir é o resultado desejado: não há o que consertar.
+      .catch(() => {});
+  } else {
+    await gravarAbertura(aberturaOriginal);
+  }
+  console.log('OK: abertura da raid restaurada');
+};
+
 async function main() {
+  aberturaOriginal = await lerAbertura();
+
   const lendario = await prisma.professor.findFirst({
     where: { legendary: true, active: true },
     select: { id: true, name: true, slug: true },
@@ -152,8 +236,34 @@ async function main() {
 
   const socket = connect(conta.cookie);
   await waitEvent(socket, 'connect');
+
+  // ── A raid é RECUSADA antes da HORA de abrir ──────────────────────────────
+  // Com a dex vazia, as duas travas valeriam: a resposta tem de ser a do
+  // HORÁRIO, que é global. O contrário mandaria quem já fechou a coleção
+  // procurar um professor que não falta.
+  await definirAbertura('2026-12-31T19:00:00-03:00');
+  const fechada = await status(conta);
+  if (fechada.open) fail('/raid/status disse aberta com a abertura no futuro');
+  if (!fechada.opensAtLabel) {
+    fail('/raid/status não disse a HORA de abrir — o card não tem o que mostrar');
+  }
+  ok(`raid fechada até ${fechada.opensAtLabel} (label vindo do servidor)`);
+
+  const foraDeHora = await command(socket, 'raid:start');
+  if (foraDeHora.ok) fail('o servidor abriu a raid antes da hora marcada');
+  if (foraDeHora.code !== 'RAID_FECHADA') {
+    fail(`recusa antes da hora veio como ${foraDeHora.code}, não RAID_FECHADA`);
+  }
+  ok(`raid:start fora de hora recusado: "${foraDeHora.message}"`);
+
+  // Abre a porta para o resto do smoke. O valor original volta no `finally`.
+  await definirAbertura('2026-01-01T19:00:00-03:00');
+
   const recusa = await command(socket, 'raid:start');
   if (recusa.ok) fail('o servidor abriu a raid para quem não fechou a Profdex');
+  if (recusa.code !== 'RAID_BLOQUEADA') {
+    fail(`com a raid aberta e a dex vazia, esperava RAID_BLOQUEADA`);
+  }
   ok(`raid:start recusado: "${recusa.message}"`);
 
   // ── Fecha a dex ───────────────────────────────────────────────────────────
@@ -314,6 +424,7 @@ async function main() {
   console.log('\n✓ Smoke da raid passou.');
 }
 
-main()
-  .catch((e) => fail(e.message))
-  .finally(() => void prisma.$disconnect());
+main().then(
+  () => encerrar(0),
+  (e) => fail(e.message),
+);

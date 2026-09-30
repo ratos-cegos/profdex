@@ -10,6 +10,7 @@ import {
   buildRaidFirstClearFallbackEmail,
   EMAIL_DO_PRIMEIRO,
 } from './raid-first-clear.mail';
+import { rotuloDaAbertura } from './raid-opening';
 import {
   PUBLIC_PROFESSOR_SELECT,
   PublicProfessor,
@@ -21,6 +22,7 @@ import { SettingsService } from '../settings/settings.service';
  * front decide o que dizer em cada um (ver .codex/CODE_STYLE.md).
  */
 export const RAID_SEM_LENDARIO = 'RAID_SEM_LENDARIO';
+export const RAID_FECHADA = 'RAID_FECHADA';
 export const RAID_BLOQUEADA = 'RAID_BLOQUEADA';
 export const RAID_EM_COOLDOWN = 'RAID_EM_COOLDOWN';
 export const RAID_JA_CAPTURADO = 'RAID_JA_CAPTURADO';
@@ -42,6 +44,29 @@ export interface RaidStatus {
   legendary: PublicProfessor | null;
   /** Quantos professores ele tem, de quantos existem — comuns e raros. */
   dex: { captured: number; total: number };
+  /**
+   * Timestamp da abertura da raid no evento (`raid.opens_at`). Vale para TODO
+   * mundo, ao contrário do `unlocked`, e é com ele que o front desenha a
+   * contagem no card em vez do botão.
+   */
+  opensAt: number;
+  /** A mesma hora já escrita no fuso do evento — ver `raid-opening.ts`. */
+  opensAtLabel: string;
+  /** Já passou da hora de abertura. */
+  open: boolean;
+  /**
+   * O relógio do SERVIDOR no instante da resposta.
+   *
+   * Os três timestamps daqui (`opensAt`, `cooldownUntil`, este) são do relógio
+   * do servidor, e o front conta o tempo a partir DELE em vez do
+   * `Date.now()` do aparelho. É o que impede que um relógio adiantado — de
+   * propósito ou não, e este público tem DevTools aberto — mostre "CAPTURAR"
+   * antes da hora e renda uma recusa que parece bug em vez de regra.
+   *
+   * Quem DECIDE nunca foi o front (ver `canStart`); isto é para a tela não
+   * mentir.
+   */
+  now: number;
   /** Timestamp em que a próxima tentativa libera; null = pode agora. */
   cooldownUntil: number | null;
   attempts: number;
@@ -194,13 +219,14 @@ export class RaidService implements OnModuleInit {
 
   /** Tudo que a Profdex precisa para desenhar (ou não) o card do lendário. */
   async status(userId: string): Promise<RaidStatus> {
-    const [lendario, dex, unlockRow] = await Promise.all([
+    const [lendario, dex, unlockRow, opensAt] = await Promise.all([
       this.legendary(),
       this.dexProgress(userId),
       this.prisma.raidUnlock.findUnique({
         where: { userId },
         select: { id: true },
       }),
+      this.settings.raidOpensAtMs(),
     ]);
 
     // Destrava na leitura quando a dex acabou de fechar: o aluno não precisa
@@ -244,12 +270,23 @@ export class RaidService implements OnModuleInit {
           active: lendario.active,
         }
       : null;
+    // Um `now` só para a resposta inteira: dois `Date.now()` no mesmo objeto
+    // podem cair em milissegundos diferentes, e aí o `open` e a contagem que o
+    // front deriva não estariam falando do mesmo instante.
+    const now = Date.now();
     return {
       unlocked,
       captured,
       legendary: captured ? publico : null,
       dex,
-      cooldownUntil: cooldownMs > 0 ? Date.now() + cooldownMs : null,
+      // A hora da abertura é pública, e de propósito: ela não revela NADA sobre
+      // o lendário (nem nome, nem arte, nem se este aluno pode desafiar) e é a
+      // única informação que faz a fila estar na frente do estande às 19h.
+      opensAt,
+      opensAtLabel: rotuloDaAbertura(opensAt, now),
+      open: now >= opensAt,
+      now,
+      cooldownUntil: cooldownMs > 0 ? now + cooldownMs : null,
       attempts,
     };
   }
@@ -269,6 +306,15 @@ export class RaidService implements OnModuleInit {
   > {
     const legendary = await this.legendary();
     if (!legendary) return { ok: false, code: RAID_SEM_LENDARIO };
+
+    // A trava do relógio vem ANTES da do aluno, e a ordem é a resposta que se
+    // quer dar: antes das 19h a recusa é a mesma para todo mundo ("abre às
+    // 19h"), em vez de o aluno que fechou a Profdex às 15h ler "complete a
+    // Profdex" e ir procurar o professor que falta — não falta nenhum.
+    const opensAt = await this.settings.raidOpensAtMs();
+    if (Date.now() < opensAt) {
+      return { ok: false, code: RAID_FECHADA, retryAt: opensAt };
+    }
 
     if (!(await this.ensureUnlocked(userId))) {
       return { ok: false, code: RAID_BLOQUEADA };

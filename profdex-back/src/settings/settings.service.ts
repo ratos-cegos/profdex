@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   SETTING_NAMES,
@@ -6,7 +6,9 @@ import {
   type SettingName,
   type SettingValue,
   type SettingValues,
+  dateTimeSettingMs,
   parseSetting,
+  serializeSetting,
 } from './settings';
 
 /** Quanto o cache vive. Ver a nota sobre o cache na classe. */
@@ -88,6 +90,21 @@ export class SettingsService {
   }
 
   /**
+   * O instante em que a raid do lendário abre, em epoch ms.
+   *
+   * Epoch e não `Date`: quem consome isto compara com `Date.now()` e manda o
+   * número para o front, que desenha a contagem — nenhum dos dois quer um
+   * objeto de data, e converter duas vezes é como um fuso se perde.
+   *
+   * Lido a cada tentativa (sem congelar na sala, ao contrário de `raidRules`):
+   * é uma trava de PORTA, e adiantar ou atrasar a abertura no painel precisa
+   * valer para a próxima pessoa que apertar o botão, não para a próxima sala.
+   */
+  async raidOpensAtMs(): Promise<number> {
+    return dateTimeSettingMs(await this.get('raidOpensAt'));
+  }
+
+  /**
    * Os três dials da raid, lidos de uma vez.
    *
    * Juntos porque são lidos juntos, no nascimento da sala, e porque congelá-los
@@ -129,12 +146,26 @@ export class SettingsService {
   ): Promise<SettingValues> {
     const entradas = SETTING_NAMES.filter((n) => valores[n] !== undefined);
 
-    for (const name of entradas) {
-      const valor = valores[name]!;
+    // Tudo normalizado ANTES da primeira escrita: recusar no meio deixaria
+    // metade do PATCH gravada, e o painel mostrando um estado que ninguém
+    // pediu. Só a data pode falhar aqui (ver `serializeSetting`) — e `31/02`
+    // precisa virar uma mensagem, não a data de março em que o `Date` a
+    // transformaria sozinho.
+    const paraGravar = entradas.map((name) => {
+      const texto = serializeSetting(name, valores[name]!);
+      if (texto === null) {
+        throw new BadRequestException(
+          `${SETTINGS[name].label}: data e hora inválidas (${String(valores[name])}).`,
+        );
+      }
+      return { name, texto };
+    });
+
+    for (const { name, texto } of paraGravar) {
       await this.prisma.appSetting.upsert({
         where: { key: SETTINGS[name].key },
-        update: { value: String(valor) },
-        create: { key: SETTINGS[name].key, value: String(valor) },
+        update: { value: texto },
+        create: { key: SETTINGS[name].key, value: texto },
       });
 
       // Auditoria: mudar cooldown muda a regra do jogo no meio do evento, e
@@ -143,7 +174,7 @@ export class SettingsService {
         JSON.stringify({
           audit: 'setting_updated',
           key: SETTINGS[name].key,
-          value: valor,
+          value: texto,
           by: autorId,
         }),
       );

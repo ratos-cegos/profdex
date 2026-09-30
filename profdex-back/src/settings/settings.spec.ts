@@ -3,8 +3,11 @@ import {
   SETTING_NAMES,
   type SettingSpec,
   clampSetting,
+  dateTimeSettingMs,
   isInRange,
+  parseDateTimeSetting,
   parseSetting,
+  serializeSetting,
 } from './settings';
 
 /**
@@ -25,6 +28,14 @@ describe('catálogo de ajustes', () => {
         // própria validação recusa — o ajuste nasceria inválido.
         expect(spec.options.length).toBeGreaterThan(1);
         expect(spec.options).toContain(spec.default);
+        continue;
+      }
+
+      if (spec.kind === 'datetime') {
+        // Padrão ilegível aqui seria pior que num número: `parseSetting` cai no
+        // padrão quando não entende o banco, e um padrão inválido deixaria a
+        // trava da raid num `NaN` que nenhuma comparação satisfaz.
+        expect(parseDateTimeSetting(spec.default)).toBe(spec.default);
         continue;
       }
 
@@ -118,6 +129,95 @@ describe('ajuste de escolha fechada', () => {
     expect(parseSetting('captureQrMode', 'papel')).toBe('ficha');
     expect(parseSetting('captureQrMode', 'TELA')).toBe('ficha');
     expect(parseSetting('captureQrMode', '7')).toBe('ficha');
+  });
+});
+
+/**
+ * O ajuste de data é o terceiro tipo do painel, e o único cujo valor errado não
+ * atrasa a fila: ele ABRE a raid do lendário antes da hora, ou a mantém fechada
+ * no evento inteiro.
+ *
+ * O que estes testes travam é a leitura do FUSO. O servidor de produção roda em
+ * UTC (`Wed Sep 30 02:35 UTC 2026` = 23h35 de 29/09 em Londrina), e o jeito
+ * óbvio de escrever isto — `new Date('2026-10-01T19:00')` — abriria a raid às
+ * 16h de Londrina, três horas antes, sem quebrar nenhum teste rodado na máquina
+ * de quem programou, onde o relógio está certo por acidente.
+ */
+describe('ajuste de data e hora', () => {
+  it('hora sem fuso é a hora do EVENTO, não a do servidor', () => {
+    // 19h em Londrina são 22h UTC. Esta é a asserção que protege a abertura de
+    // um servidor em UTC — e ela vale com o processo em qualquer fuso, porque o
+    // offset entra explícito na forma canônica.
+    expect(parseDateTimeSetting('2026-10-01T19:00')).toBe(
+      '2026-10-01T19:00:00-03:00',
+    );
+    expect(dateTimeSettingMs('2026-10-01T19:00:00-03:00')).toBe(
+      Date.parse('2026-10-01T22:00:00Z'),
+    );
+  });
+
+  it('fuso explícito é respeitado e reescrito no do evento', () => {
+    expect(parseDateTimeSetting('2026-10-01T22:00:00Z')).toBe(
+      '2026-10-01T19:00:00-03:00',
+    );
+    expect(parseDateTimeSetting('2026-10-01T19:00:00-03:00')).toBe(
+      '2026-10-01T19:00:00-03:00',
+    );
+  });
+
+  it('minuto quebrado sobrevive à ida e volta', () => {
+    expect(parseDateTimeSetting('2026-10-01T19:30')).toBe(
+      '2026-10-01T19:30:00-03:00',
+    );
+  });
+
+  /**
+   * `new Date('2026-02-30T19:00')` não é `Invalid Date`: o V8 ROLA para 2 de
+   * março. Sem esta checagem, o painel aceitaria a data, gravaria março e a raid
+   * não abriria no dia do evento — com o operador jurando que configurou certo.
+   */
+  it('data que não existe no calendário é recusada, não rolada', () => {
+    expect(parseDateTimeSetting('2026-02-30T19:00')).toBeNull();
+    expect(parseDateTimeSetting('2026-13-01T19:00')).toBeNull();
+  });
+
+  it('texto que não é data é recusado', () => {
+    expect(parseDateTimeSetting('19h')).toBeNull();
+    expect(parseDateTimeSetting('')).toBeNull();
+    expect(parseDateTimeSetting('amanhã')).toBeNull();
+  });
+
+  /**
+   * A trava falha FECHADA. Um valor corrompido no banco não pode virar "raid
+   * aberta": o padrão é a hora marcada, e quem quer abrir mais cedo faz isso no
+   * painel, de propósito.
+   */
+  it('valor ilegível no banco cai no padrão, que é a trava', () => {
+    expect(parseSetting('raidOpensAt', 'qualquer coisa')).toBe(
+      SETTINGS.raidOpensAt.default,
+    );
+    expect(parseSetting('raidOpensAt', null)).toBe(
+      SETTINGS.raidOpensAt.default,
+    );
+  });
+
+  it('abre em 1º de outubro às 19h por padrão', () => {
+    expect(SETTINGS.raidOpensAt.default).toBe('2026-10-01T19:00:00-03:00');
+  });
+
+  /**
+   * O painel manda `2026-10-01T19:00` (o `datetime-local` não envia fuso), e é
+   * a forma canônica que vai para `app_settings`: uma linha sem fuso no banco só
+   * significa algo para quem souber de cor o offset do evento.
+   */
+  it('grava a forma canônica, não o que o painel digitou', () => {
+    expect(serializeSetting('raidOpensAt', '2026-10-01T19:00')).toBe(
+      '2026-10-01T19:00:00-03:00',
+    );
+    expect(serializeSetting('raidOpensAt', '2026-02-30T19:00')).toBeNull();
+    // Os outros tipos passam direto — só a data tem o que normalizar.
+    expect(serializeSetting('themeCooldownMinutes', 7)).toBe('7');
+    expect(serializeSetting('captureQrMode', 'tela')).toBe('tela');
   });
 });
 

@@ -38,6 +38,11 @@ tabela abaixo estão **fechadas** — não reabrir sem alinhar.
 > o primeiro aluno a vencer gera um **e-mail** para a organização. Ver a entrada
 > de 29/09/2026 no `INDEX.md`. O resto desta tarefa continua valendo.
 
+> ⚠️ **Atualizado em 29/09/2026 (noite):** além da coleção, agora existe uma
+> trava de **HORÁRIO** — `raid.opens_at` no painel, padrão **01/10 às 19h**.
+> Fechar a Profdex antes disso destrava o card, mas não o botão: aparece a hora
+> e, na última hora, a contagem. Ver a entrada no `INDEX.md`.
+
 O evento é **opcional**. Na Profdex ele aparece como a
 entrada `qtd_professores + 1`: silhueta com `???`, piscando colorido, e um
 botão **CAPTURAR**. Tentativas são ilimitadas, com cooldown entre elas.
@@ -143,9 +148,16 @@ ninguém o convida.
 | `raid.legendary_iv` | 15 | 0–15 |
 | `raid.turn_cap` | 60 | 20–200 |
 | `raid.cooldown_minutes` | 30 | 0–240 |
+| `raid.opens_at` | `2026-10-01T19:00:00-03:00` | data e hora |
 
 Os três primeiros são **congelados no nascimento da sala**: mexer no painel com
 uma raid em andamento não muda a vida do chefe com o aluno já lutando.
+
+`raid.opens_at` é o contrário: lido a **cada tentativa**, porque é trava de
+porta — adiantar a abertura precisa valer para a próxima pessoa que apertar o
+botão, não para a próxima sala. A hora é a do **evento** (Londrina), guardada
+com o offset explícito porque produção roda em UTC. **Para abrir agora, ponha
+uma data no passado.**
 
 > ⚠️ `raid.hp_multiplier` tensiona a regra do topo de `settings.ts` ("regra que
 > muda o significado do dado continua constante de código"). Entra como exceção
