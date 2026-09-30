@@ -369,12 +369,12 @@ onUnmounted(() => {
             <!-- Continuar é o caminho principal: na fila, o aluno quase sempre
                  tem outra ficha para escanear. -->
             <div class="capture-acoes">
-              <button class="btn btn-primary capture-continuar" type="button" @click="continuarNoScan">
-                <span class="pixel">CONTINUAR NO SCAN</span>
+              <button class="btn-pixel capture-continuar" type="button" @click="continuarNoScan">
+                CONTINUAR NO SCAN
                 <PixelIcon nome="seta-direita" :escala="2" />
               </button>
-              <button class="btn btn-outline" type="button" @click="router.push({ name: 'profdex' })">
-                <span class="pixel">VER PROFDEX</span>
+              <button class="capture-profdex" type="button" @click="router.push({ name: 'profdex' })">
+                Ver meu ProfDex
               </button>
             </div>
           </div>
@@ -743,14 +743,42 @@ onUnmounted(() => {
   margin-top: 4px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 6px;
 }
-/* O principal pesa mais que o outro, e não só pela cor: é o toque que o aluno
-   repete a cada ficha da fila. */
-.capture-continuar { padding: 16px; }
-/* A fonte pixel é larga: nos 14px do .btn, "CONTINUAR NO SCAN" quebrava em
-   duas linhas num celular de 390px. */
-.capture-continuar .pixel { font-size: 12px; white-space: nowrap; }
+/* O toque que o aluno repete a cada ficha da fila: o botão de console da casa
+   (.btn-pixel), largo e alto para o polegar. A fonte pixel é larga, então o
+   texto não quebra e cabe até em 320px. */
+.capture-continuar {
+  width: 100%;
+  min-height: 52px;
+  gap: 12px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+/* A saída é um texto, não um segundo botão: fica à mão sem competir com o
+   principal. A altura mínima mantém o alvo de toque de 44px. */
+.capture-profdex {
+  min-height: 44px;
+  padding: 0 12px;
+  background: none;
+  border: 0;
+  color: var(--yellow);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+@media (hover: hover) {
+  .capture-profdex:hover { color: var(--text-primary); }
+}
+.capture-profdex:focus-visible {
+  outline: 3px solid var(--unifil-gold);
+  outline-offset: 2px;
+}
 .capture-avatar { width: 96px; height: 96px; }
 .capture-img {
   width: 96px; height: 96px;
@@ -827,8 +855,8 @@ onUnmounted(() => {
   }
   .capture-emoji { display: none; }
   .capture-title, .capture-name, .capture-copy, .capture-acoes { grid-column: 2; }
-  .capture-acoes { gap: 8px; }
-  .capture-continuar { padding-block: 12px; }
+  .capture-acoes { gap: 2px; }
+  .capture-continuar { min-height: 46px; }
   .capture-avatar { grid-column: 1; grid-row: 1 / span 4; }
 }
 

@@ -127,9 +127,16 @@ function responder(i) {
     // silencioso de propósito
   }
 
-  // O foco vai para a seta: no celular isso rola a tela até ela (a explicação
-  // pode empurrá-la para baixo da dobra), e no teclado o Enter já avança.
-  void nextTick(() => botaoProxima.value?.focus())
+  // A seta entra na tela (a explicação pode empurrá-la para baixo da dobra) e
+  // recebe o foco, para o Enter já avançar. `focusVisible: false`: quem tocou
+  // não precisa de anel de foco em volta dela a cada resposta.
+  void nextTick(() => {
+    const botao = botaoProxima.value
+    if (!botao) return
+    botao.focus({ preventScroll: true, focusVisible: false })
+    const semMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    botao.scrollIntoView({ block: 'nearest', behavior: semMovimento ? 'auto' : 'smooth' })
+  })
 }
 
 function proxima() {
@@ -276,12 +283,12 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
         <button
           v-if="respondida"
           ref="botaoProxima"
-          class="btn-acao proxima"
+          class="btn-pixel proxima"
           type="button"
           :aria-label="ultimaQuestao ? 'Ver resultado da rodada' : 'Próxima questão'"
           @click="proxima"
         >
-          <span class="pixel">{{ ultimaQuestao ? 'VER RESULTADO' : 'PRÓXIMA' }}</span>
+          {{ ultimaQuestao ? 'VER RESULTADO' : 'PRÓXIMA' }}
           <PixelIcon nome="seta-direita" :escala="2" />
         </button>
       </section>
@@ -597,17 +604,14 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
   text-align: center;
 }
 
+/* A seta avança a página, não disputa com as alternativas: compacta e no canto
+   de leitura, onde o olho termina a explicação. O chanfro é o do .btn-pixel. */
 .proxima {
-  margin-top: 4px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  align-self: flex-end;
+  min-width: 152px;
+  padding-inline: 18px 14px;
   gap: 10px;
-}
-
-.proxima:focus-visible {
-  outline: 3px solid var(--unifil-gold);
-  outline-offset: 2px;
+  font-size: 11px;
 }
 
 /* ── Fim ────────────────────────────────────────────────────────────────── */
