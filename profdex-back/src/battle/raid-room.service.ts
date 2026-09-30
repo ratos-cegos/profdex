@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { carregaTime, recusaDoPedido } from './build-team';
 import { chooseBotMove } from './engine/bot';
 import {
   BattleEvent,
@@ -48,7 +49,6 @@ import {
   benchCombatant,
   hasAlive,
   isAlive,
-  MAX_TEAM_SIZE,
   nextAliveIndex,
   ownMemberView,
   publicMemberView,
@@ -341,87 +341,22 @@ export class RaidRoomService implements OnModuleDestroy {
       return { ok: false, message: 'Você já escolheu.' };
     }
 
-    if (!Array.isArray(captureIds) || captureIds.length === 0) {
-      return { ok: false, message: 'Escolha pelo menos um professor.' };
-    }
-    if (captureIds.length > MAX_TEAM_SIZE) {
-      return {
-        ok: false,
-        message: `Seu time pode ter no máximo ${MAX_TEAM_SIZE} professores.`,
-      };
-    }
-    if (new Set(captureIds).size !== captureIds.length) {
-      return {
-        ok: false,
-        message: 'O mesmo exemplar não pode entrar duas vezes no time.',
-      };
-    }
+    const recusa = recusaDoPedido(captureIds);
+    if (recusa) return { ok: false, message: recusa };
 
     room.picking = true;
-    const captures = await this.prisma.capture
-      .findMany({
-        where: { id: { in: captureIds }, userId },
-        select: {
-          id: true,
-          moves: true,
-          ivHp: true,
-          ivRigor: true,
-          ivDidatica: true,
-          ivRaciocinio: true,
-          professor: { select: PUBLIC_PROFESSOR_SELECT },
-          variant: { select: { types: true } },
-        },
-      })
-      .catch((error: Error) => {
-        this.logger.error(`Falha buscando capturas de ${userId}`, error);
-        return null;
-      });
-
-    if (captures === null) {
+    const carregado = await carregaTime(
+      this.prisma,
+      userId,
+      captureIds,
+      (error) =>
+        this.logger.error(`Falha buscando capturas de ${userId}`, error),
+    );
+    if (!carregado.ok) {
       room.picking = false;
-      return {
-        ok: false,
-        message: 'Não deu para confirmar o time. Tente de novo.',
-      };
+      return { ok: false, message: carregado.message };
     }
-    if (captures.length !== captureIds.length) {
-      room.picking = false;
-      return {
-        ok: false,
-        message: 'Você só pode usar professores que capturou.',
-      };
-    }
-
-    const byId = new Map(captures.map((c) => [c.id, c]));
-    room.team = captureIds.map((id) => {
-      const capture = byId.get(id)!;
-      const types = capture.variant?.types?.length
-        ? capture.variant.types
-        : capture.professor.types;
-      const moves = capture.moves
-        .map((moveId) => getMoveById(moveId))
-        .filter((move): move is Move => move !== null);
-      const deck = moves.length ? moves : buildMoveset(types);
-      const ivs = {
-        ivHp: capture.ivHp,
-        ivRigor: capture.ivRigor,
-        ivDidatica: capture.ivDidatica,
-        ivRaciocinio: capture.ivRaciocinio,
-      };
-      return {
-        captureId: capture.id,
-        professor: capture.professor,
-        types,
-        moves: deck,
-        ivs,
-        combatant: createCombatant({
-          name: capture.professor.name,
-          types,
-          moves: deck,
-          ivs,
-        }),
-      };
-    });
+    room.team = carregado.team;
 
     room.missedPhases = 0;
     this.toPreview(room);
