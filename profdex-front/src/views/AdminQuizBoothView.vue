@@ -528,42 +528,46 @@ function formatarEspera(s) {
       v-else-if="etapa === 'resultado' && raroLiberado"
       class="cena cena--centro cena--raro"
     >
-      <span class="selo selo--raro">✦</span>
-      <p class="raro__eyebrow">FICHA RARA</p>
-      <h2 class="raro__nome">{{ raroLiberado.name }}</h2>
-      <p class="raro__ordem">ENTREGUE A FICHA ✦ {{ raroLiberado.name.toUpperCase() }}</p>
+      <!-- O miolo é a parte que cede: ele encolhe a arte e, no limite, rola.
+           Os botões ficam FORA dele justamente por isso (ver `.cena__miolo`). -->
+      <div class="cena__miolo">
+        <span class="selo selo--raro">✦</span>
+        <p class="raro__eyebrow">FICHA RARA</p>
+        <h2 class="raro__nome">{{ raroLiberado.name }}</h2>
+        <p class="raro__ordem">ENTREGUE A FICHA ✦ {{ raroLiberado.name.toUpperCase() }}</p>
 
-      <!-- No modo `tela` a ficha rara sai aqui mesmo, e o 3D vem JUNTO com o
-           QR, sem esperar scan: a ficha rara grava a variante e não passa pelo
-           sorteio, então não há reroll para antecipar (decisão 15). A arte
-           "vaza" para a fila, e é aceito — quem a vê é quem já está lendo
-           ENTREGUE A FICHA ✦ FULANO em caixa alta, no mesmo segundo. -->
-      <div v-if="qr" class="entrega entrega--raro">
-        <PalcoRevelacao :professor="revelado ?? raroLiberado" clear-color="#1b1408" />
-        <div class="entrega__qr">
-          <p class="entrega__dono">
-            <strong>{{ aluno?.name }}</strong>
-            <span>{{ aluno?.matricula }}</span>
-          </p>
-          <img
-            v-if="!revelado"
-            class="qr"
-            :src="qr.dataUrl"
-            alt="QR Code de captura do professor raro"
-          />
-          <!-- A cena dourada não some sozinha; só o QR dá lugar à confirmação,
-               para o operador saber que pode chamar o próximo. -->
-          <p v-if="revelado" class="entrega__capturado">✓ CAPTURADO</p>
-          <p v-else class="entrega__instrucao">Escaneie com o SEU celular</p>
+        <!-- No modo `tela` a ficha rara sai aqui mesmo, e o 3D vem JUNTO com o
+             QR, sem esperar scan: a ficha rara grava a variante e não passa pelo
+             sorteio, então não há reroll para antecipar (decisão 15). A arte
+             "vaza" para a fila, e é aceito — quem a vê é quem já está lendo
+             ENTREGUE A FICHA ✦ FULANO em caixa alta, no mesmo segundo. -->
+        <div v-if="qr" class="entrega entrega--raro">
+          <PalcoRevelacao :professor="revelado ?? raroLiberado" clear-color="#1b1408" />
+          <div class="entrega__qr">
+            <p class="entrega__dono">
+              <strong>{{ aluno?.name }}</strong>
+              <span>{{ aluno?.matricula }}</span>
+            </p>
+            <img
+              v-if="!revelado"
+              class="qr"
+              :src="qr.dataUrl"
+              alt="QR Code de captura do professor raro"
+            />
+            <!-- A cena dourada não some sozinha; só o QR dá lugar à confirmação,
+                 para o operador saber que pode chamar o próximo. -->
+            <p v-if="revelado" class="entrega__capturado">✓ CAPTURADO</p>
+            <p v-else class="entrega__instrucao">Escaneie com o SEU celular</p>
+          </div>
         </div>
-      </div>
 
-      <p v-else class="raro__apoio">
-        {{ aluno?.name }} completou os 5 acertos em
-        <strong>{{ raroLiberado.temas.map(rotuloDoTema).join(' e ') }}</strong
-        >. Pegue a pilha com o nome dele.
-      </p>
-      <p class="codigo-questao">Questão #{{ resultado.code }}</p>
+        <p v-else class="raro__apoio">
+          {{ aluno?.name }} completou os 5 acertos em
+          <strong>{{ raroLiberado.temas.map(rotuloDoTema).join(' e ') }}</strong
+          >. Pegue a pilha com o nome dele.
+        </p>
+        <p class="codigo-questao">Questão #{{ resultado.code }}</p>
+      </div>
 
       <div class="botoes">
         <button class="acao acao--secundaria" type="button" @click="voltarAosTemas">
@@ -579,74 +583,77 @@ function formatarEspera(s) {
       class="cena cena--centro"
       :class="resultado.correct ? 'cena--acerto' : 'cena--erro'"
     >
-      <!-- Tarja de pendência: quem destravou às 10h e voltou às 15h não pode
-           depender da memória do operador. -->
-      <p v-if="raroPendente" class="tarja-raro">
-        ✦ ficha rara pendente — <strong>{{ raroPendente.name }}</strong>
-      </p>
+      <!-- Miolo elástico; os botões ficam fora dele (ver `.cena__miolo`). -->
+      <div class="cena__miolo">
+        <!-- Tarja de pendência: quem destravou às 10h e voltou às 15h não pode
+             depender da memória do operador. -->
+        <p v-if="raroPendente" class="tarja-raro">
+          ✦ ficha rara pendente — <strong>{{ raroPendente.name }}</strong>
+        </p>
 
-      <span class="selo">{{ resultado.correct ? '✓' : '✕' }}</span>
-      <h2 class="veredito">
-        {{
-          resultado.correct
-            ? 'Acertou!'
-            : resultado.expired
-              ? 'Tempo esgotado'
-              : 'Não foi dessa vez'
-        }}
-      </h2>
+        <span class="selo">{{ resultado.correct ? '✓' : '✕' }}</span>
+        <h2 class="veredito">
+          {{
+            resultado.correct
+              ? 'Acertou!'
+              : resultado.expired
+                ? 'Tempo esgotado'
+                : 'Não foi dessa vez'
+          }}
+        </h2>
 
-      <p v-if="!resultado.correct" class="gabarito">
-        Resposta certa: <strong>{{ resultado.correctOption }}</strong>
-      </p>
+        <p v-if="!resultado.correct" class="gabarito">
+          Resposta certa: <strong>{{ resultado.correctOption }}</strong>
+        </p>
 
-      <!-- É aqui que o aluno descobre que discorda do gabarito, então é aqui
-           que ele precisa do número para contestar com o operador. -->
-      <p class="codigo-questao">Questão #{{ resultado.code }}</p>
+        <!-- É aqui que o aluno descobre que discorda do gabarito, então é aqui
+             que ele precisa do número para contestar com o operador. -->
+        <p class="codigo-questao">Questão #{{ resultado.code }}</p>
 
-      <!-- ── Modo `tela`: o QR, e depois a revelação ────────────────────
-           Enquanto ninguém escaneou, o QR sozinho é um quadrado preto e branco.
-           O momento que vale para a fila é ver QUEM saiu — e quem sai só existe
-           depois do scan, porque o sorteio do comum acontece lá. -->
-      <div v-if="qr && !revelado" class="entrega">
-        <div class="entrega__qr">
-          <!-- Nome e matrícula GRANDES, acima do código: é o último momento em
-               que um erro de digitação ainda é visível, e o aluno está olhando
-               a tela. Sem diálogo de confirmação — "tem certeza?" por rodada é
-               atrito no caminho que sempre dá certo (decisão 21). -->
-          <p class="entrega__dono">
-            <strong>{{ aluno?.name }}</strong>
-            <span>{{ aluno?.matricula }}</span>
-          </p>
-          <img class="qr" :src="qr.dataUrl" alt="QR Code de captura" />
-          <p class="entrega__instrucao">Escaneie com o SEU celular</p>
+        <!-- ── Modo `tela`: o QR, e depois a revelação ────────────────────
+             Enquanto ninguém escaneou, o QR sozinho é um quadrado preto e branco.
+             O momento que vale para a fila é ver QUEM saiu — e quem sai só existe
+             depois do scan, porque o sorteio do comum acontece lá. -->
+        <div v-if="qr && !revelado" class="entrega">
+          <div class="entrega__qr">
+            <!-- Nome e matrícula GRANDES, acima do código: é o último momento em
+                 que um erro de digitação ainda é visível, e o aluno está olhando
+                 a tela. Sem diálogo de confirmação — "tem certeza?" por rodada é
+                 atrito no caminho que sempre dá certo (decisão 21). -->
+            <p class="entrega__dono">
+              <strong>{{ aluno?.name }}</strong>
+              <span>{{ aluno?.matricula }}</span>
+            </p>
+            <img class="qr" :src="qr.dataUrl" alt="QR Code de captura" />
+            <p class="entrega__instrucao">Escaneie com o SEU celular</p>
+          </div>
         </div>
-      </div>
 
-      <div v-else-if="revelado" class="entrega entrega--revelada">
-        <PalcoRevelacao :professor="revelado" clear-color="#10121a" />
-        <div class="revelacao__ficha">
-          <p class="revelacao__eyebrow">CAPTURADO</p>
-          <h3 class="revelacao__nome">{{ revelado.name }}</h3>
-          <p class="revelacao__tipos">
-            <span v-for="t in revelado.types" :key="t" class="revelacao__tipo">
-              <TypeIcon :type="t" :size="18" /> {{ rotuloDoTema(t) }}
-            </span>
-          </p>
+        <div v-else-if="revelado" class="entrega entrega--revelada">
+          <PalcoRevelacao :professor="revelado" clear-color="#10121a" />
+          <div class="revelacao__ficha">
+            <p class="revelacao__eyebrow">CAPTURADO</p>
+            <h3 class="revelacao__nome">{{ revelado.name }}</h3>
+            <p class="revelacao__tipos">
+              <span v-for="t in revelado.types" :key="t" class="revelacao__tipo">
+                <TypeIcon :type="t" :size="18" /> {{ rotuloDoTema(t) }}
+              </span>
+            </p>
+          </div>
         </div>
-      </div>
 
-      <!-- Sem NOME de professor. Quem o aluno leva é sorteado no servidor, no
-           instante do scan, e depende do que ele já tem — anunciar um nome aqui
-           seria promessa que a captura não tem como cumprir. -->
-      <p v-else-if="resultado.correct" class="instrucao">
-        Agora escaneie o QR Code para capturar seu professor.
-      </p>
-      <p v-if="!resultado.correct" class="instrucao">
-        Este tema libera de novo em {{ resultado.cooldownMinutos }}
-        {{ resultado.cooldownMinutos === 1 ? 'minuto' : 'minutos' }}. Enquanto
-        isso dá para tentar outro tema.
-      </p>
+        <!-- Sem NOME de professor. Quem o aluno leva é sorteado no servidor, no
+             instante do scan, e depende do que ele já tem — anunciar um nome aqui
+             seria promessa que a captura não tem como cumprir. -->
+        <p v-else-if="resultado.correct" class="instrucao">
+          Agora escaneie o QR Code para capturar seu professor.
+        </p>
+        <p v-if="!resultado.correct" class="instrucao">
+          Este tema libera de novo em {{ resultado.cooldownMinutos }}
+          {{ resultado.cooldownMinutos === 1 ? 'minuto' : 'minutos' }}. Enquanto isso dá para tentar
+          outro tema.
+        </p>
+      </div>
 
       <div class="botoes">
         <button class="acao acao--secundaria" type="button" @click="voltarAosTemas">
@@ -689,10 +696,50 @@ function formatarEspera(s) {
   padding: clamp(16px, 3vw, 40px);
 }
 
+/* As duas cenas de resultado — a do acerto comum e a da ficha rara — são as
+   únicas que carregam arte grande (palco da revelação, QR) junto com os botões
+   do operador. Elas se dividem em MIOLO e BOTÕES: o miolo é tudo que pode ceder,
+   os botões são o que nunca cede. */
 .cena--centro {
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
   text-align: center;
+}
+
+/**
+ * O miolo da cena de resultado.
+ *
+ * Ele fica com a altura que sobra depois dos botões (`flex: 1` + `min-height:
+ * 0`) e é dentro dele que a arte encolhe — o palco e o QR cedem altura até o
+ * piso de cada um (ver PalcoRevelacao.vue e `.qr`). Passado o piso, o miolo
+ * ROLA; antes desta divisão a cena inteira estourava o quiosque e, como ela era
+ * centralizada, o que sobrava saía pelas duas pontas: o selo em cima e OUTRO
+ * TEMA / PRÓXIMO ALUNO embaixo. Com o QR de verdade ao lado do palco isso
+ * acontecia até no tablet do estande — o operador perdia os dois botões pelos
+ * quais a fila anda.
+ *
+ * O centro vem de margem automática, não de `justify-content: center`: num
+ * container que rola, `center` empurra metade do conteúdo para fora e o topo
+ * fica inalcançável mesmo com barra de rolagem.
+ */
+.cena__miolo {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(12px, 2.2vh, 24px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Quiosque: a rolagem do miolo não pode virar "pull to refresh" no tablet. */
+  overscroll-behavior: contain;
+}
+
+.cena__miolo > :first-child {
+  margin-top: auto;
+}
+
+.cena__miolo > :last-child {
+  margin-bottom: auto;
 }
 
 /* Os controles de saída da cena da matrícula. Ficam num canto só para o
@@ -1256,7 +1303,14 @@ function formatarEspera(s) {
   color: #fff;
 }
 
+/* Os botões são o ponto desta tela: o operador está de pé, com a fila andando,
+   e "PRÓXIMO ALUNO" tem de estar no mesmo lugar sempre. Por isso não encolhem
+   junto com a cena (`flex: 0 0 auto`) e ficam numa camada acima — arte da
+   revelação ou QR que transborde passa POR BAIXO, nunca por cima. */
 .botoes {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
   display: flex;
   gap: 14px;
   flex-wrap: wrap;
@@ -1272,6 +1326,20 @@ function formatarEspera(s) {
   justify-content: center;
   gap: clamp(16px, 3vw, 48px);
   flex-wrap: wrap;
+  /* A entrega é a parte ELÁSTICA do miolo: é ela que cede altura, e o palco e o
+     QR acompanham pelos seus `max-height`. Um item de flex column não encolhe
+     abaixo do próprio conteúdo sem um `min-height` explícito — era por isso que
+     a cena inteira estourava o quiosque e o que sobrava saía pelas duas pontas,
+     o selo em cima e OUTRO TEMA / PRÓXIMO ALUNO embaixo.
+     O valor é a soma dos pisos de quem mora aqui dentro (QR de 150px mais nome,
+     matrícula e instrução). Zerar em vez de pisar foi pior: a entrega colapsava
+     para poucos pixels e a arte vazava dela, entrando cortada no miolo. */
+  min-height: 260px;
+}
+
+/* Sem QR: aqui dentro só há o palco (piso de 130px) e a ficha do professor. */
+.entrega--revelada {
+  min-height: 130px;
 }
 
 .entrega__qr {
@@ -1279,6 +1347,7 @@ function formatarEspera(s) {
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  min-height: 0;
 }
 
 /* Nome e matrícula GRANDES: é o último momento em que um erro de digitação
@@ -1309,6 +1378,14 @@ function formatarEspera(s) {
 .qr {
   width: clamp(200px, 30vh, 320px);
   height: auto;
+  max-width: 100%;
+  /* Cede altura junto com o miolo, mas nunca abaixo de 150px: o celular do
+     aluno precisa ler o código do outro lado da mesa. `contain` mantém o
+     quadrado — o que sobra é o mesmo branco do fundo, então a leitura não muda.
+     Passado o piso, quem rola é o miolo, e os botões continuam no lugar. */
+  min-height: 150px;
+  max-height: 100%;
+  object-fit: contain;
   padding: 10px;
   border-radius: 12px;
   background: #fff;
