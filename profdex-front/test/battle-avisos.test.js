@@ -24,6 +24,7 @@ const CASOS = {
   ],
   info: [
     'Bia recusou o desafio.',
+    'Bia cancelou o desafio.',
     'O rival saiu da seleção.',
     'Bia está em batalha.',
     'Esse jogador não está mais online.',

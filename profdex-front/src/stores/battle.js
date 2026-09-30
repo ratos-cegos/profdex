@@ -157,6 +157,10 @@ export const useBattleStore = defineStore('battle', () => {
       if (outgoingInvite.value?.inviteId === inviteId && reason === 'declined') {
         falhar(`${outgoingInvite.value.to.name} recusou o desafio.`)
       }
+      // Quem desafiou desistiu: o aviso some e o motivo aparece, em vez de a
+      // carta simplesmente evaporar da pilha.
+      const recebido = incomingInvites.value.find((i) => i.inviteId === inviteId)
+      if (recebido && reason === 'withdrawn') falhar(`${recebido.from.name} cancelou o desafio.`)
       dropInvite(inviteId)
     })
 
