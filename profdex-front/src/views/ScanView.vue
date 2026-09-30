@@ -747,7 +747,10 @@ onUnmounted(() => {
 }
 /* O principal pesa mais que o outro, e não só pela cor: é o toque que o aluno
    repete a cada ficha da fila. */
-.capture-continuar { padding-block: 16px; }
+.capture-continuar { padding: 16px; }
+/* A fonte pixel é larga: nos 14px do .btn, "CONTINUAR NO SCAN" quebrava em
+   duas linhas num celular de 390px. */
+.capture-continuar .pixel { font-size: 12px; white-space: nowrap; }
 .capture-avatar { width: 96px; height: 96px; }
 .capture-img {
   width: 96px; height: 96px;
