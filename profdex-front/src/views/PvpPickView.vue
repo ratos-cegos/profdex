@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBattleStore } from '../stores/battle'
+import { contraBot, rotaDeSaida } from '../stores/battle-resync'
 import { useCapturesStore } from '../stores/captures'
 import { useProfessorsStore } from '../stores/professors'
 import ProfessorFace from '../components/ProfessorFace.vue'
@@ -25,7 +26,10 @@ const battle = useBattleStore()
 const professors = useProfessorsStore()
 const captures = useCapturesStore()
 
-const MAX_TIME = 3
+// O ranqueado e a raid aceitam ATÉ 3. O treino manda o tamanho que o aluno
+// escolheu (1 ou 3), e aí é exatamente esse número.
+const MAX_TIME_PADRAO = 3
+const maxTime = computed(() => battle.pvp?.tamanho ?? MAX_TIME_PADRAO)
 
 const now = ref(Date.now())
 let clock = null
@@ -79,8 +83,10 @@ const exemplaresDisponiveis = computed(() =>
   capturados.value.reduce((total, p) => total + p.exemplares.length, 0),
 )
 const slotsDisponiveis = computed(() => {
-  if (!exemplaresDisponiveis.value && (captures.loading || professors.loading)) return MAX_TIME
-  return Math.min(MAX_TIME, exemplaresDisponiveis.value)
+  if (!exemplaresDisponiveis.value && (captures.loading || professors.loading)) {
+    return maxTime.value
+  }
+  return Math.min(maxTime.value, exemplaresDisponiveis.value)
 })
 const slotTrancado = (i) => i > slotsDisponiveis.value
 
@@ -107,7 +113,15 @@ const emPreview = computed(() => battle.pvp?.phase === 'preview')
 // chefe conhecido, ele não "escolhe ao mesmo tempo" e não há nada às cegas —
 // manter o texto do PvP aqui faria a tela mentir sobre o que está esperando.
 const naRaid = computed(() => battle.pvp?.mode === 'raid')
+// No treino o adversário é o bot: o time dele aparece no preview e ele nunca
+// "está escolhendo".
+const naTreino = computed(() => battle.pvp?.mode === 'treino')
+const semRivalHumano = computed(() => contraBot(battle.pvp?.mode))
 const timeCheio = computed(() => time.value.length >= slotsDisponiveis.value)
+// No treino o formato já foi escolhido: 3v3 confirma com três, não com dois.
+const podeConfirmar = computed(
+  () => time.value.length > 0 && (!naTreino.value || time.value.length === maxTime.value),
+)
 const jaNoTime = (id) => time.value.some((e) => e.id === id)
 
 // Sem nada para escolher, a tela precisa dizer isso — e dar saída. Enquanto a
@@ -122,13 +136,14 @@ const semExemplar = computed(() => !captures.loading && !capturados.value.length
 async function sairDaSelecao() {
   if (saindo.value) return
   saindo.value = true
+  const saida = rotaDeSaida(battle.pvp)
   try {
     const ack = await battle.leaveSelection()
     // Recusado (a batalha já começou, ou a sala já não existe): a tela não pode
     // ficar presa aqui de qualquer jeito.
     if (!ack.ok) {
       battle.leaveBattle()
-      router.replace({ name: 'batalha' })
+      router.replace({ name: saida })
     }
     // No caminho feliz quem navega é o `battle:cancelled` do servidor, que
     // precisa chegar aos DOIS.
@@ -166,7 +181,7 @@ function removerSlot(index) {
 }
 
 async function confirmarTime() {
-  if (!time.value.length || battle.pvp?.youPicked || enviando.value) return
+  if (!podeConfirmar.value || battle.pvp?.youPicked || enviando.value) return
   enviando.value = true
   try {
     await battle.pickTeam(time.value.map((e) => e.id))
@@ -191,7 +206,9 @@ async function escolherLead(membro) {
   <div v-if="battle.pvp" class="pick">
     <header class="pick__header">
       <div>
-        <span class="pixel pick__eyebrow">{{ naRaid ? 'RAID CONTRA' : 'BATALHA CONTRA' }}</span>
+        <span class="pixel pick__eyebrow">
+          {{ naRaid ? 'RAID CONTRA' : naTreino ? `TREINO ${maxTime}V${maxTime} CONTRA` : 'BATALHA CONTRA' }}
+        </span>
         <h1 class="pixel pick__title">{{ battle.pvp.opponent.name }}</h1>
       </div>
       <div class="pick__header-acoes">
@@ -210,7 +227,7 @@ async function escolherLead(membro) {
          importa: ela é o fallback do lead e da entrada após um nocaute. -->
     <div v-if="!emPreview" class="slots">
       <button
-        v-for="i in MAX_TIME"
+        v-for="i in maxTime"
         :key="i"
         class="slot"
         :class="{
@@ -239,15 +256,15 @@ async function escolherLead(membro) {
 
       <button
         class="pixel slots__confirmar"
-        :class="{ 'slots__confirmar--pronto': time.length && timeCheio && !battle.pvp.youPicked }"
+        :class="{ 'slots__confirmar--pronto': podeConfirmar && timeCheio && !battle.pvp.youPicked }"
         type="button"
-        :disabled="!time.length || battle.pvp.youPicked || enviando"
+        :disabled="!podeConfirmar || battle.pvp.youPicked || enviando"
         @click="confirmarTime"
       >
         {{ battle.pvp.youPicked ? 'CONFIRMADO' : `CONFIRMAR (${time.length}/${slotsDisponiveis})` }}
       </button>
 
-      <p v-if="!semExemplar && slotsDisponiveis < MAX_TIME" class="slots__aviso">
+      <p v-if="!semExemplar && slotsDisponiveis < maxTime" class="slots__aviso">
         Você tem {{ slotsDisponiveis }}
         {{ slotsDisponiveis === 1 ? 'professor capturado' : 'professores capturados' }}, então seu
         time vai até {{ slotsDisponiveis }}. Os slots com 🔒 abrem quando você capturar mais.
@@ -266,7 +283,17 @@ async function escolherLead(membro) {
           </h2>
           <p class="lead-chamada__sub">
             <template v-if="battle.pvp.youPicked">
-              {{ naRaid ? 'Pronto. A raid vai começar.' : 'Pronto. Agora é esperar o rival.' }}
+              {{
+                naRaid
+                  ? 'Pronto. A raid vai começar.'
+                  : naTreino
+                    ? 'Pronto. O treino vai começar.'
+                    : 'Pronto. Agora é esperar o rival.'
+              }}
+            </template>
+            <template v-else-if="naTreino">
+              Toque no professor do seu time que começa. Você já vê quem o bot trouxe
+              <template v-if="maxTime > 1"> — os outros entram quando o primeiro cair</template>.
             </template>
             <template v-else-if="naRaid">
               Toque no professor do seu time que encara o lendário primeiro. Os outros
@@ -306,7 +333,13 @@ async function escolherLead(membro) {
 
         <section class="preview preview--rival">
           <h2 class="pixel preview__titulo">
-            {{ naRaid ? 'O LENDÁRIO' : `TIME DE ${battle.pvp.foe?.name?.toUpperCase()}` }}
+            {{
+              naRaid
+                ? 'O LENDÁRIO'
+                : naTreino
+                  ? 'TIME DO BOT'
+                  : `TIME DE ${battle.pvp.foe?.name?.toUpperCase()}`
+            }}
           </h2>
           <ul class="preview__lista">
             <li v-for="(m, i) in battle.pvp.foe?.team ?? []" :key="i" class="preview__foe">
@@ -320,7 +353,11 @@ async function escolherLead(membro) {
 
       <!-- ── Fase 1, etapa 1: qual professor ──────────────────────────────── -->
       <template v-else-if="!aberto">
-        <p v-if="!semExemplar" class="pick__hint">
+        <p v-if="!semExemplar && naTreino" class="pick__hint">
+          Escolha {{ maxTime }} {{ maxTime === 1 ? 'professor' : 'professores' }} da sua coleção.
+          O bot leva o mesmo número de professores comuns, sorteados. Nada aqui vale ranking.
+        </p>
+        <p v-else-if="!semExemplar" class="pick__hint">
           Monte seu time com até {{ slotsDisponiveis }}
           {{ slotsDisponiveis === 1 ? 'professor' : 'professores' }}.
           <template v-if="naRaid">
@@ -420,7 +457,7 @@ async function escolherLead(membro) {
         </p>
         <!-- Na raid o chefe está sempre "pronto", e anunciar isso a cada etapa
              seria ruído: o aviso só faz sentido quando há outra pessoa. -->
-        <p v-else-if="battle.pvp.foePicked && !naRaid" class="pick__foe-picked">
+        <p v-else-if="battle.pvp.foePicked && !semRivalHumano" class="pick__foe-picked">
           {{ battle.pvp.opponent.name }} já escolheu!
         </p>
       </div>
