@@ -242,6 +242,10 @@ function goBack() {
   height: 100%;
   overflow: hidden;
   background: var(--bg-deep);
+  /* Primeira linha livre abaixo do HUD do topo, para o palco não pôr o
+     oponente atrás dele: aqui, além da barra de HP, há o selo de treino
+     (`.arena__selo`: 76px + ~21px de altura) + 6px de folga. */
+  --palco-foe-livre: calc(103px + env(safe-area-inset-top));
 }
 
 /* O palco (fundo, os dois lutadores e as barras de HP) é o ArenaPalco.vue —

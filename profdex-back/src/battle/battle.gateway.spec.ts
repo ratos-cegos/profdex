@@ -275,6 +275,76 @@ describe('BattleGateway', () => {
     });
   });
 
+  describe('cancelar o desafio enviado', () => {
+    it('o remetente cancela: o alvo recebe `withdrawn` e o convite some', async () => {
+      const sockAna = connect(ana);
+      const sockBia = connect(bia);
+      await gateway.onInviteSend(asSocket(sockAna), { toUserId: bia.id });
+      const inviteId = invites.outgoingOf(ana.id)!.id;
+
+      expect(gateway.onInviteCancel(asSocket(sockAna), { inviteId })).toEqual({
+        ok: true,
+      });
+      expect(eventsFor(bia.id, 'invite:cancelled')).toEqual([
+        expect.objectContaining({
+          payload: { inviteId, reason: 'withdrawn' },
+        }),
+      ]);
+      // As outras abas de Ana também limpam a contagem regressiva.
+      expect(eventsFor(ana.id, 'invite:cancelled')).toHaveLength(1);
+      expect(gateway.onInvitePending(asSocket(sockBia))).toMatchObject({
+        incoming: [],
+      });
+    });
+
+    it('o destinatário não consegue usar o cancelamento do remetente', async () => {
+      const sockAna = connect(ana);
+      const sockBia = connect(bia);
+      await gateway.onInviteSend(asSocket(sockAna), { toUserId: bia.id });
+      const inviteId = invites.outgoingOf(ana.id)!.id;
+
+      expect(gateway.onInviteCancel(asSocket(sockBia), { inviteId })).toEqual({
+        ok: false,
+        message: 'Esse convite não existe mais.',
+      });
+      expect(invites.outgoingOf(ana.id)?.id).toBe(inviteId);
+    });
+
+    it('aceitar depois do cancelamento responde que o convite não existe', async () => {
+      const sockAna = connect(ana);
+      const sockBia = connect(bia);
+      await gateway.onInviteSend(asSocket(sockAna), { toUserId: bia.id });
+      const inviteId = invites.outgoingOf(ana.id)!.id;
+      gateway.onInviteCancel(asSocket(sockAna), { inviteId });
+
+      const ack = await gateway.onInviteAccept(asSocket(sockBia), { inviteId });
+      expect(ack).toEqual({ ok: false, message: 'Esse convite não existe mais.' });
+    });
+
+    it('depois de cancelar, dá para desafiar de novo na hora', async () => {
+      const sockAna = connect(ana);
+      connect(bia);
+      await gateway.onInviteSend(asSocket(sockAna), { toUserId: bia.id });
+      gateway.onInviteCancel(asSocket(sockAna), {
+        inviteId: invites.outgoingOf(ana.id)!.id,
+      });
+
+      const ack = await gateway.onInviteSend(asSocket(sockAna), {
+        toUserId: bia.id,
+      });
+      expect(ack).toMatchObject({ ok: true });
+      expect(eventsFor(bia.id, 'invite:received')).toHaveLength(2);
+    });
+
+    it('convite inválido ou vazio não quebra', () => {
+      const sockAna = connect(ana);
+      expect(gateway.onInviteCancel(asSocket(sockAna), {})).toEqual({
+        ok: false,
+        message: 'Convite inválido.',
+      });
+    });
+  });
+
   // ── 14.3: o convite sobrevive ao blip de rede ─────────────────────────────
 
   it('devolve os convites vivos ao cliente que reconectou', async () => {

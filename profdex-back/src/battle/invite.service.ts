@@ -94,6 +94,18 @@ export class InviteService {
   }
 
   /**
+   * Retirada pelo REMETENTE (desafio mandado sem querer). Espelho do
+   * `takeAsTarget`: só quem enviou retira, e retirar libera a vaga de envio na
+   * hora. A cota de convites por minuto não é devolvida — o custo é do envio.
+   */
+  takeAsSender(inviteId: string, byUserId: string): Invite | null {
+    const invite = this.byId.get(inviteId);
+    if (!invite || invite.fromId !== byUserId) return null;
+    this.remove(inviteId);
+    return invite;
+  }
+
+  /**
    * Lê o convite SEM consumir — o aceite valida presença e capturas antes de
    * tomá-lo. Consumir primeiro deixaria quem acabou de capturar sem como
    * tentar de novo dentro dos 60s do convite.

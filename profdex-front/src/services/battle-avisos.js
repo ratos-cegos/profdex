@@ -36,6 +36,7 @@ const REGRAS = [
     codes: [],
     padroes: [
       /recusou o desafio/i,
+      /cancelou o desafio/i,
       /saiu da seleção/i,
       /está em batalha/i,
       /não está mais (online|disponível)/i,

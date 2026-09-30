@@ -52,6 +52,7 @@ import {
   nextAliveIndex,
   ownMemberView,
   publicMemberView,
+  switchEvent,
   TeamMember,
 } from './team';
 
@@ -687,11 +688,9 @@ export class RaidRoomService implements OnModuleDestroy {
       events.push({ type: 'faint', target: CHEFE });
       events.push(roteiroDaQuedaDoNde(room.boss.professor.name));
       this.sentaOChefe(room);
-      events.push({
-        type: 'switch',
-        target: CHEFE,
-        name: room.boss.professor.name,
-      });
+      // Com quem volta (arte, tipos, HP de agora): a arena troca o ocupante no
+      // ponto certo da fila, e não mostraria o chefe com a barra zerada do NDE.
+      events.push(switchEvent(CHEFE, room.boss));
     }
 
     // A vida do chefe se lê no CORPO dele, nunca no assento: a Semana de Provas
@@ -922,7 +921,19 @@ export class RaidRoomService implements OnModuleDestroy {
     this.logger.log(`Raid ${room.id}: o NDE entrou em campo`);
     return [
       roteiroDaChegadaDoNde(room.boss.professor.name, room.elenco.nde),
-      { type: 'switch', target: CHEFE, name: room.nde.combatant.name },
+      // Sem `professor`: são quatro, e vão em `professores`. Nome, tipos, HP e
+      // os quatro seguem juntos para a arena trocar a barra E as sprites neste
+      // ponto da fila — lidos do `foe` final da rodada, o grupo aparecia antes
+      // da hora, ainda com a vida do chefe.
+      {
+        type: 'switch',
+        target: CHEFE,
+        name: room.nde.combatant.name,
+        professores: room.nde.professores,
+        types: room.nde.combatant.types,
+        hp: room.nde.combatant.hp,
+        maxHp: room.nde.combatant.maxHp,
+      },
     ];
   }
 
@@ -977,7 +988,7 @@ export class RaidRoomService implements OnModuleDestroy {
     const entra = room.team[index];
     room.state!.player = entra.combatant;
     return [
-      { type: 'switch', target: ALUNO, name: entra.professor.name },
+      switchEvent(ALUNO, entra),
       {
         type: 'message',
         text: `${sai.professor.name} volta! ${entra.professor.name} entra em campo!`,
@@ -1049,7 +1060,7 @@ export class RaidRoomService implements OnModuleDestroy {
 
     const entrou = room.team[room.activeIndex];
     this.emitRound(room, 'battle:round', [
-      { type: 'switch', target: ALUNO, name: entrou.professor.name },
+      switchEvent(ALUNO, entrou),
       { type: 'message', text: `${entrou.professor.name} entra em campo!` },
       // O Ricardo chega AQUI, depois de o substituto estar em campo, para o
       // buff cair em quem vai lutar.
