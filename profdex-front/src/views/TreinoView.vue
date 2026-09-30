@@ -1,22 +1,29 @@
 <script setup>
-import { computed } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '../components/AppHeader.vue'
 import BottomNav from '../components/BottomNav.vue'
 import TopTabs from '../components/TopTabs.vue'
 import { useProfessorsStore } from '../stores/professors.js'
-import { TREINO_ENEMY_FALLBACK_NAME, TREINO_ENEMY_KEY } from '../data/treino.js'
+import { sortearOponente } from '../data/treino.js'
 const router = useRouter()
 const professors = useProfessorsStore()
 
-// O oponente do treino é fixo (ver src/data/treino.js). Anunciar o nome aqui
-// evita a promessa vazia de "escolha um professor" que a arena não cumpre.
-const oponente = computed(
-  () => professors.findByKey(TREINO_ENEMY_KEY)?.name ?? TREINO_ENEMY_FALLBACK_NAME,
-)
+// O oponente é sorteado a cada treino entre os professores comuns (ver
+// src/data/treino.js), então a chamada não promete um nome: diz que é sorteio.
+const sorteando = ref(false)
 
-function practice() {
-  router.push({ name: 'arena', params: { id: TREINO_ENEMY_KEY } })
+async function practice() {
+  if (sorteando.value) return
+  sorteando.value = true
+  try {
+    // A lista quase sempre já está carregada (a Profdex a busca no login).
+    // Sem ela, o sorteio cai no fallback e a arena abre igual.
+    await professors.ensureLoaded().catch(() => {})
+    router.push({ name: 'arena', params: { id: sortearOponente(professors.professors) } })
+  } finally {
+    sorteando.value = false
+  }
 }
 </script>
 <template>
@@ -43,10 +50,15 @@ function practice() {
       <section>
         <h2 class="pixel">PRATICAR BATALHA</h2>
         <p>
-          Teste golpes, tipos e estratégias contra o <strong>Prof. {{ oponente }}</strong
-          >. Nada aqui altera seu Elo, suas vitórias ou sua coleção.
+          Teste golpes, tipos e estratégias contra um <strong>professor sorteado</strong> a
+          cada treino. Nada aqui altera seu Elo, suas vitórias ou sua coleção.
         </p>
-        <button class="btn btn-primary pixel" type="button" @click="practice">
+        <button
+          class="btn btn-primary pixel"
+          type="button"
+          :disabled="sorteando"
+          @click="practice"
+        >
           INICIAR TREINO
         </button>
       </section>

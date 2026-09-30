@@ -8,6 +8,9 @@ node_modules/
 
 temp/
 
+# Contexto de passagem entre sessões de trabalho; vale só para a máquina local
+/HANDOFF.md
+
 # Certificado de Origem do Cloudflare (chave privada) usado pelo nginx de borda
 /nginx/certs
 # .htpasswd do Adminer é gerado em runtime a partir de ADMINER_AUTH_USER/

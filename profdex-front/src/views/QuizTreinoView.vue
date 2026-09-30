@@ -9,14 +9,17 @@
  *  - **Sem matrícula**: quem está logado é quem pratica. Na bancada a matrícula
  *    é digitada a cada rodada porque o tablet é compartilhado por uma fila.
  *  - **Sem cronômetro**: os 60s existem para dar conta da fila do evento.
- *    Treinando, pressa só atrapalha quem está aprendendo.
+ *    Treinando, pressa só atrapalha quem está aprendendo. Pelo mesmo motivo a
+ *    página não vira sozinha depois da resposta: quem decide quando já leu o
+ *    gabarito e a explicação é o aluno, na seta de próxima.
  *  - **Correção local**: o gabarito vem junto com a questão (não há o que
  *    burlar sem prêmio), então o acerto/erro aparece no toque, sem ida ao
  *    servidor entre uma alternativa e a próxima.
  */
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
+import PixelIcon from '../components/PixelIcon.vue'
 import TypeIcon from '../components/TypeIcon.vue'
 import { TYPE_CYCLE, getType, legibleColor } from '../data/types'
 import api from '../services/api'
@@ -36,13 +39,10 @@ const indice = ref(0)
 const escolhida = ref(null)
 const acertos = ref(0)
 
-// Quanto o resultado fica na tela antes de virar a página. Curto o bastante
-// para não entediar quem já entendeu, longo o bastante para dar tempo de ler a
-// alternativa certa quando se errou.
-const PAUSA_MS = 1400
-let avanco = null
+const botaoProxima = ref(null)
 
 const questaoAtual = computed(() => questoes.value[indice.value] ?? null)
+const ultimaQuestao = computed(() => indice.value + 1 >= questoes.value.length)
 const respondida = computed(() => escolhida.value !== null)
 const acertou = computed(
   () => respondida.value && escolhida.value === questaoAtual.value?.correctIndex,
@@ -127,26 +127,28 @@ function responder(i) {
     // silencioso de propósito
   }
 
-  avanco = setTimeout(proxima, PAUSA_MS)
+  // A seta entra na tela (a explicação pode empurrá-la para baixo da dobra) e
+  // recebe o foco, para o Enter já avançar. `focusVisible: false`: quem tocou
+  // não precisa de anel de foco em volta dela a cada resposta.
+  void nextTick(() => {
+    const botao = botaoProxima.value
+    if (!botao) return
+    botao.focus({ preventScroll: true, focusVisible: false })
+    const semMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    botao.scrollIntoView({ block: 'nearest', behavior: semMovimento ? 'auto' : 'smooth' })
+  })
 }
 
 function proxima() {
-  limparAvanco()
   escolhida.value = null
-  if (indice.value + 1 >= questoes.value.length) {
+  if (ultimaQuestao.value) {
     etapa.value = 'fim'
     return
   }
   indice.value += 1
 }
 
-function limparAvanco() {
-  if (avanco) clearTimeout(avanco)
-  avanco = null
-}
-
 function trocarTema() {
-  limparAvanco()
   etapa.value = 'tema'
   temaEscolhido.value = null
   questoes.value = []
@@ -157,16 +159,12 @@ function trocarTema() {
 
 function repetir() {
   const tema = temaEscolhido.value
-  limparAvanco()
   void comecar(tema)
 }
 
 function voltar() {
-  limparAvanco()
   router.push({ name: 'batalha' })
 }
-
-onBeforeUnmount(limparAvanco)
 
 /** Classe de cada alternativa depois da resposta. */
 function classeOpcao(i) {
@@ -279,6 +277,20 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
         <p v-if="respondida && questaoAtual.explanation" class="explicacao">
           {{ questaoAtual.explanation }}
         </p>
+
+        <!-- A página só vira quando o aluno pede: com tempo fixo, quem errou
+             não conseguia ler o gabarito e a explicação antes da próxima. -->
+        <button
+          v-if="respondida"
+          ref="botaoProxima"
+          class="btn-pixel proxima"
+          type="button"
+          :aria-label="ultimaQuestao ? 'Ver resultado da rodada' : 'Próxima questão'"
+          @click="proxima"
+        >
+          {{ ultimaQuestao ? 'VER RESULTADO' : 'PRÓXIMA' }}
+          <PixelIcon nome="seta-direita" :escala="2" />
+        </button>
       </section>
 
       <!-- 3. Fim da rodada -->
@@ -590,6 +602,16 @@ const DIFICULDADES = { facil: 'Fácil', media: 'Média', dificil: 'Difícil' }
   font-size: 11px;
   line-height: 1.6;
   text-align: center;
+}
+
+/* A seta avança a página, não disputa com as alternativas: compacta e no canto
+   de leitura, onde o olho termina a explicação. O chanfro é o do .btn-pixel. */
+.proxima {
+  align-self: flex-end;
+  min-width: 152px;
+  padding-inline: 18px 14px;
+  gap: 10px;
+  font-size: 11px;
 }
 
 /* ── Fim ────────────────────────────────────────────────────────────────── */

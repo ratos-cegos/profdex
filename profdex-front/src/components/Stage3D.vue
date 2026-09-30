@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
 import SceneContent from '@/components/SceneContent.vue'
@@ -32,6 +32,41 @@ const semMovimento =
 
 const autoRotate = computed(() => Boolean(props.config.autoRotate) && !semMovimento)
 const interativo = computed(() => props.config.interactive !== false)
+
+// `pronto` quando o modelo entrou na cena; `erro` quando não vai entrar. Quem
+// hospeda o palco decide o que mostrar no lugar (a bancada mostra o sprite).
+const emit = defineEmits(['pronto', 'erro'])
+
+// Download parado no Wi-Fi da feira não dispara erro nenhum: o fetch só fica
+// pendurado. Passado o prazo sem modelo, conta como falha, e o palco não fica
+// vazio esperando. Se o GLB chegar depois, quem hospeda já trocou de arte.
+const PRAZO_MODELO_MS = 12000
+let prazo = null
+let resolvido = false
+
+function armarPrazo(caminho) {
+  clearTimeout(prazo)
+  resolvido = false
+  if (!caminho) return
+  prazo = setTimeout(() => falhar(), PRAZO_MODELO_MS)
+}
+
+function aoFicarPronto() {
+  if (resolvido) return
+  resolvido = true
+  clearTimeout(prazo)
+  emit('pronto')
+}
+
+function falhar() {
+  if (resolvido) return
+  resolvido = true
+  clearTimeout(prazo)
+  emit('erro')
+}
+
+watch(() => props.config.modelPath, armarPrazo, { immediate: true })
+onBeforeUnmount(() => clearTimeout(prazo))
 </script>
 
 <template>
@@ -62,7 +97,12 @@ const interativo = computed(() => props.config.interactive !== false)
 
       <!-- Suspense trata o carregamento assíncrono do GLB lá dentro -->
       <Suspense>
-        <SceneContent :model-path="config.modelPath ?? ''" :spin="autoRotate" />
+        <SceneContent
+          :model-path="config.modelPath ?? ''"
+          :spin="autoRotate"
+          @pronto="aoFicarPronto"
+          @erro="falhar"
+        />
       </Suspense>
     </TresCanvas>
   </div>
