@@ -77,10 +77,17 @@ const grow = (inc = 15) => ({ kind: EFFECT.GROW, inc })
 const accuracyGain = (inc = 0.08) => ({ kind: EFFECT.ACCURACY_GAIN, inc })
 const comboBonus = (mult = 1.5) => ({ kind: EFFECT.COMBO_BONUS, mult })
 const weakPoint = (mult = 1.5) => ({ kind: EFFECT.WEAK_POINT, mult })
-const buff = (stat, delta = 1, turns = 0) => ({
+// Prazo padrão de buff e debuff. Era 0 — PERMANENTE pelo resto da estada em
+// campo. Um estágio vale ×1,5 (contra ×1,05 do IV inteiro), então a partida
+// virava corrida de setup, e pior nos seis debuffs de Velocidade, que têm
+// `accuracy: 1` e nunca erram. Mudou aqui, muda em `engine/moves.ts` do back —
+// o teste de paridade compara os efeitos.
+const STAGE_TURNS = 4
+
+const buff = (stat, delta = 1, turns = STAGE_TURNS) => ({
   kind: EFFECT.STAT_CHANGE, stat, delta, target: 'self', turns,
 })
-const debuff = (stat, delta = -1, turns = 0) => ({
+const debuff = (stat, delta = -1, turns = STAGE_TURNS) => ({
   kind: EFFECT.STAT_CHANGE, stat, delta, target: 'enemy', turns,
 })
 const growPerTurn = (stat, delta = 1, turns = 4) => ({
@@ -89,7 +96,11 @@ const growPerTurn = (stat, delta = 1, turns = 4) => ({
 const heal = (fraction = 0.3) => ({ kind: EFFECT.HEAL, fraction })
 const cleanse = () => ({ kind: EFFECT.CLEANSE })
 const resetDebuffs = () => ({ kind: EFFECT.RESET_DEBUFFS })
-const shield = (mode, amount = 0.5, turns = 1) => ({
+// Prazo do escudo em turnos do dono. Era 1, mas `turns` nunca era decrementado
+// — o escudo durava a partida inteira. Agora que expira, 1 não serve: a ordem
+// do turno é moeda ponderada e o escudo sumiria antes de ver um golpe em
+// ~metade dos casos. Com 2 ele cobre o próximo ataque, como a descrição diz.
+const shield = (mode, amount = 0.5, turns = 2) => ({
   kind: EFFECT.SHIELD, mode, amount, turns,
 })
 const debuffImmune = (turns = 3) => ({ kind: EFFECT.DEBUFF_IMMUNE, turns })
@@ -131,7 +142,9 @@ export const MOVES_BY_TYPE = {
     { id: 'puxao-de-sinapse', name: 'Puxão de Sinapse', category: CATEGORY.BUFF, power: null, accuracy: 1, raw: '+Ataque/turno', description: 'Rede neural: camadas que treinam e aumentam o ataque a cada turno.', effects: [growPerTurn(STAT.RIGOR)] },
     { id: 'chutometro-certeiro', name: 'Chutômetro Certeiro', category: CATEGORY.DEFESA, power: null, accuracy: 1, raw: 'esquiva', description: 'Predição: o modelo antecipa o próximo golpe e desvia dele.', effects: [shield('evade', 1)] },
     { id: 'corrige-na-marra', name: 'Corrige na Marra', category: CATEGORY.DEBUFF, power: null, accuracy: 1, raw: '-Ataque alvo', description: 'Backpropagation: propaga o erro de volta e reduz o ataque do alvo.', effects: [debuff(STAT.RIGOR)] },
-    { id: 'viajou-na-maionese', name: 'Viajou na Maionese', category: CATEGORY.STATUS, power: null, accuracy: 1, raw: 'confunde', description: 'Alucinação de IA generativa: resposta errada com toda a confiança confunde o alvo.', effects: [confuse(1)] },
+    // accuracy: confusão garantida por 3 turnos é o utilitário mais forte do
+    // jogo — era inofensivo só porque o golpe era no-op. Ver `resolveUtility`.
+    { id: 'viajou-na-maionese', name: 'Viajou na Maionese', category: CATEGORY.STATUS, power: null, accuracy: ACC.BAIXA, raw: 'confunde', description: 'Alucinação de IA generativa: resposta errada com toda a confiança confunde o alvo.', effects: [confuse(1)] },
     { id: 'desliga-uns-neuronios', name: 'Desliga uns Neurônios', category: CATEGORY.DEBUFF, power: null, accuracy: 1, raw: '-Velocidade alvo', description: 'Dropout (regularização): desativa parte do processamento do adversário.', effects: [debuff(STAT.RACIOCINIO)] },
     { id: 'ajuste-fino', name: 'Ajuste Fino', category: CATEGORY.CURA, power: null, accuracy: 1, raw: '+Cafeína/stats', description: 'Fine-tuning: recalibra o modelo, restaura vida e reajusta os atributos.', effects: [heal(0.25), resetDebuffs()] },
   ],
@@ -187,7 +200,8 @@ export const MOVES_BY_TYPE = {
     { id: 'atalho-do-index', name: 'Atalho do Index', category: CATEGORY.BUFF, power: null, accuracy: 1, raw: '+Velocidade', description: 'Índice: acelera drasticamente a busca e aumenta a velocidade.', effects: [buff(STAT.RACIOCINIO)] },
     { id: 'regra-da-casa', name: 'Regra da Casa', category: CATEGORY.DEFESA, power: null, accuracy: 1, raw: 'bloqueia debuff 3t', description: 'Constraint: restrição de integridade que impede debuffs por 3 turnos.', effects: [debuffImmune(3)] },
     { id: 'deu-replay', name: 'Deu Replay', category: CATEGORY.BUFF, power: null, accuracy: 1, raw: 'repete golpe+', description: 'Query cache: guarda a última consulta e repete o último golpe com bônus.', effects: [repeatLast(1.2)] },
-    { id: 'abraco-mortal', name: 'Abraço Mortal', category: CATEGORY.STATUS, power: null, accuracy: 1, raw: 'trava alvo', description: 'Deadlock: dois processos se travam mutuamente e o alvo fica preso.', effects: [paralyze(1)] },
+    // accuracy: paralisia garantida por 3 turnos, idem `viajou-na-maionese`.
+    { id: 'abraco-mortal', name: 'Abraço Mortal', category: CATEGORY.STATUS, power: null, accuracy: ACC.BAIXA, raw: 'trava alvo', description: 'Deadlock: dois processos se travam mutuamente e o alvo fica preso.', effects: [paralyze(1)] },
     { id: 'salvou-o-progresso', name: 'Salvou o Progresso', category: CATEGORY.CURA, power: null, accuracy: 1, raw: '+Cafeína', description: 'Transação/COMMIT: grava o estado consistente e recupera vida.', effects: [heal(0.3)] },
   ],
 

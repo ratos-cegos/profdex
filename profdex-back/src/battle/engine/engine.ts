@@ -21,10 +21,45 @@ import {
 } from './moves';
 
 export const DEFAULT_MAX_HP = 120;
-const DAMAGE_SCALE = 0.4; // calibra poder→dano contra a vida
-const STAB = 1.5; // bônus quando o golpe é do mesmo tipo do usuário
-const STAGE_MIN = -6;
-const STAGE_MAX = 6;
+export const DAMAGE_SCALE = 0.4; // calibra poder→dano contra a vida
+export const STAB = 1.5; // bônus quando o golpe é do mesmo tipo do usuário
+export const STAGE_MIN = -6;
+export const STAGE_MAX = 6;
+
+/**
+ * Prazo de cada tique de `statGrowPerTurn`.
+ *
+ * O ganho por turno era PERMANENTE: `growPerTurn(rigor, +1, 4)` entregava +4
+ * estágios definitivos (×3,0 de ataque) em troca de um único turno de setup, e
+ * era o maior desequilíbrio do movepool. Cada tique agora entra como buff
+ * temporizado — o golpe ainda escala (chega a +3 estágios, ×2,5) e depois
+ * decai, em vez de decidir a partida no turno 1.
+ */
+export const GROW_TICK_TURNS = 4;
+
+/**
+ * Teto do produto efetividade × `weakPoint`.
+ *
+ * `weakPoint` multiplica SOBRE a efetividade de tipo. Contra alvo de tipo duplo
+ * (4×) o produto chegava a 6×, o que transformava um golpe de poder 60 em algo
+ * capaz de decidir a partida num acerto. O teto mantém o bônus relevante no
+ * caso comum (2× → 3×) sem permitir o pico.
+ */
+export const WEAK_POINT_CAP = 4;
+
+// ── Status ──────────────────────────────────────────────────────────────────
+// Viraram carga real de balanceamento quando os cinco golpes de
+// `CATEGORY.STATUS` deixaram de ser no-op (ver `resolveUtility`).
+export const PARALYSIS_SKIP_CHANCE = 0.35;
+export const CONFUSION_SELF_HIT_CHANCE = 0.33;
+export const CONFUSION_SELF_HIT_FRACTION = 0.08;
+export const DOT_DEFAULT_POWER = 8;
+export const DOT_DEFAULT_TURNS = 3;
+
+// ── Precisão ────────────────────────────────────────────────────────────────
+export const EVASION_PER_STAGE = 0.05;
+export const MIN_HIT_CHANCE = 0.1;
+export const VARIANCE_MIN = 0.85;
 
 export const STATUS = {
   PARALISIA: 'paralisia',
@@ -87,7 +122,9 @@ export interface Combatant {
   status: CombatantStatus | null;
   shields: Shield[];
   timedBuffs: TimedBuff[]; // revertem ao expirar
-  regen: TimedBuff[]; // aplicam a cada turno (permanente)
+  // Sobem o estágio a cada turno. Cada tique também entra em `timedBuffs`, por
+  // isso decai — era permanente, ver GROW_TICK_TURNS.
+  regen: TimedBuff[];
   debuffImmuneTurns: number;
   forceMiss: boolean; // próximo ataque deste combatente erra
   usage: Record<string, number>; // moveId -> nº de usos (grow/accuracyGain)
@@ -227,9 +264,11 @@ export function upkeep(
   const events: BattleEvent[] = [];
   c.hpAtTurnStart = c.hp;
 
-  // Regen (buffs que sobem a cada turno)
+  // Regen (buffs que sobem a cada turno). Cada tique entra também como buff
+  // TEMPORIZADO para poder decair — ver GROW_TICK_TURNS.
   for (const r of c.regen) {
     c.stages[r.stat] = clampStage(c.stages[r.stat] + r.delta);
+    c.timedBuffs.push({ stat: r.stat, delta: r.delta, turns: GROW_TICK_TURNS });
     r.turns -= 1;
   }
   c.regen = c.regen.filter((r) => r.turns > 0);
@@ -241,12 +280,18 @@ export function upkeep(
   }
   c.timedBuffs = c.timedBuffs.filter((b) => b.turns > 0);
 
-  // Escudos duram até serem consumidos por um golpe; imunidade a debuff expira.
+  // Escudos e imunidade a debuff expiram.
+  //
+  // `Shield.turns` era gravado e nunca decrementado: o escudo durava a partida
+  // inteira até ser consumido por um golpe. No modo `reflect` isso virava
+  // imunidade permanente COM contra-ataque — o "reflete invencível".
+  for (const s of c.shields) s.turns -= 1;
+  c.shields = c.shields.filter((s) => s.turns > 0);
   if (c.debuffImmuneTurns > 0) c.debuffImmuneTurns -= 1;
 
   // Dano por turno (queimadura)
   if (c.status && c.status.kind === STATUS.QUEIMADURA) {
-    const dmg = c.status.power ?? 8;
+    const dmg = c.status.power ?? DOT_DEFAULT_POWER;
     c.hp = Math.max(0, c.hp - dmg);
     events.push({
       type: 'message',
@@ -268,7 +313,7 @@ export function upkeep(
   if (c.status && c.status.kind === STATUS.PARALISIA) {
     c.status.turns -= 1;
     if (c.status.turns <= 0) c.status = null;
-    if (chance(0.35)) {
+    if (chance(PARALYSIS_SKIP_CHANCE)) {
       events.push({
         type: 'message',
         text: `${c.name} está travado e não conseguiu agir!`,
@@ -283,8 +328,11 @@ export function upkeep(
     if (c.status.turns <= 0) {
       c.status = null;
       events.push({ type: 'message', text: `${c.name} recobrou o juízo.` });
-    } else if (chance(0.33)) {
-      const dmg = Math.max(1, Math.round(c.maxHp * 0.08));
+    } else if (chance(CONFUSION_SELF_HIT_CHANCE)) {
+      const dmg = Math.max(
+        1,
+        Math.round(c.maxHp * CONFUSION_SELF_HIT_FRACTION),
+      );
       c.hp = Math.max(0, c.hp - dmg);
       events.push({
         type: 'message',
@@ -312,14 +360,18 @@ function effectiveAttack(attacker: Combatant, move: Move) {
   return { power, accuracy };
 }
 
-function hasFieldEffect(state: BattleState): boolean {
-  const active = (c: Combatant) =>
-    !!c.status ||
-    c.timedBuffs.length > 0 ||
-    c.regen.length > 0 ||
-    c.shields.length > 0 ||
-    Object.values(c.stages).some((s) => s !== 0);
-  return active(state.player) || active(state.enemy);
+/**
+ * Condição do `comboBonus`: o DEFENSOR está debilitado.
+ *
+ * A checagem anterior era "existe qualquer efeito no campo", dos dois lados —
+ * e contava estágio positivo, escudo e buff do próprio atacante. Como estágio
+ * de stat não expirava, bastava um buff no turno 1 para os quatro golpes de
+ * combo ficarem em ×1,5 pelo resto da partida: a condição nunca voltava a ser
+ * falsa. Exigir debilitação do ALVO devolve o sentido de combo — montar e
+ * emendar — e volta a ser uma condição que o jogador pode ler no HUD.
+ */
+function defenderIsAfflicted(defender: Combatant): boolean {
+  return !!defender.status || Object.values(defender.stages).some((s) => s < 0);
 }
 
 // Aplica dano ao defensor considerando escudos.
@@ -341,9 +393,14 @@ function applyDamageWithShields(defender: Combatant, rawDamage: number) {
       return { dealt: 0, reflected: 0, note: 'bloqueou' };
     }
     if (s.mode === 'reflect') {
+      // Refletir DIVIDE o golpe, não o anula: `amount` volta para o atacante e
+      // o resto ainda entra. Antes o defensor tomava zero E contra-atacava, o
+      // que fazia de `direito-de-resposta` um escudo melhor que os de bloqueio
+      // puro — de graça, e (com o bug do prazo) para sempre.
       defender.shields.splice(idx, 1);
       reflected = Math.round(rawDamage * s.amount);
-      return { dealt: 0, reflected, note: 'refletiu' };
+      dealt = Math.max(0, rawDamage - reflected);
+      note = 'refletiu';
     }
     if (s.mode === 'reduce') {
       defender.shields.splice(idx, 1);
@@ -449,9 +506,10 @@ function resolveAttack(
   }
   const evasion = Math.max(
     0,
-    (defender.stages.raciocinio - attacker.stages.raciocinio) * 0.05,
+    (defender.stages.raciocinio - attacker.stages.raciocinio) *
+      EVASION_PER_STAGE,
   );
-  const hitChance = Math.max(0.1, Math.min(1, accuracy - evasion));
+  const hitChance = Math.max(MIN_HIT_CHANCE, Math.min(1, accuracy - evasion));
   if (!chance(hitChance)) {
     events.push({ type: 'message', text: `${attacker.name} errou o ataque!` });
     return;
@@ -466,9 +524,13 @@ function resolveAttack(
 
   let bonus = stab;
   const combo = move.effects.find((e) => e.kind === EFFECT.COMBO_BONUS);
-  if (combo && hasFieldEffect(state)) bonus *= combo.mult ?? 1;
+  if (combo && defenderIsAfflicted(defender)) bonus *= combo.mult ?? 1;
+
+  // `weakPoint` entra na efetividade COM teto (ver WEAK_POINT_CAP). `eff`
+  // segue cru porque é ele que decide a mensagem de super/pouco eficaz.
   const weak = move.effects.find((e) => e.kind === EFFECT.WEAK_POINT);
-  if (weak && eff > 1) bonus *= weak.mult ?? 1;
+  const effForDamage =
+    weak && eff > 1 ? Math.min(WEAK_POINT_CAP, eff * (weak.mult ?? 1)) : eff;
 
   // Quantidade de golpes (multi-hit)
   let hits = 1;
@@ -481,11 +543,14 @@ function resolveAttack(
   let reflectedTotal = 0;
   for (let i = 0; i < hits; i++) {
     if (defender.hp <= 0) break;
-    const variance = rand(0.85, 1);
+    const variance = rand(VARIANCE_MIN, 1);
     const raw = Math.max(
       1,
       Math.round(
-        ((power * DAMAGE_SCALE * atkMult) / defMult) * eff * bonus * variance,
+        ((power * DAMAGE_SCALE * atkMult) / defMult) *
+          effForDamage *
+          bonus *
+          variance,
       ),
     );
     const { dealt, reflected, note } = applyDamageWithShields(defender, raw);
@@ -561,10 +626,18 @@ function applyStatus(
   targetKey: CombatantKey,
   kind: StatusKind,
   events: BattleEvent[],
-  power = 8,
-  turns = 3,
+  power = DOT_DEFAULT_POWER,
+  turns = DOT_DEFAULT_TURNS,
 ) {
-  if (target.status) return; // um status de cada vez
+  // Um status de cada vez. Antes a recusa era silenciosa: o golpe gastava o
+  // turno e a UI não dizia por quê.
+  if (target.status) {
+    events.push({
+      type: 'message',
+      text: `${target.name} já está sob outro efeito!`,
+    });
+    return;
+  }
   target.status = { kind, turns, power };
   const verb = {
     paralisia: 'foi travado',
@@ -585,8 +658,45 @@ function resolveUtility(
   const foeKey: CombatantKey = atkKey === 'player' ? 'enemy' : 'player';
   const foe = state[foeKey];
 
+  // Golpes que aplicam condição (categoria STATUS) passam pela precisão.
+  //
+  // Os cinco golpes de `CATEGORY.STATUS` têm `power: null` e por isso caem
+  // aqui, não em `resolveAttack` — e este switch não tinha caso para
+  // PARALYZE/CONFUSE/DOT, então os cinco eram NO-OP silencioso: gastavam o
+  // turno, imprimiam "usou X!" e não faziam nada, enquanto a tooltip do botão
+  // prometia "Pode travar (100%)". Paralisia, confusão e dano contínuo só
+  // existiam como efeito colateral de um ataque que acertou.
+  //
+  // A rolagem de precisão é o preço: são os únicos golpes que mexem no
+  // adversário sem tirar dano, e sem ela seriam controle garantido.
+  const aplicaStatus = move.effects.some(
+    (e) =>
+      e.kind === EFFECT.PARALYZE ||
+      e.kind === EFFECT.CONFUSE ||
+      e.kind === EFFECT.DOT,
+  );
+  if (aplicaStatus && !chance(move.accuracy ?? 1)) {
+    events.push({ type: 'message', text: `${self.name} errou o golpe!` });
+    return;
+  }
+
   for (const e of move.effects) {
     switch (e.kind) {
+      case EFFECT.PARALYZE: {
+        if (chance(e.chance ?? 1))
+          applyStatus(foe, foeKey, STATUS.PARALISIA, events);
+        break;
+      }
+      case EFFECT.CONFUSE: {
+        if (chance(e.chance ?? 1))
+          applyStatus(foe, foeKey, STATUS.CONFUSAO, events);
+        break;
+      }
+      case EFFECT.DOT: {
+        if (chance(e.chance ?? 1))
+          applyStatus(foe, foeKey, STATUS.QUEIMADURA, events, e.power, e.turns);
+        break;
+      }
       case EFFECT.STAT_CHANGE: {
         if (!e.stat) break;
         if (e.target === 'self')
