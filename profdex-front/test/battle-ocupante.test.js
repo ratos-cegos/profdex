@@ -87,6 +87,54 @@ test('grupo sem professor: a barra passa a ser a de quem entrou', () => {
   assert.equal(fim.enemy.fainted, false)
 })
 
+// A sequência vista numa raid real: o chefe apanha, o NDE entra, cai, e o
+// chefe volta. Sprites, nome e barra têm de trocar JUNTOS, no ponto da fila —
+// antes o grupo aparecia com a vida do chefe, e o chefe "caía" no lugar do NDE.
+test('raid: NDE entra, cai e o chefe volta, cada um com o próprio nome e barra', () => {
+  const chefe = { id: 'p-tania', slug: 'tania', name: 'Tânia' }
+  const nde = [eron, mario, { id: 'p-s', slug: 's', name: 'Simone' }, { id: 'p-t', slug: 't', name: 'Tânia P.' }]
+  let estado = {
+    player: ocupanteDoServidor({ professor: eron, hp: 80, maxHp: 120 }),
+    enemy: ocupanteDoServidor({ professor: chefe, nomeEmCampo: 'Tânia', hp: 98, maxHp: 240 }),
+  }
+
+  estado = aplicar(estado, [
+    { type: 'damage', target: 'enemy', amount: 20 }, // ainda no chefe
+    { type: 'switch', target: 'enemy', name: 'NDE da Coordenação', professores: nde, types: ['humanas'], hp: 100, maxHp: 100 },
+  ])
+  assert.equal(estado.enemy.nome, 'NDE da Coordenação')
+  assert.equal(estado.enemy.grupo, nde)
+  assert.equal(estado.enemy.hp, 100)
+  assert.equal(estado.enemy.maxHp, 100)
+
+  estado = aplicar(estado, [
+    { type: 'damage', target: 'enemy', amount: 100 },
+    { type: 'faint', target: 'enemy' },
+  ])
+  // Quem cai é o NDE: nome e sprites ainda são dele.
+  assert.equal(estado.enemy.nome, 'NDE da Coordenação')
+  assert.equal(estado.enemy.fainted, true)
+
+  const antes = chaveDoOcupante(estado.enemy)
+  estado = aplicarEvento(estado, {
+    type: 'switch', target: 'enemy', name: 'Tânia', professor: chefe, types: ['robotica'], hp: 92, maxHp: 240,
+  })
+  assert.equal(estado.enemy.grupo, null)
+  assert.equal(estado.enemy.nome, null)
+  assert.equal(estado.enemy.professor, chefe)
+  assert.equal(estado.enemy.hp, 92)
+  assert.equal(estado.enemy.maxHp, 240)
+  assert.equal(estado.enemy.fainted, false)
+  assert.notEqual(chaveDoOcupante(estado.enemy), antes)
+})
+
+test('ocupante do servidor traz grupo e nome em campo da raid', () => {
+  const o = ocupanteDoServidor({ professor: eron, professores: [eron, mario], nomeEmCampo: 'NDE', hp: 10, maxHp: 100 })
+  assert.deepEqual(o.grupo, [eron, mario])
+  assert.equal(o.nome, 'NDE')
+  assert.equal(ocupanteDoServidor({ professor: eron, hp: 1, maxHp: 1 }).grupo, null)
+})
+
 test('cura não passa do máximo; eventos sem alvo não mudam nada', () => {
   const estado = inicio()
   const curado = aplicarEvento(estado, { type: 'heal', target: 'player', amount: 500 })

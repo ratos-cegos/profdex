@@ -16,8 +16,14 @@
 // para o teste ser direto.
 
 /**
- * @typedef {{ professor: object|null, types: string[], hp: number, maxHp: number,
+ * @typedef {{ professor: object|null, grupo: object[]|null, nome: string|null,
+ *             types: string[], hp: number, maxHp: number,
  *             fainted: boolean, entrada: number }} Ocupante
+ *
+ * `grupo` e `nome` só existem na raid: `grupo` são os quatro do NDE dividindo
+ * um corpo, e `nome` é quem ocupa o assento quando ele não é um professor
+ * ("NDE da Coordenação"). Moram aqui, e não lidos do `foe` do servidor, pelo
+ * mesmo motivo do resto: o `foe` é o estado do FIM da rodada.
  */
 
 /** O ocupante como o servidor o descreve agora (fim de rodada, reconexão). */
@@ -25,6 +31,8 @@ export function ocupanteDoServidor(lado, entrada = 0) {
   const hp = Math.max(0, lado?.hp ?? 0)
   return {
     professor: lado?.professor ?? null,
+    grupo: lado?.professores ?? null,
+    nome: lado?.nomeEmCampo ?? null,
     types: lado?.types ?? [],
     hp,
     maxHp: lado?.maxHp ?? 0,
@@ -60,6 +68,8 @@ export function aplicarEvento(estado, ev) {
       if (ev.professor) {
         proximo = {
           professor: ev.professor,
+          grupo: null,
+          nome: null,
           types: ev.types ?? [],
           hp: Math.max(0, ev.hp ?? 0),
           maxHp: ev.maxHp ?? 0,
@@ -67,10 +77,12 @@ export function aplicarEvento(estado, ev) {
           entrada: atual.entrada + 1,
         }
       } else if (Number.isFinite(ev.hp)) {
-        // Um grupo em campo (o NDE da raid): não há UM professor para mostrar
-        // — a arte vem de `foe.professores` —, mas a barra já é a dele.
+        // Um grupo em campo (o NDE da raid): não há UM professor, mas os quatro
+        // vêm no evento. Sprites, nome e barra trocam juntos, aqui.
         proximo = {
           ...atual,
+          grupo: ev.professores ?? atual.grupo,
+          nome: ev.name ?? atual.nome,
           types: ev.types ?? atual.types,
           hp: Math.max(0, ev.hp),
           maxHp: ev.maxHp ?? atual.maxHp,

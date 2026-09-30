@@ -164,11 +164,13 @@ const ladoRival = computed(() => {
     professor: o.professor,
     // Só a raid manda isto, e só durante o evento do NDE: quatro professores
     // dividindo um corpo. O palco desenha os quatro quando o campo existe.
-    professores: pvp.value?.foe?.professores ?? null,
-    // `nomeEmCampo` vem antes do nome do professor porque quem está no assento
-    // pode ser o grupo ("NDE da Coordenação"), não um professor.
-    name:
-      pvp.value?.foe?.nomeEmCampo ?? o.professor?.name ?? pvp.value?.opponent?.name ?? '',
+    // Do OCUPANTE, como a barra: lidos do `foe` final, grupo e nome trocavam
+    // antes da fila chegar à troca (o NDE surgia com a vida do chefe, e o
+    // chefe voltava a tempo de "cair" no lugar do NDE).
+    professores: o.grupo,
+    // O nome em campo vem antes do nome do professor porque quem está no
+    // assento pode ser o grupo ("NDE da Coordenação"), não um professor.
+    name: o.nome ?? o.professor?.name ?? pvp.value?.opponent?.name ?? '',
     types: o.types,
     hp: o.hp,
     maxHp: o.maxHp,

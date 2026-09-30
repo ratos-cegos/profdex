@@ -921,12 +921,15 @@ export class RaidRoomService implements OnModuleDestroy {
     this.logger.log(`Raid ${room.id}: o NDE entrou em campo`);
     return [
       roteiroDaChegadaDoNde(room.boss.professor.name, room.elenco.nde),
-      // Sem `professor`: são quatro, e a arte vem de `foe.professores`. Tipos e
-      // HP vão junto para a barra passar a ser a do NDE já nesta troca.
+      // Sem `professor`: são quatro, e vão em `professores`. Nome, tipos, HP e
+      // os quatro seguem juntos para a arena trocar a barra E as sprites neste
+      // ponto da fila — lidos do `foe` final da rodada, o grupo aparecia antes
+      // da hora, ainda com a vida do chefe.
       {
         type: 'switch',
         target: CHEFE,
         name: room.nde.combatant.name,
+        professores: room.nde.professores,
         types: room.nde.combatant.types,
         hp: room.nde.combatant.hp,
         maxHp: room.nde.combatant.maxHp,

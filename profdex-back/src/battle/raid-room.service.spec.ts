@@ -760,6 +760,13 @@ describe('RaidRoomService — o evento do NDE', () => {
     expect(comNde).toBeDefined();
     expect(comNde!.payload.foe.professores).toHaveLength(4);
     expect(comNde!.payload.foe.nomeEmCampo).toBe('NDE da Coordenação');
+    // O `switch` do NDE leva os quatro: é por ele que a arena troca as sprites
+    // no ponto certo da fila, e não no fim da rodada.
+    const trocaDoNde = eventos(ctx).find(
+      (ev) => ev.type === 'switch' && ev.name === 'NDE da Coordenação',
+    );
+    expect(trocaDoNde?.professores).toHaveLength(4);
+    expect(trocaDoNde?.professor).toBeUndefined();
     expect(comNde!.payload.foe.maxHp).toBe(100);
     // O chefe fica no banco do lado inimigo, vivo — é ali que o aluno vê a
     // barra dele subir enquanto se cura.

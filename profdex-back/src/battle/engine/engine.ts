@@ -107,6 +107,8 @@ export type BattleEvent =
       target: CombatantKey;
       name: string;
       professor?: unknown;
+      /** Só o NDE da raid: os quatro que entram juntos, no lugar de `professor`. */
+      professores?: unknown[];
       types?: string[];
       hp?: number;
       maxHp?: number;
