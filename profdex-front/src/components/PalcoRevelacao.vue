@@ -69,6 +69,9 @@ const inicial = computed(() => props.professor.name?.[0]?.toUpperCase() ?? '?')
       :class="{ 'palco-revelacao__sprite--pixel': professor.pixelArt }"
       :src="spriteProprio"
       :alt="professor.name"
+      width="340"
+      height="340"
+      decoding="async"
       @error="spriteFalhou = true"
     />
     <span
@@ -109,9 +112,11 @@ const inicial = computed(() => props.professor.name?.[0]?.toUpperCase() ?? '?')
   place-items: center;
 }
 
+/* Ocupa o quadrado do palco e a arte se ajusta dentro (`contain`): os
+   `width`/`height` do <img> reservam o espaço antes de a imagem chegar. */
 .palco-revelacao__sprite {
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   /* Balanço leve: sem 3D, é o que dá vida à revelação. */
   animation: revelacao-balanco 2.4s ease-in-out infinite;
