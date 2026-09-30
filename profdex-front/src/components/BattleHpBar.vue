@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import TypeIcon from './TypeIcon.vue'
+import { getType, legibleColor } from '../data/types.js'
 
 const props = defineProps({
   name: { type: String, required: true },
@@ -18,6 +19,23 @@ const props = defineProps({
 
 const percent = computed(() =>
   props.maxHp > 0 ? Math.max(0, Math.min(100, (props.hp / props.maxHp) * 100)) : 0
+)
+
+// Ícones na cor do tipo, como em todas as outras superfícies de tipo do app.
+//
+// Aqui eram brancos (`color: var(--text-primary)` em `.hp-panel__types`) — a
+// única tela que descartava a cor canônica, justamente a que o jogador olha o
+// tempo inteiro durante a batalha.
+//
+// Usa `legibleColor` e não a `color` crua porque o painel fica sobre fundo
+// escuro: `engenharia-software` é `#495057`, que dá 1,7:1 contra `--bg-deep` e
+// simplesmente desaparece. `legibleColor` clareia preservando o matiz até bater
+// 4,5:1. Fallback na cor de texto secundário para id desconhecido.
+const typeSwatches = computed(() =>
+  props.types.map((id) => ({
+    id,
+    color: legibleColor(getType(id)?.color ?? '#a8b8c0'),
+  }))
 )
 
 // Verde > 50%, amarelo > 20%, vermelho no restante (igual Pokémon)
@@ -39,8 +57,14 @@ function hideBrokenImage(event) {
     </div>
     <div class="hp-panel__info">
       <div class="hp-panel__row">
-        <span v-if="types.length" class="hp-panel__types">
-          <TypeIcon v-for="id in types" :key="id" :type="id" :size="12" />
+        <span v-if="typeSwatches.length" class="hp-panel__types">
+          <TypeIcon
+            v-for="t in typeSwatches"
+            :key="t.id"
+            :type="t.id"
+            :size="12"
+            :style="{ color: t.color }"
+          />
         </span>
         <span class="pixel hp-panel__name">{{ name }}</span>
       </div>
@@ -111,7 +135,7 @@ function hideBrokenImage(event) {
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
-  color: var(--text-primary);
+  /* Sem `color` aqui: cada TypeIcon recebe a sua, via `typeSwatches`. */
 }
 
 .hp-panel__name {
