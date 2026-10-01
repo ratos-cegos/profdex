@@ -47,6 +47,29 @@ function agendar(fn, ms) {
   timers.push(setTimeout(fn, ms))
 }
 
+/**
+ * Volta ao começo quando o ATOR muda.
+ *
+ * Sem isto, o segundo momento de roteiro de uma mesma raid aparecia sem
+ * animação nenhuma. A virada de estágio 3 e a chegada do NDE vêm no MESMO lote
+ * de eventos: o overlay zera `roteiro` e põe o próximo no mesmo tick, o Vue
+ * agrupa as duas atualizações, e o componente é remendado em vez de desmontado.
+ * `fase` ficava em `pronto` — que é justamente a classe com `animation: none` e
+ * `scale(1.3)` — e `arte` ficava em 1.
+ *
+ * O Ricardo era o mais atingido porque o evento dele quase sempre vem DEPOIS de
+ * alguma virada de estágio: ele era sempre o segundo roteiro da raid.
+ */
+watch(
+  () => props.ator,
+  () => {
+    for (const t of timers) clearTimeout(t)
+    timers = []
+    fase.value = 'entrando'
+    arte.value = 0
+  },
+)
+
 watch(
   () => props.transformando,
   (ligou) => {
@@ -88,6 +111,10 @@ onBeforeUnmount(() => {
       :alt="ator.nome"
       decoding="async"
     />
+    <!-- Sem arte, a cena ainda diz QUEM chegou. Professor sem sprite cadastrada
+         é dado incompleto, não motivo para o personagem sumir do roteiro. -->
+    <span v-if="!sprites().length" class="pixel ator__placa">{{ ator.nome }}</span>
+
     <!-- O clarão da transformação. Só existe durante ela, e é ele que esconde a
          troca de arquivo no quadro em que ela acontece. -->
     <span v-if="fase === 'crescendo' || fase === 'caindo'" class="ator__clarao" />
@@ -132,6 +159,19 @@ onBeforeUnmount(() => {
 
 .ator__sprite--pixel {
   image-rendering: pixelated;
+}
+
+/* A placa de quem não tem arte. Mesma entrada da sprite, para a cena continuar
+   tendo alguém chegando. */
+.ator__placa {
+  align-self: center;
+  padding: 10px 14px;
+  font-size: 9px;
+  color: var(--yellow);
+  border: 2px solid var(--yellow);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.5);
+  animation: entraAndando 880ms steps(1, end) both;
 }
 
 /* ── A transformação ────────────────────────────────────────────────────────
