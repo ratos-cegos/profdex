@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createCombatant,
-  effectiveStat,
+  playerFirstChance,
   turnOrder,
   IV_BONUS_MAX,
   ivBonus,
@@ -32,26 +32,26 @@ test('ivBonus reescala 0-15 para 0-IV_BONUS_MAX', () => {
   assert.equal(ivBonus(undefined), 0)
 })
 
-test('velocidade pesa a moeda da ordem de turno, não decide sozinha', () => {
-  // Antes o empate ia sempre para o jogador, o que dava iniciativa permanente
-  // contra o bot (que não tem IVs). Agora é probabilístico, igual ao servidor.
-  const state = {
-    player: createCombatant({ name: 'A', types: ['humanas'], ivs: { ivRaciocinio: 15 } }),
-    enemy: createCombatant({ name: 'B', types: ['humanas'] }),
-  }
+test('a Velocidade maior abre o turno; empate é cara ou coroa', () => {
+  // Igual ao servidor. O bot do treino não tem IVs: qualquer IV de Velocidade
+  // já dá a iniciativa, e o empate não vai mais sempre para o jogador.
+  const lado = (ivA, ivB) => ({
+    player: createCombatant({ name: 'A', types: ['humanas'], ivs: { ivRaciocinio: ivA } }),
+    enemy: createCombatant({ name: 'B', types: ['humanas'], ivs: { ivRaciocinio: ivB } }),
+  })
 
-  // Determinístico: a probabilidade é a regra. Amostrar aqui deixaria o teste
-  // instável, porque o valor esperado (~0,512) fica a menos de 2 desvios de
-  // um limite em 0,5.
-  const ps = effectiveStat(state.player, 'raciocinio')
-  const es = effectiveStat(state.enemy, 'raciocinio')
-  const probabilidade = ps / (ps + es)
+  assert.equal(playerFirstChance(lado(1, 0)), 1)
+  assert.equal(playerFirstChance(lado(0, 15)), 0)
+  assert.equal(playerFirstChance(lado(9, 9)), 0.5)
 
-  assert.ok(probabilidade > 0.5, `esperado acima de 0,5, veio ${probabilidade}`)
-  assert.ok(probabilidade < 0.53, `esperado abaixo de 0,53, veio ${probabilidade}`)
+  // Buff conta: um estágio vale mais que o IV inteiro.
+  const acelerado = lado(0, 15)
+  acelerado.player.stages.raciocinio = 1
+  assert.equal(playerFirstChance(acelerado), 1)
 
-  // Guarda de fumaça, com margem larga: a ordem realmente varia entre os dois.
+  for (let i = 0; i < 200; i++) assert.equal(turnOrder(lado(15, 0), null, null)[0].key, 'player')
+
   const lados = new Set()
-  for (let i = 0; i < 200; i++) lados.add(turnOrder(state, null, null)[0].key)
+  for (let i = 0; i < 200; i++) lados.add(turnOrder(lado(9, 9), null, null)[0].key)
   assert.deepEqual([...lados].sort(), ['enemy', 'player'])
 })

@@ -50,24 +50,6 @@ export const CONFUSION_SELF_HIT_FRACTION = 0.08
 export const DOT_DEFAULT_POWER = 8
 export const DOT_DEFAULT_TURNS = 3
 
-/**
- * Expoente da razão de Velocidade na ordem do turno.
- *
- * A ordem é uma moeda pesada por `ps/(ps+es)`. Com a razão CRUA, o atributo
- * inteiro não consegue pesar quase nada: Velocidade vai de 100 a 105 (o IV
- * rende no máximo IV_BONUS_MAX), então 15 contra 0 dava 51,2% e o caso comum no
- * evento — um raro de IV 15 contra um comum de IV 9, 105 contra 103 — dava
- * 50,5%. Era cara ou coroa, e os alunos relatavam o raro de cinco estrelas
- * abrindo o turno depois de um comum qualquer.
- *
- * Elevar a razão antes de normalizar estica essa faixa curta: 21 põe 105 contra
- * 100 em ~74% e 105 contra 103 em ~60%. Medido com o motor real (n=4000), a
- * guarda de Elo não piora — quem tem IV maior vence 52,8% das partidas contra
- * 53,3% da versão crua, porque a iniciativa é só um dos quatro atributos. Ver
- * `iv-balance.spec.ts`, que falha se isso voltar a subir.
- */
-export const SPEED_ORDER_EXPONENT = 21
-
 // ── Precisão ────────────────────────────────────────────────────────────────
 export const EVASION_PER_STAGE = 0.05
 export const MIN_HIT_CHANCE = 0.1
