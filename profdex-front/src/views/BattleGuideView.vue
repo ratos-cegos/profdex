@@ -109,8 +109,10 @@ const guide = computed(() =>
           <li class="attr" style="--attr-color: var(--ds-orange-glow)">
             <span class="pixel attr__name">Velocidade</span>
             <p class="attr__desc">
-              Quem tem mais Velocidade <strong>age primeiro</strong> no turno e fica
-              mais difícil de acertar.
+              Decide quem <strong>age primeiro</strong> no turno. Quanto maior a diferença, mais
+              provável abrir a rodada — mas nunca é garantido. Golpes que
+              <strong>aumentam a sua</strong> ou <strong>reduzem a dele</strong> pesam mais que a
+              diferença de ficha, e são eles que também fazem você errar menos e desviar mais.
             </p>
           </li>
         </ul>
