@@ -189,20 +189,26 @@ export const SETTINGS = {
   /**
    * Espera da DUPLA entre batalhas ranqueadas. É a trava anti win-trading:
    * sem ela, dois amigos alternando vitórias sobem o Elo sem jogar com mais
-   * ninguém. Por isso o mínimo é 1h e não zero.
+   * ninguém. Por isso o mínimo é 1 minuto e não zero.
+   *
+   * Em MINUTOS, e não em horas: no evento a espera precisa poder ficar abaixo
+   * de uma hora e depois subir de novo, pelo painel. A chave antiga
+   * (`battle.pair_cooldown_hours`) foi convertida pela migration
+   * `20261001190000_cooldown_batalha_em_minutos`.
    */
-  battlePairCooldownHours: {
+  battlePairCooldownMinutes: {
     kind: 'number',
-    key: 'battle.pair_cooldown_hours',
-    default: 12,
+    key: 'battle.pair_cooldown_minutes',
+    default: 12 * 60,
     min: 1,
-    max: 72,
+    max: 72 * 60,
     label: 'Cooldown de batalha entre a mesma dupla',
-    unit: 'horas',
+    unit: 'minutos',
     help:
-      'Quanto a MESMA dupla espera para outra batalha ranqueada. É a trava ' +
-      'anti win-trading: dois amigos alternando vitórias inflariam o Elo sem ' +
-      'jogar com mais ninguém. Não afeta batalhar com outras pessoas.',
+      'Quanto a MESMA dupla espera para outra batalha ranqueada, em minutos ' +
+      '(60 = 1 hora, 720 = 12 horas). É a trava anti win-trading: dois amigos ' +
+      'alternando vitórias inflariam o Elo sem jogar com mais ninguém. Não ' +
+      'afeta batalhar com outras pessoas.',
   },
   /**
    * O corpo do lendário, em múltiplos dos 120 de HP de um professor normal.
