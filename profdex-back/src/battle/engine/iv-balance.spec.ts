@@ -1,4 +1,4 @@
-import { createCombatant, effectiveStat, performMove, turnOrder, upkeep, IV_BONUS_MAX, ivBonus } from './engine';
+import { createCombatant, effectiveStat, performMove, playerFirstChance, turnOrder, upkeep, IV_BONUS_MAX, ivBonus } from './engine';
 import { buildMoveset } from './moves';
 import type { Move } from './moves';
 import type { BattleState } from './engine';
@@ -71,58 +71,66 @@ describe('balanceamento dos IVs', () => {
     expect(createCombatant({ name: 'x', types: ['humanas'], ivs: { ivHp: 15 } }).maxHp).toBe(125);
   });
 
+  const duelistas = (ivA: number, ivB: number): BattleState =>
+    ({
+      player: createCombatant({ name: 'A', types: ['humanas'], ivs: { ...ZERO, ivRaciocinio: ivA } }),
+      enemy: createCombatant({ name: 'B', types: ['humanas'], ivs: { ...ZERO, ivRaciocinio: ivB } }),
+    }) as BattleState;
+
   it('não dá iniciativa permanente a quem tem 1 ponto a mais de velocidade', () => {
     // Este é o caso que quebrou antes: com ordem de turno em degrau, 1 ponto
     // de diferença garantia agir primeiro em todos os turnos, e valia ~69%.
-    const rapido = createCombatant({ name: 'A', types: ['humanas'], ivs: { ...ZERO, ivRaciocinio: 8 } });
-    const lento = createCombatant({ name: 'B', types: ['humanas'], ivs: { ...ZERO, ivRaciocinio: 7 } });
-    const state = { player: rapido, enemy: lento } as BattleState;
-
-    let primeiroDoA = 0;
-    for (let i = 0; i < 2000; i++) {
-      if (turnOrder(state, null, null)[0].key === 'player') primeiroDoA++;
-    }
-
-    // Deve ficar perto de 50%, não em 100%.
-    expect(primeiroDoA / 2000).toBeGreaterThan(0.4);
-    expect(primeiroDoA / 2000).toBeLessThan(0.6);
+    // Mesmo com o expoente, 1 ponto continua sendo quase uma moeda justa — é a
+    // diferença GRANDE que precisa ser sentida, não qualquer diferença.
+    const probabilidade = playerFirstChance(duelistas(8, 7));
+    expect(probabilidade).toBeGreaterThan(0.5);
+    expect(probabilidade).toBeLessThan(0.55);
   });
 
-  it('mantém a velocidade relevante: 0 vs 15 pende, mas não decide', () => {
-    const state = {
-      player: createCombatant({ name: 'A', types: ['humanas'], ivs: { ...ZERO, ivRaciocinio: 15 } }),
-      enemy: createCombatant({ name: 'B', types: ['humanas'], ivs: ZERO }),
-    } as BattleState;
+  it('o raro de velocidade perfeita abre o turno contra um comum bom', () => {
+    // A regressão que trouxe esta mudança: aluno com raro de IV 15 (Velocidade
+    // 105) relatando que um comum de IV 9 (103) batia primeiro. Com a razão
+    // crua eram 50,5% — cara ou coroa sobre uma faixa de atributo que vai só de
+    // 100 a 105. Se este número voltar para perto de 50%, a Velocidade voltou a
+    // ser decorativa e o guia de batalha voltou a mentir.
+    expect(playerFirstChance(duelistas(15, 9))).toBeGreaterThan(0.57);
+  });
+
+  it('mantém a velocidade relevante: 0 vs 15 pende forte, mas não é absoluto', () => {
+    const state = duelistas(15, 0);
 
     // Determinístico de propósito: a probabilidade É a regra, e conferi-la
-    // por amostragem tornaria o teste instável (com n=2000 e esperado 0,512,
-    // um limite em 0,5 falharia sozinho de vez em quando).
-    const ps = effectiveStat(state.player, 'raciocinio');
-    const es = effectiveStat(state.enemy, 'raciocinio');
-    const probabilidade = ps / (ps + es);
+    // por amostragem tornaria o teste instável.
+    const probabilidade = playerFirstChance(state);
 
-    // Vantagem real (acima de 50%) e limitada (bem longe dos 100% de antes).
-    expect(probabilidade).toBeGreaterThan(0.5);
-    expect(probabilidade).toBeLessThan(0.53);
-    // E os estágios continuam pesando mais que o IV, como deve ser.
-    expect(ps).toBeLessThan(1.06);
+    // Vantagem que o jogador sente, sem virar o degrau de antes (100%).
+    expect(probabilidade).toBeGreaterThan(0.7);
+    expect(probabilidade).toBeLessThan(0.8);
+    // O ATRIBUTO continua curto: quem estica a faixa é o expoente, não o IV.
+    expect(effectiveStat(state.player, 'raciocinio')).toBeLessThan(1.06);
+  });
+
+  it('um estágio de buff pesa mais que o IV inteiro', () => {
+    // É para isso que existem os nove golpes de Velocidade do movepool: quem
+    // investe um turno em acelerar (ou em atrasar o outro) compra a iniciativa,
+    // e isso tem de valer mais do que a sorte da captura.
+    const state = duelistas(0, 15);
+    state.player.stages.raciocinio = 1;
+    expect(playerFirstChance(state)).toBeGreaterThan(0.9);
   });
 
   it('turnOrder de fato sorteia com essa probabilidade', () => {
     // Guarda de fumaça: garante que a probabilidade acima é mesmo usada, e não
     // apenas calculável. Margem larga, para não virar teste instável.
-    const state = {
-      player: createCombatant({ name: 'A', types: ['humanas'], ivs: { ...ZERO, ivRaciocinio: 15 } }),
-      enemy: createCombatant({ name: 'B', types: ['humanas'], ivs: ZERO }),
-    } as BattleState;
+    const state = duelistas(15, 0);
 
     let primeiroDoA = 0;
     for (let i = 0; i < 4000; i++) {
       if (turnOrder(state, null, null)[0].key === 'player') primeiroDoA++;
     }
 
-    expect(primeiroDoA / 4000).toBeGreaterThan(0.45);
-    expect(primeiroDoA / 4000).toBeLessThan(0.58);
+    expect(primeiroDoA / 4000).toBeGreaterThan(0.69);
+    expect(primeiroDoA / 4000).toBeLessThan(0.79);
   });
 
   it('no pior caso (15/15/15/15 vs 0/0/0/0) o IV não decide a partida', () => {
