@@ -47,26 +47,36 @@ async function load(recarregar = false) {
 }
 
 /**
- * Voltar ao app depois de um tempo com a tela apagada REANCORA o relógio.
+ * Revalida a coleção quando o PWA volta ao primeiro plano. Uma alteração feita
+ * no servidor (por exemplo, uma captura liberada pelo organizador) não chega a
+ * uma tela que ficou aberta em segundo plano. A leitura é silenciosa para não
+ * desmontar a grade nem mostrar um spinner a cada troca de app.
  *
- * A contagem da abertura corre sobre um relógio monotônico ancorado na última
- * resposta do servidor, e em alguns navegadores esse relógio congela junto com
- * a aba. Sem isto, quem guarda o celular às 18h30 e volta às 19h30 leria "abre
- * em 25min" com a raid já aberta.
- *
- * Só pede quando há card na tela para corrigir: a grande maioria dos alunos
- * nunca fecha a Profdex, e não faz sentido uma requisição a cada vez que eles
- * trocam de app.
+ * Também reancora o relógio da raid: alguns navegadores congelam o relógio
+ * monotônico junto com a aba, e o aluno poderia voltar vendo uma contagem velha.
  */
+let ultimoRefreshAoRetomar = 0
+
 function aoVoltarParaOApp() {
   if (document.visibilityState !== 'visible') return
-  if (!raid.value.unlocked || raid.value.captured) return
-  store.fetchRaid().catch(() => {})
+
+  // `pageshow` e `visibilitychange` podem disparar juntos ao restaurar o PWA.
+  // Uma única atualização basta nesse retorno.
+  const agora = Date.now()
+  if (agora - ultimoRefreshAoRetomar < 1500) return
+  ultimoRefreshAoRetomar = agora
+
+  const atualizacoes = [store.fetch({ silent: true })]
+  if (raid.value.unlocked && !raid.value.captured) {
+    atualizacoes.push(store.fetchRaid())
+  }
+  Promise.all(atualizacoes).catch(() => {})
 }
 
 onMounted(async () => {
   relogio = setInterval(() => (agora.value = store.agoraDoServidor()), 1000)
   document.addEventListener('visibilitychange', aoVoltarParaOApp)
+  window.addEventListener('pageshow', aoVoltarParaOApp)
   await load()
   // Depois da grade existir: `scrollTop` num elemento ainda vazio é engolido em
   // silêncio, e a coleção voltaria ao topo mesmo assim.
@@ -81,6 +91,7 @@ onUnmounted(() => {
   if (relogio) clearInterval(relogio)
   relogio = null
   document.removeEventListener('visibilitychange', aoVoltarParaOApp)
+  window.removeEventListener('pageshow', aoVoltarParaOApp)
 })
 
 // ── Contagem ────────────────────────────────────────────────────────────────

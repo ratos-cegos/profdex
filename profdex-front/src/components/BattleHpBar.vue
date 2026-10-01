@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import TypeIcon from './TypeIcon.vue'
+import EfeitosEmCampo from './EfeitosEmCampo.vue'
 import { getType, legibleColor } from '../data/types.js'
 
 const props = defineProps({
@@ -15,6 +16,8 @@ const props = defineProps({
   // entao os tipos passaram a ser prop propria. Default vazio: quem nao passa
   // `types` renderiza exatamente como antes.
   types: { type: Array, default: () => [] },
+  /** Status, estágios, escudos e golpes acumulativos do combatente em campo. */
+  efeitos: { type: Array, default: () => [] },
 })
 
 const percent = computed(() =>
@@ -67,6 +70,7 @@ function hideBrokenImage(event) {
           />
         </span>
         <span class="pixel hp-panel__name">{{ name }}</span>
+        <EfeitosEmCampo :efeitos="efeitos" inline />
       </div>
       <div class="hp-panel__bar" role="progressbar" :aria-valuenow="hp" :aria-valuemax="maxHp"
         :aria-label="`HP de ${name}`">
@@ -127,6 +131,7 @@ function hideBrokenImage(event) {
      extremos opostos do painel. */
   justify-content: flex-start;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 

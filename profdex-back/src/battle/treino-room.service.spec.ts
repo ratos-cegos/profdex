@@ -268,6 +268,13 @@ describe('TreinoRoomService', () => {
       expect(ctx.ultimo('battle:begin')).toMatchObject({
         mode: 'treino',
         turn: 1,
+        you: {
+          stages: { rigor: 0, didatica: 0, raciocinio: 0 },
+          statusKind: null,
+          statusTurns: null,
+          escudo: null,
+          movimentosAcumulados: [],
+        },
         foe: { name: NOME_DO_BOT, team: expect.any(Array) },
       });
 

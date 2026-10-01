@@ -13,7 +13,7 @@ const COR_MARCA = '#995200'
 const COR_FUNDO = '#121418'
 
 // https://vite.dev/config/
-export default defineConfig(async ({ mode }) => {
+export default defineConfig(async ({ mode, isPreview }) => {
   // `loadEnv` com prefixo vazio lê também variáveis sem `VITE_` (que não são
   // expostas ao navegador), como o alvo do proxy abaixo.
   const env = loadEnv(mode, process.cwd(), '')
@@ -42,7 +42,12 @@ export default defineConfig(async ({ mode }) => {
   //
   // O certificado é autoassinado, então o navegador do celular mostra um aviso
   // na primeira visita. Basta avançar ("Avançado" → "Ir para o site").
-  const useHttps = env.HTTPS === '1'
+  // The desktop production preview stays on HTTP: browsers treat
+  // `localhost` as a secure context, which makes the PWA installable on the
+  // development PC without a certificate warning. Network/mobile development
+  // uses HTTPS because an IP address is not a trusted exception. The mobile
+  // preview (`npm run pwa:mobile`) also serves the built app over HTTPS.
+  const useHttps = isPreview ? mode === 'mobile' : env.HTTPS === '1'
   const sslPlugins = useHttps
     ? [(await import('@vitejs/plugin-basic-ssl')).default()]
     : []
@@ -204,6 +209,34 @@ export default defineConfig(async ({ mode }) => {
           // Repassa também o upgrade de WebSocket: o Socket.IO do lobby de
           // batalha faz handshake em /api/socket.io (sob /api por causa do
           // `path` do cookie de sessão).
+          ws: true,
+        },
+      },
+    },
+    // Production-like local PWA preview. `localhost` is considered a secure
+    // context by browsers even over HTTP, so the generated service worker can
+    // be installed on a development PC without a locally trusted certificate.
+    // Keep the same reverse proxies as the dev server so login, uploads,
+    // WebSockets and the landing page continue to work in the installed app.
+    preview: {
+      host: true,
+      port: 4173,
+      allowedHosts: true,
+      proxy: {
+        '/landing': {
+          target: 'http://localhost:5174',
+          changeOrigin: false,
+          ws: true,
+        },
+        '/uploads': {
+          target: apiProxyTarget,
+          changeOrigin: true,
+          secure: true,
+        },
+        '/api': {
+          target: apiProxyTarget,
+          changeOrigin: true,
+          secure: true,
           ws: true,
         },
       },

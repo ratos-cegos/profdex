@@ -9,6 +9,7 @@ import RoteiroOverlay from '../components/RoteiroOverlay.vue'
 import {
   aplicarEvento,
   chaveDoOcupante,
+  ladosParaInicioDaAnimacao,
   ocupanteDoServidor,
 } from '../composables/battleOcupante'
 import { esperar, TEMPO } from '../composables/battleTiming'
@@ -29,10 +30,23 @@ const battle = useBattleStore()
 // PRÓPRIO da tela, que só muda quando a fila de eventos passa pela troca ou pelo
 // golpe correspondente. Ver battleOcupante.js: ligado direto no `you`/`foe` do
 // servidor, o substituto aparecia antes da hora e herdava a queda de quem saiu.
-const exibido = ref({ player: ocupanteDoServidor(null), enemy: ocupanteDoServidor(null) })
+const inicioDaAnimacao = ladosParaInicioDaAnimacao(battle.pvp)
+const exibido = ref({
+  player: ocupanteDoServidor(inicioDaAnimacao?.you),
+  enemy: ocupanteDoServidor(inicioDaAnimacao?.foe),
+})
 const youFainted = computed(() => exibido.value.player.fainted)
 const foeFainted = computed(() => exibido.value.enemy.fainted)
 const message = ref('')
+const dicas = ref([])
+const historico = ref([])
+const historicoRecente = computed(() => [...historico.value].reverse())
+const logDialog = ref(null)
+function abrirLog() { logDialog.value?.showModal() }
+function fecharLog() { logDialog.value?.close() }
+let proximoIdDica = 0
+const temporizadoresDica = new Map()
+const DURACAO_DICA_MS = 4000
 const youHit = ref(false)
 const foeHit = ref(false)
 const animating = ref(false)
@@ -49,6 +63,62 @@ function showFeedback(target, feedback) {
   setTimeout(() => {
     list.value = list.value.filter((entry) => entry.id !== item.id)
   }, 1000)
+}
+
+const ROTULOS_EFICACIA = {
+  super4: 'Efetividade ×4 — devastador',
+  super: 'Super eficaz',
+  weak: 'Pouco eficaz',
+  weak4: 'Resistiu ×¼',
+}
+
+/** Resume o evento que acabou de ser animado em uma dica curta e temporária. */
+function mostrarDica(ev, turn) {
+  let tipo
+  let texto
+  const lado = ev.target === 'player' ? 'Seu lado' : 'Rival'
+
+  switch (ev.type) {
+    case 'message':
+      tipo = ev.text?.includes(' usou ') ? 'golpe' : 'info'
+      texto = ev.text
+      break
+    case 'damage':
+      tipo = 'dano'
+      texto = `${lado}: −${ev.amount} HP`
+      break
+    case 'heal':
+      tipo = 'cura'
+      texto = `${lado}: +${ev.amount} HP`
+      break
+    case 'effectiveness':
+      tipo = 'eficacia'
+      texto = ROTULOS_EFICACIA[ev.level]
+      break
+    case 'faint':
+      tipo = 'queda'
+      texto = `${lado} foi nocauteado`
+      break
+    case 'switch':
+      tipo = 'troca'
+      texto = `${ev.name ?? 'Combatente'} entrou em campo · ${lado}`
+      break
+    default:
+      // O status já vem acompanhado da mensagem que explica o que ocorreu;
+      // o roteiro da raid tem o próprio overlay pausável.
+      return
+  }
+
+  if (!texto) return
+  const id = ++proximoIdDica
+  const dica = { id, turn, tipo, texto }
+  historico.value = [...historico.value, dica].slice(-400)
+  dicas.value = [...dicas.value, dica].slice(-4)
+  const timeout = setTimeout(() => {
+    dicas.value = dicas.value.filter((dica) => dica.id !== id)
+    temporizadoresDica.delete(id)
+  }, DURACAO_DICA_MS)
+  temporizadoresDica.set(id, timeout)
 }
 
 const now = ref(Date.now())
@@ -107,7 +177,10 @@ const trocaAberta = ref(false)
  * Aqui a cópia exibida só é atualizada quando a animação alcança o servidor
  * (fim de `play`, ou `syncFromServer` fora de animação).
  */
-const timeExibido = ref({ you: [], foe: [] })
+const timeExibido = ref({
+  you: inicioDaAnimacao?.you?.team ?? [],
+  foe: inicioDaAnimacao?.foe?.team ?? [],
+})
 
 /**
  * As pílulas de efeito ativo, pelo MESMO motivo do `timeExibido`.
@@ -118,7 +191,10 @@ const timeExibido = ref({ you: [], foe: [] })
  * Ligadas direto no payload, elas mostrariam o buff do turno antes de o golpe que
  * o causou ter sido animado.
  */
-const efeitosExibidos = ref({ you: [], foe: [] })
+const efeitosExibidos = ref({
+  you: efeitosDe(inicioDaAnimacao?.you),
+  foe: efeitosDe(inicioDaAnimacao?.foe),
+})
 
 /** Sincroniza as cópias ATRASADAS da HUD com o que o servidor já sabe. */
 function sincronizarTimeExibido() {
@@ -337,14 +413,18 @@ function soltarRoteiroPendente() {
 async function drenarFila() {
   if (animating.value) return
   animating.value = true
-  while (fila.length) await play(fila.shift())
+  while (fila.length) {
+    const rodada = fila.shift()
+    await play(rodada.events, rodada.turn)
+  }
   fimDaFila()
 }
 
 // Reproduz os eventos de uma rodada (mesmos tipos do motor). Os tempos vêm de
 // battleTiming.js, compartilhados com o treino.
-async function play(events) {
+async function play(events, turn) {
   for (const ev of events) {
+    mostrarDica(ev, turn)
     switch (ev.type) {
       case 'message':
         message.value = ev.text
@@ -521,7 +601,7 @@ watch(
   () => pvp.value?.pendingEvents,
   (events) => {
     if (!events?.length) return
-    fila.push([...events])
+    fila.push({ events: [...events], turn: pvp.value?.turn ?? 0 })
     battle.consumeEvents()
     drenarFila()
   },
@@ -561,8 +641,13 @@ onMounted(() => {
     router.replace({ name: pvp.value ? 'pvp-pick' : rotaDeSaida(pvp.value) })
     return
   }
-  syncFromServer()
-  message.value = `${pvp.value.foe.professor?.name ?? pvp.value.opponent.name} entrou na arena!`
+  // O watcher imediato já pode estar reproduzindo uma rodada. Sincronizar o
+  // snapshot final aqui adiantaria a troca e faria o novo sprite herdar o dano
+  // e a queda que ainda pertencem ao professor anterior.
+  if (!animating.value) {
+    syncFromServer()
+    message.value = `${pvp.value.foe.professor?.name ?? pvp.value.opponent.name} entrou na arena!`
+  }
   clock = setInterval(() => {
     now.value = Date.now()
     resyncIfStuck()
@@ -572,6 +657,8 @@ onMounted(() => {
 onUnmounted(() => {
   if (clock) clearInterval(clock)
   clearTimeout(desarmarFuga)
+  for (const timeout of temporizadoresDica.values()) clearTimeout(timeout)
+  temporizadoresDica.clear()
   soltarRoteiroPendente()
 })
 </script>
@@ -614,6 +701,39 @@ onUnmounted(() => {
       @fim="soltarRoteiroPendente"
     />
 
+    <aside class="dicas-flutuantes" aria-label="Eventos recentes da luta" aria-live="polite">
+      <article
+        v-for="dica in dicas"
+        :key="dica.id"
+        class="dica-flutuante"
+        :class="`dica-flutuante--${dica.tipo}`"
+      >
+        <span class="pixel dica-flutuante__turno">T{{ dica.turn }}</span>
+        <span class="dica-flutuante__texto">{{ dica.texto }}</span>
+      </article>
+    </aside>
+
+    <button class="pixel pvp-arena__log" type="button" aria-label="Abrir histórico da batalha" @click="abrirLog">
+      LOG
+    </button>
+
+    <dialog ref="logDialog" class="battle-log" aria-labelledby="battle-log-title">
+      <header class="battle-log__header">
+        <div>
+          <h2 id="battle-log-title" class="pixel">HISTÓRICO DA BATALHA</h2>
+          <p>Eventos mais recentes primeiro</p>
+        </div>
+        <button class="pixel battle-log__fechar" type="button" @click="fecharLog" autofocus>FECHAR</button>
+      </header>
+      <ol class="battle-log__lista">
+        <li v-for="evento in historicoRecente" :key="evento.id" class="battle-log__evento" :class="`battle-log__evento--${evento.tipo}`">
+          <span class="pixel battle-log__turno">T{{ evento.turn }}</span>
+          <span>{{ evento.texto }}</span>
+        </li>
+      </ol>
+      <p v-if="!historico.length" class="battle-log__vazio">Os eventos aparecem aqui conforme a batalha acontece.</p>
+    </dialog>
+
     <!-- Faixa de comandos, de ALTURA TRAVADA (ver `--faixa-altura` no estilo):
          os três blocos que se alternam aqui ocupam sempre o mesmo espaço. -->
     <div class="faixa">
@@ -623,7 +743,11 @@ onUnmounted(() => {
            dele já foi revelado no preview e o HP de cada um foi visto em campo;
            esconder não criaria segredo, só obrigaria a decorar. -->
       <div class="faixa__times">
-        <BancoDeReservas :team="timeExibido.foe" foe :rotulo="naTreino ? 'BOT' : 'RIVAL'" />
+        <BancoDeReservas
+          :team="timeExibido.foe"
+          foe
+          :rotulo="naTreino ? 'BOT' : 'RIVAL'"
+        />
         <BancoDeReservas
           :team="timeExibido.you"
           :active-capture-id="pvp.you.activeCaptureId"
@@ -649,7 +773,7 @@ onUnmounted(() => {
       <div class="faixa__blocos">
         <!-- Escolher quem entra não é opcional: enquanto está pendente, ela toma
              o lugar dos comandos em vez de dividir espaço com eles. -->
-        <div v-if="pvp.phase === 'switching'" class="entrada">
+      <div v-if="pvp.phase === 'switching' && !animating" class="entrada">
           <template v-if="precisaEntrar">
             <p class="entrada__titulo">Quem entra agora?</p>
             <div class="entrada__opcoes">
@@ -898,8 +1022,12 @@ onUnmounted(() => {
 }
 
 .faixa__texto {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .faixa__timer {
@@ -915,6 +1043,128 @@ onUnmounted(() => {
 .faixa__timer--baixo {
   color: var(--red-light);
   animation: pvp-blink 1s steps(2) infinite;
+}
+
+.dicas-flutuantes {
+  position: fixed;
+  z-index: 30;
+  top: calc(env(safe-area-inset-top, 0px) + 96px);
+  right: 8px;
+  width: min(160px, 32vw);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.dica-flutuante {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--yellow);
+  border-radius: 7px;
+  color: var(--text);
+  background: rgba(18, 20, 24, 0.94);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  font-size: 9px;
+  line-height: 1.3;
+  animation:
+    dica-aparecer 180ms ease-out both,
+    dica-sumir 280ms ease-in 3.72s both;
+}
+
+.dica-flutuante__turno {
+  padding-top: 2px;
+  color: var(--text-muted);
+  font-size: 5px;
+}
+
+.dica-flutuante__texto {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.pvp-arena__log,
+.battle-log__fechar {
+  position: absolute;
+  top: calc(61px + env(safe-area-inset-top));
+  right: 12px;
+  z-index: 4;
+  width: 64px;
+  height: 28px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  background: rgba(18, 20, 24, 0.35);
+  color: var(--text);
+  font-size: 7px;
+  cursor: pointer;
+}
+
+.battle-log {
+  box-sizing: border-box;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  border: 0;
+  color: var(--text);
+  background: rgba(12, 14, 18, 0.82);
+}
+
+.battle-log[open] { display: flex; flex-direction: column; gap: 16px; }
+.battle-log::backdrop { background: transparent; }
+.battle-log__header { display: flex; align-items: flex-start; gap: 12px; min-height: 76px; padding-right: 76px; }
+.battle-log__header h2 { margin: 0; color: var(--yellow); font-size: 9px; line-height: 1.7; }
+.battle-log__header p { margin: 5px 0 0; color: var(--text-muted); font-size: 11px; }
+.battle-log__fechar { background: rgba(18, 20, 24, 0.7); }
+.battle-log__lista { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.battle-log__evento { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; padding: 10px; border-left: 2px solid var(--yellow); border-radius: 5px; background: rgba(18, 20, 24, 0.55); font-size: 13px; line-height: 1.5; }
+.battle-log__turno { padding-top: 4px; color: var(--text-muted); font-size: 6px; }
+.battle-log__evento--dano, .battle-log__evento--queda { border-left-color: var(--error); }
+.battle-log__evento--cura { border-left-color: var(--ds-green-glow); }
+.battle-log__vazio { color: var(--text-muted); font-size: 13px; }
+
+.dica-flutuante--dano,
+.dica-flutuante--queda {
+  border-left-color: var(--error);
+}
+
+.dica-flutuante--cura {
+  border-left-color: var(--ds-green-glow);
+}
+
+.dica-flutuante--eficacia,
+.dica-flutuante--golpe,
+.dica-flutuante--troca {
+  border-left-color: var(--yellow);
+}
+
+@keyframes dica-aparecer {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes dica-sumir {
+  to {
+    opacity: 0;
+    transform: translateX(10px);
+  }
 }
 
 @keyframes pvp-blink {

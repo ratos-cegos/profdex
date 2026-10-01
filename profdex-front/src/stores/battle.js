@@ -278,6 +278,9 @@ export const useBattleStore = defineStore('battle', () => {
       if (!pvp.value) return
       pvp.value = {
         ...pvp.value,
+        // Uma arena montada no meio da rodada deve reproduzir os eventos a
+        // partir de quem estava em campo, antes do snapshot final da troca.
+        inicioDosEventos: events?.length ? { you: pvp.value.you, foe: pvp.value.foe } : null,
         // A rodada também é o que tira a arena da fase de substituição.
         phase: 'active',
         youChoose: false,
@@ -298,6 +301,7 @@ export const useBattleStore = defineStore('battle', () => {
       if (!pvp.value) return
       pvp.value = {
         ...pvp.value,
+        inicioDosEventos: events?.length ? { you: pvp.value.you, foe: pvp.value.foe } : null,
         phase: 'switching',
         deadline,
         youChoose,
@@ -315,6 +319,7 @@ export const useBattleStore = defineStore('battle', () => {
         if (!pvp.value) return
         pvp.value = {
           ...pvp.value,
+          inicioDosEventos: events?.length ? { you: pvp.value.you, foe: pvp.value.foe } : null,
           phase: 'done',
           you: { ...pvp.value.you, ...you },
           foe: { ...pvp.value.foe, ...foe },
@@ -657,7 +662,10 @@ export const useBattleStore = defineStore('battle', () => {
 
   /** A arena chama após animar a fila da rodada. */
   function consumeEvents() {
-    if (pvp.value) pvp.value.pendingEvents = []
+    if (pvp.value) {
+      pvp.value.pendingEvents = []
+      pvp.value.inicioDosEventos = null
+    }
   }
 
   /** Sai da tela de resultado: limpa o estado local (o servidor já fechou). */

@@ -1,9 +1,10 @@
 import { createCombatant, STATUS } from './engine/engine';
-import { buildMoveset } from './engine/moves';
+import { EFFECT, buildMoveset } from './engine/moves';
 import {
   benchCombatant,
   hasAlive,
   isAlive,
+  movimentosAcumuladosVisiveis,
   nextAliveIndex,
   ownMemberView,
   publicMemberView,
@@ -70,9 +71,18 @@ describe('benchCombatant', () => {
     expect(c.status).toBeNull();
   });
 
-  // Sem isto, sair e voltar preservaria o combo inteiro — e `usage`, que
-  // alimenta grow/accuracyGain, cresceria para sempre.
-  it('zera tudo que foi construído em campo', () => {
+  it('guarda os estágios de atributo e os usos de golpes acumulativos', () => {
+    const c = membro('mario').combatant;
+    c.stages = { rigor: 3, didatica: -2, raciocinio: 1 };
+    c.usage = { 'algum-golpe': 4 };
+
+    benchCombatant(c);
+
+    expect(c.stages).toEqual({ rigor: 3, didatica: -2, raciocinio: 1 });
+    expect(c.usage).toEqual({ 'algum-golpe': 4 });
+  });
+
+  it('limpa efeitos temporários de campo ao sair', () => {
     const c = membro('mario').combatant;
     c.stages = { rigor: 3, didatica: -2, raciocinio: 1 };
     c.shields = [{ mode: 'block', amount: 1, turns: 2 }] as never;
@@ -85,13 +95,13 @@ describe('benchCombatant', () => {
 
     benchCombatant(c);
 
-    expect(c.stages).toEqual({ rigor: 0, didatica: 0, raciocinio: 0 });
+    expect(c.stages).toEqual({ rigor: 3, didatica: -2, raciocinio: 1 });
     expect(c.shields).toEqual([]);
     expect(c.timedBuffs).toEqual([]);
     expect(c.regen).toEqual([]);
     expect(c.debuffImmuneTurns).toBe(0);
     expect(c.forceMiss).toBe(false);
-    expect(c.usage).toEqual({});
+    expect(c.usage).toEqual({ 'algum-golpe': 4 });
     expect(c.lastAttackId).toBeNull();
   });
 });
@@ -119,15 +129,25 @@ describe('leitura do time', () => {
 });
 
 describe('visões do exemplar', () => {
-  // O preview revela professor e tipos porque é neles que a escolha de lead se
-  // apoia. IVs e golpes ficariam com peso maior na cabeça do jogador do que no
-  // combate — e entregam a leitura da partida.
-  it('a visão pública não leva captureId, IVs nem golpes', () => {
+  // Estado já visível na batalha é público; IVs e golpes continuam privados.
+  it('a visão pública mostra efeitos sem vazar captureId, IVs ou golpes', () => {
     const view = publicMemberView(membro('mario', 60));
 
     expect(Object.keys(view).sort()).toEqual(
-      ['fainted', 'hp', 'maxHp', 'professor', 'types'].sort(),
+      [
+        'escudo',
+        'fainted',
+        'hp',
+        'maxHp',
+        'professor',
+        'stages',
+        'statusKind',
+        'statusTurns',
+        'types',
+      ].sort(),
     );
+    expect(view).not.toHaveProperty('moves');
+    expect(view).not.toHaveProperty('movimentosAcumulados');
   });
 
   it('a visão do dono acrescenta o captureId, que é como ele escolhe', () => {
@@ -135,6 +155,70 @@ describe('visões do exemplar', () => {
       'captureId',
       'cap-mario',
     );
+  });
+
+  it('mostra ao dono os bônus guardados em golpes acumulativos', () => {
+    const member = membro('mario');
+    member.moves = [
+      {
+        id: 'gradiente',
+        name: 'Gradiente descendente',
+        type: 'algoritmos',
+        category: 'ataque',
+        power: 75,
+        accuracy: 0.75,
+        effects: [
+          { kind: EFFECT.GROW, inc: 15 },
+          { kind: EFFECT.ACCURACY_GAIN, inc: 0.08 },
+        ],
+      } as TeamMember['moves'][number],
+    ];
+    member.combatant.usage.gradiente = 2;
+
+    expect(ownMemberView(member).movimentosAcumulados).toEqual([
+      {
+        moveId: 'gradiente',
+        name: 'Gradiente descendente',
+        usos: 2,
+        bonusPoder: 30,
+        bonusPrecisao: 16,
+      },
+    ]);
+  });
+
+  it('resume apenas os golpes acumulativos que já foram usados', () => {
+    const member = membro('mario');
+    member.moves = [
+      {
+        id: 'gradiente',
+        name: 'Gradiente descendente',
+        type: 'algoritmos',
+        category: 'ataque',
+        power: 75,
+        accuracy: 0.75,
+        effects: [{ kind: EFFECT.GROW, inc: 15 }],
+      } as TeamMember['moves'][number],
+      {
+        id: 'outro',
+        name: 'Outro golpe',
+        type: 'algoritmos',
+        category: 'ataque',
+        power: 20,
+        accuracy: 1,
+        effects: [{ kind: EFFECT.GROW, inc: 10 }],
+      } as TeamMember['moves'][number],
+    ];
+    member.combatant.usage.gradiente = 1;
+
+    expect(movimentosAcumuladosVisiveis(member)).toEqual([
+      {
+        moveId: 'gradiente',
+        name: 'Gradiente descendente',
+        usos: 1,
+        bonusPoder: 15,
+        bonusPrecisao: 0,
+      },
+    ]);
   });
 
   it('não vaza HP negativo para a UI', () => {
