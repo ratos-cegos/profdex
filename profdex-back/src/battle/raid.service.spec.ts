@@ -56,6 +56,9 @@ function criarPrisma(over: Record<string, unknown> = {}) {
       count: jest.fn().mockResolvedValue(21),
     },
     user: {
+      // `ehAdmin` lê o papel do BANCO (e não do token). `aluno` é o caso de
+      // toda esta suíte; quem testa o organizador sobrescreve.
+      findUnique: jest.fn().mockResolvedValue({ role: 'aluno' }),
       findUniqueOrThrow: jest.fn().mockResolvedValue({
         name: 'Ana Souza',
         matricula: '202312345',
@@ -606,5 +609,207 @@ describe('RaidService — tentativas órfãs', () => {
         data: expect.objectContaining({ result: 'anulada' }),
       }),
     );
+  });
+});
+
+/**
+ * A conta de ORGANIZADOR na raid.
+ *
+ * A conta `@unifil.br` existe para exercitar o app: dar a si mesmo a Profdex
+ * inteira e conferir a raid é operação normal. Sem estes três privilégios,
+ * testar a raid às três da tarde exigiria mexer na janela no painel e lembrar de
+ * desfazer, com o estande cheio.
+ */
+describe('RaidService — a conta de organizador', () => {
+  const comoAdmin = (prisma: ReturnType<typeof criarPrisma>) => {
+    prisma.user.findUnique.mockResolvedValue({ role: 'admin' });
+  };
+
+  /**
+   * Prende o relógio num instante conhecido.
+   *
+   * `jest.setSystemTime` sozinho é NO-OP sem fake timers, e os testes de janela
+   * daqui passariam só por sorte: `canStart` lê `Date.now()` de verdade, então
+   * entre 18h e 22h de Londrina eles afirmariam o contrário do que querem.
+   * Fake timers só nos testes de horário — os de `award` esperam o `setImmediate`
+   * do e-mail, que o modo fake sequestraria.
+   */
+  const relogioEm = (iso: string) => jest.useFakeTimers({ now: new Date(iso) });
+
+  afterEach(() => jest.useRealTimers());
+
+  /** Fora de 18h–22h, com a abertura do evento já passada. */
+  const foraDoHorario = { opensAt: 0, horaDeAbrir: 18, horaDeFechar: 22 };
+
+  it('o aluno é recusado fora do horário', async () => {
+    const prisma = criarPrisma();
+    const ctx = criar(prisma);
+    ctx.settings.raidJanela.mockResolvedValue(foraDoHorario);
+    // Garante que a recusa é do HORÁRIO e não de outra trava.
+    relogioEm('2026-10-02T18:00:00Z'); // 15h em Londrina
+
+    await expect(ctx.service.canStart('ana')).resolves.toMatchObject({
+      ok: false,
+      code: 'RAID_FECHADA',
+    });
+  });
+
+  /**
+   * Prova que o relógio está preso de verdade: o relógio REAL da máquina que
+   * roda isto quase nunca está entre 18h e 22h de Londrina, então sem o pin
+   * funcionando este teste falharia.
+   */
+  it('o aluno entra DENTRO do horário', async () => {
+    const prisma = criarPrisma();
+    const ctx = criar(prisma);
+    ctx.settings.raidJanela.mockResolvedValue(foraDoHorario);
+    relogioEm('2026-10-02T22:00:00Z'); // 19h em Londrina
+
+    await expect(ctx.service.canStart('ana')).resolves.toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('o organizador entra fora do horário', async () => {
+    const prisma = criarPrisma();
+    comoAdmin(prisma);
+    const ctx = criar(prisma);
+    ctx.settings.raidJanela.mockResolvedValue(foraDoHorario);
+    relogioEm('2026-10-02T18:00:00Z');
+
+    await expect(ctx.service.canStart('ana')).resolves.toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('o status abre para o organizador, sem contagem nem hora de fechar', async () => {
+    // `podeDesafiar` no front exige `open`: sem isto o botão ficaria desabilitado
+    // e o privilégio do `canStart` não teria como ser alcançado pela tela.
+    const prisma = criarPrisma();
+    comoAdmin(prisma);
+    const ctx = criar(prisma);
+    ctx.settings.raidJanela.mockResolvedValue(foraDoHorario);
+    relogioEm('2026-10-02T18:00:00Z');
+
+    const status = await ctx.service.status('ana');
+
+    expect(status.open).toBe(true);
+    expect(status.abreEm).toBeNull();
+    expect(status.fechaEm).toBeNull();
+  });
+
+  it('a vitória do organizador NÃO cria linha na fila do prêmio', async () => {
+    // É a linha de `RaidClear` que decide quem foi "o primeiro". Criá-la para a
+    // mesa tiraria o e-mail do primeiro ALUNO, poria a mesa em 1º na fila do
+    // painel e, por ser `@unique`, impediria um segundo teste.
+    const prisma = criarPrisma();
+    comoAdmin(prisma);
+    const tx = criarTransacao(0);
+    prisma.$transaction = jest.fn((fn: (t: unknown) => unknown) => fn(tx));
+    const ctx = criar(prisma);
+
+    const premio = await ctx.service.award(
+      'ana',
+      { id: 'lendario-1', types: ['ia'] },
+      'var-1',
+      'tentativa-1',
+      3,
+    );
+
+    // O exemplar existe: é ele que o organizador está testando.
+    expect(premio).toMatchObject({ captureId: expect.any(String) });
+    expect(tx.capture.create).toHaveBeenCalled();
+    expect(tx.raidClear.create).not.toHaveBeenCalled();
+    // Nem o `count`: ele é o que decide "o primeiro", e a mesa não disputa isso.
+    expect(tx.raidClear.count).not.toHaveBeenCalled();
+  });
+
+  it('a vitória do organizador não dispara o e-mail do primeiro vencedor', async () => {
+    const prisma = criarPrisma();
+    comoAdmin(prisma);
+    prisma.$transaction = jest.fn((fn: (t: unknown) => unknown) =>
+      fn(criarTransacao(0)),
+    );
+    const ctx = criar(prisma);
+
+    await ctx.service.award(
+      'ana',
+      { id: 'lendario-1', types: ['ia'] },
+      'var-1',
+      'tentativa-1',
+      3,
+    );
+
+    expect(ctx.mail.send).not.toHaveBeenCalled();
+  });
+
+  it('a vitória do organizador não registra métrica nenhuma', async () => {
+    const prisma = criarPrisma();
+    comoAdmin(prisma);
+    prisma.$transaction = jest.fn((fn: (t: unknown) => unknown) =>
+      fn(criarTransacao(0)),
+    );
+    const ctx = criar(prisma);
+
+    await ctx.service.award(
+      'ana',
+      { id: 'lendario-1', types: ['ia'] },
+      'var-1',
+      'tentativa-1',
+      3,
+    );
+
+    expect(ctx.metrics.record).not.toHaveBeenCalled();
+  });
+
+  it('a tentativa do organizador não entra no funil da raid', async () => {
+    const prisma = criarPrisma();
+    comoAdmin(prisma);
+    const ctx = criar(prisma);
+
+    await ctx.service.openAttempt('ana', 'lendario-1');
+
+    // A LINHA da tentativa é criada (ela sustenta o cooldown e o fechamento);
+    // a MÉTRICA é que não.
+    expect(prisma.raidAttempt.create).toHaveBeenCalled();
+    expect(ctx.metrics.record).not.toHaveBeenCalled();
+  });
+
+  it('para o ALUNO, nada disso muda: fila, e-mail e métrica continuam', async () => {
+    const prisma = criarPrisma();
+    // `anteriores: 0` → este aluno é o primeiro, então o e-mail também sai.
+    const tx = criarTransacao(0);
+    prisma.$transaction = jest.fn((fn: (t: unknown) => unknown) => fn(tx));
+    const ctx = criar(prisma);
+
+    await ctx.service.award(
+      'ana',
+      { id: 'lendario-1', types: ['ia'] },
+      'var-1',
+      'tentativa-1',
+      3,
+    );
+    await esperarOAviso();
+
+    expect(tx.raidClear.create).toHaveBeenCalled();
+    expect(ctx.metrics.record).toHaveBeenCalled();
+    expect(ctx.mail.send).toHaveBeenCalled();
+  });
+
+  it('papel desconhecido NÃO ganha privilégio', async () => {
+    // `=== 'admin'` e não `!== 'aluno'`: um papel novo que apareça precisa
+    // contar como aluno até alguém decidir o contrário.
+    const prisma = criarPrisma();
+    prisma.user.findUnique.mockResolvedValue({
+      role: 'monitor',
+    });
+    const ctx = criar(prisma);
+    ctx.settings.raidJanela.mockResolvedValue(foraDoHorario);
+    relogioEm('2026-10-02T18:00:00Z');
+
+    await expect(ctx.service.canStart('ana')).resolves.toMatchObject({
+      ok: false,
+      code: 'RAID_FECHADA',
+    });
   });
 });
