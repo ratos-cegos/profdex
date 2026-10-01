@@ -147,3 +147,50 @@ test('ocupante do servidor: sem lado não é caído', () => {
   assert.equal(ocupanteDoServidor(null).fainted, false)
   assert.equal(ocupanteDoServidor({ hp: 0, maxHp: 10 }).fainted, true)
 })
+
+// ── A virada de estágio da raid ──────────────────────────────────────────────
+// O chefe não sai do assento: só troca de corpo. Por isso a virada chega num
+// `roteiro` com `target` e `estagio`, e não num `switch`.
+test('o roteiro de virada troca o estágio sem mexer em mais nada', () => {
+  const antes = {
+    player: ocupanteDoServidor({ hp: 100, maxHp: 120 }),
+    enemy: ocupanteDoServidor({
+      professor: { id: 'tanaka' },
+      hp: 300,
+      maxHp: 480,
+      estagio: 1,
+    }),
+  }
+
+  const depois = aplicarEvento(antes, {
+    type: 'roteiro',
+    target: 'enemy',
+    estagio: 2,
+    linhas: ['…'],
+  })
+
+  assert.equal(depois.enemy.estagio, 2)
+  // Nem vida, nem `entrada`: quem muda é a arte, e o resto da luta continua.
+  assert.equal(depois.enemy.hp, 300)
+  assert.equal(depois.enemy.entrada, antes.enemy.entrada)
+  assert.equal(depois.player, antes.player)
+})
+
+// O NDE e o Ricardo também são `roteiro`, mas não trazem `estagio` — e o do NDE
+// não traz `target`. Nenhum dos dois pode mexer no estágio do chefe.
+test('roteiro sem estágio não muda o ocupante', () => {
+  const antes = {
+    player: ocupanteDoServidor({ hp: 100, maxHp: 120 }),
+    enemy: ocupanteDoServidor({ hp: 300, maxHp: 480, estagio: 3 }),
+  }
+
+  const semEstagio = aplicarEvento(antes, {
+    type: 'roteiro',
+    target: 'enemy',
+    linhas: ['O NDE caiu!'],
+  })
+  const semTarget = aplicarEvento(antes, { type: 'roteiro', linhas: ['…'] })
+
+  assert.equal(semEstagio, antes)
+  assert.equal(semTarget, antes)
+})

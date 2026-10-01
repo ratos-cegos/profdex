@@ -15,6 +15,7 @@ import {
   turnOrder,
   upkeep,
 } from './engine/engine';
+import { efeitosVisiveis } from './efeitos-visiveis';
 import { buildMoveset, EFFECT, getMoveById, Move } from './engine/moves';
 import { TYPE_CYCLE } from './engine/types';
 import {
@@ -763,6 +764,10 @@ export class RaidRoomService implements OnModuleDestroy {
     const eventos: BattleEvent[] = [
       {
         type: 'roteiro',
+        // `target` + `estagio`: é com eles que a arena troca a arte do chefe
+        // AQUI, atrás do overlay, e não no primeiro quadro do turno.
+        target: CHEFE,
+        estagio: room.estagio,
         roleta: { kind: 'tipo', opcoes: [...TYPE_CYCLE], resultado: tipos[0] },
         linhas: [
           `${room.boss.professor.name} não vai mais segurar.`,
@@ -1188,6 +1193,8 @@ export class RaidRoomService implements OnModuleDestroy {
           hp: Math.max(0, bloco.hp),
           maxHp: bloco.maxHp,
           status: statusLabel(bloco.status),
+          // O estado dos efeitos, cru: quem escreve o rotulo e a tela.
+          ...efeitosVisiveis(bloco),
           team: [publicMemberView(room.boss)],
           estagio: room.estagio,
           totalDeEstagios: TOTAL_DE_ESTAGIOS,
@@ -1204,6 +1211,8 @@ export class RaidRoomService implements OnModuleDestroy {
         hp: Math.max(0, c.hp),
         maxHp: c.maxHp,
         status: statusLabel(c.status),
+        // O estado dos efeitos, cru: quem escreve o rotulo e a tela.
+        ...efeitosVisiveis(c),
         team: [publicMemberView(room.boss)],
         // O front usa `estagio` para escolher o par de sprites do estágio e
         // para rotular a fase; `efeitoDoEstagio` é o nome exibido da regra em
@@ -1223,6 +1232,8 @@ export class RaidRoomService implements OnModuleDestroy {
       hp: Math.max(0, c.hp),
       maxHp: c.maxHp,
       status: statusLabel(c.status),
+      // O estado dos efeitos, cru: quem escreve o rotulo e a tela.
+      ...efeitosVisiveis(c),
       activeCaptureId: own ? active.captureId : undefined,
       team: room.team.map(own ? ownMemberView : publicMemberView),
       ...(own ? { moves: active.moves } : {}),

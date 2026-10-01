@@ -10,6 +10,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { writeAsset } from './asset-storage';
 import {
   ASSET_FIELDS,
+  ASSET_FIELDS_BASE,
+  ASSET_FIELDS_ESTAGIO,
   AssetField,
   AssetValidationError,
   assertValidAsset,
@@ -32,6 +34,10 @@ const ADMIN_PROFESSOR_SELECT = {
   spriteFrontUrl: true,
   spriteBackUrl: true,
   modelUrl: true,
+  spriteFrontE2Url: true,
+  spriteBackE2Url: true,
+  spriteFrontE3Url: true,
+  spriteBackE3Url: true,
   pixelArt: true,
   active: true,
   rare: true,
@@ -136,7 +142,10 @@ export class AdminProfessorsService {
     // nenhum no volume de uploads nem consumido um slug.
     if (rare) await this.assertTemasLivres(dto.types);
     if (legendary) await this.assertSemLendario();
-    const arte = this.validarArte(files, { exigirTodos: true });
+    const arte = this.validarArte(files, {
+      exigirBase: true,
+      exigirEstagios: legendary,
+    });
 
     const versao = Date.now();
     const professor = await this.prisma
@@ -172,6 +181,15 @@ export class AdminProfessorsService {
             spriteFrontUrl: assetUrl(slug, 'spriteFront', versao),
             spriteBackUrl: assetUrl(slug, 'spriteBack', versao),
             modelUrl: assetUrl(slug, 'model', versao),
+            // Só o lendário tem estágios; para o resto as quatro ficam nulas.
+            ...(legendary
+              ? {
+                  spriteFrontE2Url: assetUrl(slug, 'spriteFrontE2', versao),
+                  spriteBackE2Url: assetUrl(slug, 'spriteBackE2', versao),
+                  spriteFrontE3Url: assetUrl(slug, 'spriteFrontE3', versao),
+                  spriteBackE3Url: assetUrl(slug, 'spriteBackE3', versao),
+                }
+              : {}),
           },
           select: ADMIN_PROFESSOR_SELECT,
         });
@@ -220,7 +238,10 @@ export class AdminProfessorsService {
    */
   async update(id: string, dto: UpdateProfessorDto, files: UploadedAssets) {
     const atual = await this.acharOuErro(id);
-    const arte = this.validarArte(files, { exigirTodos: false });
+    const arte = this.validarArte(files, {
+      exigirBase: false,
+      exigirEstagios: false,
+    });
 
     await this.gravarArte(atual.slug, arte);
 
@@ -236,6 +257,20 @@ export class AdminProfessorsService {
       data.spriteBackUrl = assetUrl(atual.slug, 'spriteBack', versao);
     }
     if (arte.model) data.modelUrl = assetUrl(atual.slug, 'model', versao);
+    // Estágios: trocados um a um, como os de base. Subir só a frente do estágio
+    // 3 é caso real — a arte chega em levas.
+    if (arte.spriteFrontE2) {
+      data.spriteFrontE2Url = assetUrl(atual.slug, 'spriteFrontE2', versao);
+    }
+    if (arte.spriteBackE2) {
+      data.spriteBackE2Url = assetUrl(atual.slug, 'spriteBackE2', versao);
+    }
+    if (arte.spriteFrontE3) {
+      data.spriteFrontE3Url = assetUrl(atual.slug, 'spriteFrontE3', versao);
+    }
+    if (arte.spriteBackE3) {
+      data.spriteBackE3Url = assetUrl(atual.slug, 'spriteBackE3', versao);
+    }
 
     const professor = await this.prisma.$transaction(async (tx) => {
       const salvo = await tx.professor.update({
@@ -371,21 +406,37 @@ export class AdminProfessorsService {
 
   /**
    * Confere os arquivos enviados e devolve só os válidos, por campo.
-   * `exigirTodos` separa o cadastro (os três são obrigatórios) da edição (troca
-   * só o que veio).
+   *
+   * A obrigatoriedade vem em DOIS interruptores porque são duas regras:
+   *
+   * - `exigirBase` separa o cadastro (os três de sempre são obrigatórios) da
+   *   edição, que troca só o que veio;
+   * - `exigirEstagios` vale apenas para o LENDÁRIO. Antes de existir, os quatro
+   *   campos de estágio moravam em `ASSET_FIELDS` e seriam cobrados de todo
+   *   mundo — cadastrar um professor comum passaria a pedir sete arquivos.
    */
   private validarArte(
     files: UploadedAssets,
-    { exigirTodos }: { exigirTodos: boolean },
+    {
+      exigirBase,
+      exigirEstagios,
+    }: { exigirBase: boolean; exigirEstagios: boolean },
   ): Partial<Record<AssetField, UploadedAsset>> {
     const arte: Partial<Record<AssetField, UploadedAsset>> = {};
+    const obrigatorios = new Set<AssetField>([
+      ...(exigirBase ? ASSET_FIELDS_BASE : []),
+      ...(exigirEstagios ? ASSET_FIELDS_ESTAGIO : []),
+    ]);
 
     for (const field of ASSET_FIELDS) {
       const file = files?.[field]?.[0];
       if (!file) {
-        if (exigirTodos) {
+        if (obrigatorios.has(field)) {
           throw new BadRequestException(
-            'Envie os três arquivos: sprite de frente, sprite de costas e modelo 3D.',
+            ASSET_FIELDS_ESTAGIO.includes(field as never)
+              ? 'O professor lendário precisa também dos 4 sprites de estágio: ' +
+                  'frente e costas do estágio 2, frente e costas do estágio 3.'
+              : 'Envie os três arquivos: sprite de frente, sprite de costas e modelo 3D.',
           );
         }
         continue;

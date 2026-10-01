@@ -35,6 +35,37 @@ export function spriteCostasDe(professor) {
 }
 
 /**
+ * Sprite de frente de um ESTÁGIO da raid.
+ *
+ * O lendário troca de corpo a cada terço de vida (ver `raid-estagios.ts` no
+ * back). O estágio 1 usa a arte normal — a mesma da ficha da Profdex — e os
+ * estágios 2 e 3 têm par próprio.
+ *
+ * Cai na arte de base quando a do estágio falta, e isso é regra e não acidente:
+ * as quatro colunas são nullable, a arte chega em levas, e estágio sem sprite
+ * tem de continuar jogável — ele só não muda de cara. Qualquer estágio fora de
+ * 2 e 3 também cai aqui, o que cobre o `undefined` de todo combate que não é
+ * raid.
+ */
+export function spriteFrenteDoEstagio(professor, estagio) {
+  if (estagio === 2) return professor?.spriteFrontE2Url || spriteFrenteDe(professor)
+  if (estagio === 3) return professor?.spriteFrontE3Url || spriteFrenteDe(professor)
+  return spriteFrenteDe(professor)
+}
+
+/**
+ * Sprite de costas de um estágio. Existe por simetria — o chefe nunca aparece de
+ * costas (quem fica de costas é o professor do ALUNO) —, e porque o cadastro
+ * exige os quatro arquivos: deixar metade sem uso no código seria convidar a
+ * próxima pessoa a achar que falta algo.
+ */
+export function spriteCostasDoEstagio(professor, estagio) {
+  if (estagio === 2) return professor?.spriteBackE2Url || spriteCostasDe(professor)
+  if (estagio === 3) return professor?.spriteBackE3Url || spriteCostasDe(professor)
+  return spriteCostasDe(professor)
+}
+
+/**
  * Modelo 3D da tela de AR. Sprite não serve aqui: o modelo é o ponto da
  * experiência, e só um carrega por vez.
  */

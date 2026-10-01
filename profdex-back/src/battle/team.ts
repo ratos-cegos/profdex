@@ -40,6 +40,16 @@ export interface BattleProfessor {
   spriteBackUrl: string | null;
   modelUrl: string | null;
   pixelArt: boolean;
+  /**
+   * Arte dos estágios 2 e 3 da raid. OPCIONAIS, ao contrário das quatro de
+   * cima: só o lendário tem estágios, e exigi-las aqui deixaria de compilar
+   * todo lugar que monta um professor comum para a batalha. O combate cai na
+   * arte de base quando faltam — estágio sem arte funciona, só não muda de cara.
+   */
+  spriteFrontE2Url?: string | null;
+  spriteBackE2Url?: string | null;
+  spriteFrontE3Url?: string | null;
+  spriteBackE3Url?: string | null;
 }
 
 /** Um exemplar levado para a batalha. O `combatant` sobrevive às trocas. */

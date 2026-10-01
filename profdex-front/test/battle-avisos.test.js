@@ -53,6 +53,21 @@ test('o code da raid decide mesmo com texto desconhecido', () => {
   assert.equal(classificarAviso('texto novo', 'RAID_EM_COOLDOWN').tipo, 'espera')
   assert.equal(classificarAviso('texto novo', 'RAID_BLOQUEADA').tipo, 'bloqueado')
   assert.equal(classificarAviso('texto novo', 'RAID_JA_CAPTURADO').tipo, 'bloqueado')
+  assert.equal(classificarAviso('texto novo', 'RAID_FECHADA').tipo, 'espera')
+})
+
+// A raid fora do horário é REGRA, não falha. Sem `RAID_FECHADA` na tabela ela
+// caía no fallback `erro` — ícone de alerta, título "OPS!" — e com a janela
+// diária de 18h às 22h isso virou a mensagem mais vista do app.
+test('raid fechada é espera, com ampulheta, e nunca erro', () => {
+  const porCodigo = classificarAviso('texto novo', 'RAID_FECHADA')
+  const porTexto = classificarAviso('A raid do lendário abre às 18h.')
+
+  for (const aviso of [porCodigo, porTexto]) {
+    assert.equal(aviso.tipo, 'espera')
+    assert.equal(aviso.icone, 'ampulheta')
+    assert.equal(aviso.titulo, 'AGUARDE')
+  }
 })
 
 test('todo tipo aponta para um ícone pixel que existe', () => {

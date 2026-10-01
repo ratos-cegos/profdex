@@ -54,6 +54,9 @@ function criarPrisma(over: Record<string, unknown> = {}) {
     ),
     findUnique: jest.fn().mockResolvedValue({ id: 'prof-1', slug: 'eron' }),
     findMany: jest.fn().mockResolvedValue([]),
+    // `assertSemLendario` pergunta se já existe um lendário ativo. `null` = não
+    // existe, que é o caso de todo teste daqui; quem quiser o conflito sobrescreve.
+    findFirst: jest.fn().mockResolvedValue(null),
     delete: jest.fn().mockResolvedValue({}),
   };
   const professorVariant = {
@@ -111,6 +114,9 @@ function criarPrismaComEstado(existentes: Record<string, unknown>[] = []) {
     ),
     findUnique: jest.fn().mockResolvedValue({ id: 'prof-1', slug: 'eron' }),
     update: jest.fn(),
+    // Idem `criarPrisma`: `assertSemLendario` pergunta por um lendário ativo, e
+    // as duas fábricas precisam da mesma forma para servirem a `criarService`.
+    findFirst: jest.fn().mockResolvedValue(null),
     delete: jest.fn().mockResolvedValue({}),
   };
   const professorVariant = {
@@ -531,5 +537,154 @@ describe('AdminProfessorsService', () => {
       );
       expect(lista.map((p) => p.capturedCount)).toEqual([0, 7]);
     });
+  });
+});
+
+/**
+ * Os sprites de ESTÁGIO da raid: o lendário troca de corpo a cada terço de vida.
+ *
+ * A regra que estes testes travam é a da armadilha que o desenho tinha: os
+ * quatro campos novos moram em `ASSET_FIELDS` junto dos três de sempre, e
+ * `validarArte` exige TODOS os campos da lista que recebe. Sem separar base de
+ * estágio, cadastrar um professor comum passaria a pedir SETE arquivos.
+ */
+describe('AdminProfessoresService — sprites de estágio', () => {
+  const arteComEstagios = (): UploadedAssets => ({
+    ...arteCompleta(),
+    spriteFrontE2: [arquivo('f2.png', 'image/png', PNG)],
+    spriteBackE2: [arquivo('c2.png', 'image/png', PNG)],
+    spriteFrontE3: [arquivo('f3.png', 'image/png', PNG)],
+    spriteBackE3: [arquivo('c3.png', 'image/png', PNG)],
+  });
+
+  it('professor COMUM continua pedindo três arquivos, não sete', async () => {
+    const { prisma, service } = criarService();
+
+    await service.create({ name: 'Renata', types: ['ia'] }, arteCompleta());
+
+    const { data } = prisma.professor.create.mock.calls[0][0];
+    expect(data.spriteFrontUrl).toBeTruthy();
+    // As quatro colunas de estágio nem são escritas para quem não tem estágio.
+    expect(data.spriteFrontE2Url).toBeUndefined();
+    expect(data.spriteBackE3Url).toBeUndefined();
+  });
+
+  it('professor RARO também não precisa de estágio', async () => {
+    const { prisma, service } = criarService();
+
+    await service.create(
+      { name: 'Simone', types: ['ia'], rare: true },
+      arteCompleta(),
+    );
+
+    const { data } = prisma.professor.create.mock.calls[0][0];
+    expect(data.rare).toBe(true);
+    expect(data.spriteFrontE2Url).toBeUndefined();
+  });
+
+  it('LENDÁRIO sem os quatro de estágio é recusado', async () => {
+    const { service } = criarService();
+
+    await expect(
+      service.create(
+        {
+          name: 'Sérgio Tanaka',
+          types: ['engenharia-software'],
+          legendary: true,
+        },
+        arteCompleta(),
+      ),
+    ).rejects.toThrow(/sprites de estágio/);
+  });
+
+  it('LENDÁRIO recusa quando falta UM dos quatro', async () => {
+    const { service } = criarService();
+    const arte = arteComEstagios();
+    delete arte.spriteBackE3;
+
+    await expect(
+      service.create(
+        {
+          name: 'Sérgio Tanaka',
+          types: ['engenharia-software'],
+          legendary: true,
+        },
+        arte,
+      ),
+    ).rejects.toThrow(/sprites de estágio/);
+  });
+
+  it('LENDÁRIO com os sete grava as quatro colunas e os quatro arquivos', async () => {
+    const { prisma, service } = criarService();
+
+    await service.create(
+      {
+        name: 'Sérgio Tanaka',
+        types: ['engenharia-software'],
+        legendary: true,
+      },
+      arteComEstagios(),
+    );
+
+    const { data } = prisma.professor.create.mock.calls[0][0];
+    expect(data.legendary).toBe(true);
+    expect(data.spriteFrontE2Url).toMatch(
+      /^\/uploads\/sergio-tanaka-frente-e2\.png\?v=\d+$/,
+    );
+    expect(data.spriteBackE2Url).toMatch(/-costas-e2\.png\?v=/);
+    expect(data.spriteFrontE3Url).toMatch(/-frente-e3\.png\?v=/);
+    expect(data.spriteBackE3Url).toMatch(/-costas-e3\.png\?v=/);
+
+    // Um arquivo por estágio no volume: o sufixo é o que impede o estágio 3 de
+    // sobrescrever a arte de base.
+    for (const nome of [
+      'sergio-tanaka-frente.png',
+      'sergio-tanaka-costas.png',
+      'sergio-tanaka-frente-e2.png',
+      'sergio-tanaka-costas-e2.png',
+      'sergio-tanaka-frente-e3.png',
+      'sergio-tanaka-costas-e3.png',
+    ]) {
+      expect(writeAsset).toHaveBeenCalledWith(nome, PNG);
+    }
+  });
+
+  it('a edição troca só o estágio que veio', async () => {
+    const { prisma, service } = criarService();
+
+    await service.update(
+      'prof-1',
+      {},
+      { spriteFrontE3: [arquivo('f3.png', 'image/png', PNG)] },
+    );
+
+    const { data } = prisma.professor.update.mock.calls[0][0];
+    expect(data.spriteFrontE3Url).toMatch(
+      /^\/uploads\/eron-frente-e3\.png\?v=/,
+    );
+    // Nada mais é tocado: a arte chega em levas, e subir a frente do estágio 3
+    // não pode apagar as outras.
+    expect(data.spriteFrontUrl).toBeUndefined();
+    expect(data.spriteFrontE2Url).toBeUndefined();
+    expect(data.spriteBackE3Url).toBeUndefined();
+  });
+
+  it('sprite de estágio falso é recusado como qualquer outro PNG', async () => {
+    const { service } = criarService();
+    const arte = arteComEstagios();
+    arte.spriteFrontE2 = [
+      arquivo('f2.png', 'image/png', Buffer.from('MZ\x90')),
+    ];
+
+    await expect(
+      service.create(
+        {
+          name: 'Sérgio Tanaka',
+          types: ['engenharia-software'],
+          legendary: true,
+        },
+        arte,
+      ),
+    ).rejects.toThrow(/não é um \.png de verdade/);
   });
 });

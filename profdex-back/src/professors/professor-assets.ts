@@ -22,9 +22,42 @@ export const MAX_GLB_BYTES = 5 * 1024 * 1024;
 /** O maior arquivo que qualquer campo aceita — o teto que o Multer recebe. */
 export const MAX_UPLOAD_BYTES = Math.max(MAX_PNG_BYTES, MAX_GLB_BYTES);
 
-/** Os três campos de arte. A chave é o nome do campo no formulário. */
-export const ASSET_FIELDS = ['spriteFront', 'spriteBack', 'model'] as const;
+/**
+ * Os três campos de arte que TODO professor tem. A chave é o nome do campo no
+ * formulário.
+ */
+export const ASSET_FIELDS_BASE = [
+  'spriteFront',
+  'spriteBack',
+  'model',
+] as const;
+
+/**
+ * Os quatro pares de sprite dos estágios 2 e 3 da raid.
+ *
+ * Separados dos de base porque a obrigatoriedade é outra: `validarArte` exige
+ * TODOS os campos da lista que recebe, e jogar estes quatro em `ASSET_FIELDS`
+ * passaria a cobrar SETE arquivos para cadastrar qualquer professor comum. Só o
+ * lendário tem estágios, então só ele os exige.
+ *
+ * Não há par para o estágio 1: ele usa a arte normal do professor, que é a
+ * mesma que a ficha da Profdex mostra.
+ */
+export const ASSET_FIELDS_ESTAGIO = [
+  'spriteFrontE2',
+  'spriteBackE2',
+  'spriteFrontE3',
+  'spriteBackE3',
+] as const;
+
+/** Todos os campos de arte — o que o Multer aceita e o que se grava em disco. */
+export const ASSET_FIELDS = [
+  ...ASSET_FIELDS_BASE,
+  ...ASSET_FIELDS_ESTAGIO,
+] as const;
+
 export type AssetField = (typeof ASSET_FIELDS)[number];
+export type AssetFieldEstagio = (typeof ASSET_FIELDS_ESTAGIO)[number];
 
 interface AssetSpec {
   /** Sufixo do arquivo gravado: `<slug><suffix>`. */
@@ -65,6 +98,36 @@ export const ASSET_SPECS: Record<AssetField, AssetSpec> = {
     mimes: ['model/gltf-binary', 'application/octet-stream', ''],
     magic: GLB_MAGIC,
     label: 'modelo 3D',
+  },
+  // Os estágios da raid. Mesmas regras de PNG dos sprites de base — o sufixo é
+  // a única diferença, e é ele que mantém um arquivo por estágio no volume.
+  spriteFrontE2: {
+    suffix: '-frente-e2.png',
+    maxBytes: MAX_PNG_BYTES,
+    mimes: ['image/png'],
+    magic: PNG_MAGIC,
+    label: 'sprite de frente do estágio 2',
+  },
+  spriteBackE2: {
+    suffix: '-costas-e2.png',
+    maxBytes: MAX_PNG_BYTES,
+    mimes: ['image/png'],
+    magic: PNG_MAGIC,
+    label: 'sprite de costas do estágio 2',
+  },
+  spriteFrontE3: {
+    suffix: '-frente-e3.png',
+    maxBytes: MAX_PNG_BYTES,
+    mimes: ['image/png'],
+    magic: PNG_MAGIC,
+    label: 'sprite de frente do estágio 3',
+  },
+  spriteBackE3: {
+    suffix: '-costas-e3.png',
+    maxBytes: MAX_PNG_BYTES,
+    mimes: ['image/png'],
+    magic: PNG_MAGIC,
+    label: 'sprite de costas do estágio 3',
   },
 };
 

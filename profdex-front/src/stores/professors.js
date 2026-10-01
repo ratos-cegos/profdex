@@ -25,10 +25,18 @@ export const useProfessorsStore = defineStore('professors', () => {
   // Depois de vencer, `legendary` vem preenchido e `captured` vira true: aí o
   // card deixa de ser silhueta e passa a ser a última entrada da coleção.
   //
-  // `opensAt`/`open`/`opensAtLabel` são a trava de HORÁRIO da raid, que é global
-  // e não depende do aluno: antes dela o card mostra a contagem no lugar do
-  // botão. O padrão é `open: true` porque o card só existe com `unlocked`, e
-  // `unlocked` só vem do servidor — nada é liberado por este valor inicial.
+  // As travas de HORÁRIO da raid, globais e independentes do aluno: antes delas
+  // o card mostra a contagem no lugar do botão. São duas (ver `raid-janela.ts`
+  // no back) e o servidor resolve as duas:
+  //
+  // - `opensAt`/`opensAtLabel` — a abertura do EVENTO, que não se move;
+  // - `abreEm`/`abreEmLabel` — a próxima vez que a porta abre: `opensAt` antes da
+  //   estreia, a próxima 18h quando é só a janela diária que fechou, `null`
+  //   quando já está aberta;
+  // - `fechaEm` — quando a janela de hoje fecha. `null` = janela desligada.
+  //
+  // O padrão é `open: true` porque o card só existe com `unlocked`, e `unlocked`
+  // só vem do servidor — nada é liberado por este valor inicial.
   const raid = ref({
     unlocked: false,
     captured: false,
@@ -36,6 +44,9 @@ export const useProfessorsStore = defineStore('professors', () => {
     dex: { captured: 0, total: 0 },
     opensAt: null,
     opensAtLabel: '',
+    abreEm: null,
+    abreEmLabel: '',
+    fechaEm: null,
     open: true,
     cooldownUntil: null,
     attempts: 0,
