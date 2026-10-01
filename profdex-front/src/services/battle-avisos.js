@@ -15,8 +15,20 @@
 const REGRAS = [
   {
     tipo: 'espera',
-    codes: ['RAID_EM_COOLDOWN'],
-    padroes: [/já batalharam/i, /liberado em/i, /muitos convites/i, /^aguarde/i],
+    // `RAID_FECHADA` é espera e não erro: a raid tem hora para abrir (e, desde a
+    // janela diária, para reabrir). Faltando aqui, ela caía no fallback e a
+    // regra do evento aparecia com ícone de alerta e título "OPS!" — e com a
+    // janela de 18h às 22h isso passou a ser a mensagem mais vista do app.
+    codes: ['RAID_EM_COOLDOWN', 'RAID_FECHADA'],
+    padroes: [
+      /já batalharam/i,
+      /liberado em/i,
+      /muitos convites/i,
+      /^aguarde/i,
+      // Cinto e suspensório, como o resto do módulo: o texto também é
+      // reconhecido, para a classificação não depender só do `code`.
+      /raid do lendário abre/i,
+    ],
   },
   {
     tipo: 'bloqueado',

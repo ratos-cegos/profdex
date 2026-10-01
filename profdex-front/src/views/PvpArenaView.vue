@@ -12,6 +12,7 @@ import {
   ocupanteDoServidor,
 } from '../composables/battleOcupante'
 import { esperar, TEMPO } from '../composables/battleTiming'
+import { efeitosDe } from '../data/battle-efeitos'
 import { useBattleStore } from '../stores/battle'
 import { contraBot, rotaDeSaida } from '../stores/battle-resync'
 
@@ -108,10 +109,26 @@ const trocaAberta = ref(false)
  */
 const timeExibido = ref({ you: [], foe: [] })
 
+/**
+ * As pílulas de efeito ativo, pelo MESMO motivo do `timeExibido`.
+ *
+ * Diferença: vida e queda chegam como eventos e por isso a tela as anima passo a
+ * passo; efeito não — não há evento que diga "o ataque dele subiu para +2". Então
+ * as pílulas atualizam uma vez por rodada, quando a animação alcança o servidor.
+ * Ligadas direto no payload, elas mostrariam o buff do turno antes de o golpe que
+ * o causou ter sido animado.
+ */
+const efeitosExibidos = ref({ you: [], foe: [] })
+
+/** Sincroniza as cópias ATRASADAS da HUD com o que o servidor já sabe. */
 function sincronizarTimeExibido() {
   timeExibido.value = {
     you: pvp.value?.you?.team ?? [],
     foe: pvp.value?.foe?.team ?? [],
+  }
+  efeitosExibidos.value = {
+    you: efeitosDe(pvp.value?.you),
+    foe: efeitosDe(pvp.value?.foe),
   }
 }
 
@@ -169,6 +186,9 @@ const ladoRival = computed(() => {
     // antes da fila chegar à troca (o NDE surgia com a vida do chefe, e o
     // chefe voltava a tempo de "cair" no lugar do NDE).
     professores: o.grupo,
+    // Do OCUPANTE pelo mesmo motivo do grupo: lido do `foe` final, o lendario
+    // trocava de corpo antes de o overlay anunciar a transformacao.
+    estagio: o.estagio,
     // O nome em campo vem antes do nome do professor porque quem está no
     // assento pode ser o grupo ("NDE da Coordenação"), não um professor.
     name: o.nome ?? o.professor?.name ?? pvp.value?.opponent?.name ?? '',
@@ -178,6 +198,10 @@ const ladoRival = computed(() => {
     hit: foeHit.value,
     fainted: o.fainted,
     feedback: foeFeedback.value,
+    // Do SERVIDOR, sincronizado no fim da fila (ver `efeitosExibidos`): efeito
+    // não chega como evento com detalhe suficiente para animar passo a passo, e
+    // ligar direto no payload faria as pilulas saberem antes da animacao.
+    efeitos: efeitosExibidos.value.foe,
     chave: chaveDoOcupante(o),
   }
 })
@@ -193,6 +217,7 @@ const ladoSeu = computed(() => {
     hit: youHit.value,
     fainted: o.fainted,
     feedback: youFeedback.value,
+    efeitos: efeitosExibidos.value.you,
     chave: chaveDoOcupante(o),
   }
 })
@@ -381,9 +406,18 @@ async function play(events) {
         break
       // Momento de roteiro: sai da faixa e vai para o overlay, no ritmo do
       // jogador. O `await` mantém o resto da rodada em espera.
-      case 'roteiro':
-        await mostrarRoteiro(ev)
+      case 'roteiro': {
+        // A ordem destas duas linhas é o ponto. `mostrarRoteiro` monta o overlay
+        // de forma SÍNCRONA (dentro do executor da promessa), então aplicar a
+        // virada de estágio depois dela coloca as duas no mesmo tick: o Vue
+        // pinta uma vez, com o overlay já cobrindo o palco e a arte nova atrás.
+        // Invertido, o lendário trocava de corpo à vista antes de o overlay
+        // anunciar a transformação.
+        const toque = mostrarRoteiro(ev)
+        exibido.value = aplicarEvento(exibido.value, ev)
+        await toque
         break
+      }
       default:
         break
     }

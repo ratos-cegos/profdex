@@ -133,6 +133,17 @@ export type BattleEvent =
       linhas: string[];
       /** Gira ANTES das linhas. `opcoes` é a ordem em que a roleta desfila. */
       roleta?: { kind: 'tipo' | 'buff'; opcoes: string[]; resultado: string };
+      /**
+       * Só a virada de ESTÁGIO manda estes dois: eles trocam a arte do chefe no
+       * ponto certo da fila.
+       *
+       * Lido do `foe` do fim da rodada, o lendário mudava de corpo no primeiro
+       * quadro do turno — antes de o overlay anunciar a transformação, o que
+       * estraga justamente a revelação que o overlay existe para fazer. Mesma
+       * correção que `switchEvent` fez para o ocupante.
+       */
+      target?: CombatantKey;
+      estagio?: number;
     };
 
 interface Shield {

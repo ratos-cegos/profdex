@@ -19,6 +19,17 @@ export const PUBLIC_PROFESSOR_SELECT = {
   spriteFrontUrl: true,
   spriteBackUrl: true,
   modelUrl: true,
+  // A arte dos estágios da raid. Atravessa a fronteira porque é o CLIENTE que
+  // troca a sprite na virada de estágio (ver `battleSprites.js`): ele já recebe
+  // o professor inteiro do chefe, e buscar isto por outra rota no meio do
+  // combate seria uma requisição no turno.
+  //
+  // Não revela nada sobre quem é o lendário além do que `spriteFrontUrl` já
+  // revelava — e o `status` da Profdex só manda o professor DEPOIS da captura.
+  spriteFrontE2Url: true,
+  spriteBackE2Url: true,
+  spriteFrontE3Url: true,
+  spriteBackE3Url: true,
   pixelArt: true,
   active: true,
 } satisfies Prisma.ProfessorSelect;

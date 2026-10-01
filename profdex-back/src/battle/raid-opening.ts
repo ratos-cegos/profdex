@@ -16,7 +16,10 @@
  * usa offset, quem escreve texto para gente ler usa zona. É a mesma divisão de
  * `metrics-report.ts`, e pelo mesmo motivo.
  */
-const FUSO = 'America/Sao_Paulo';
+export const FUSO_DO_EVENTO = 'America/Sao_Paulo';
+
+/** Alias interno, para as funções abaixo continuarem curtas. */
+const FUSO = FUSO_DO_EVENTO;
 
 /**
  * `19h`, ou `01/10 19h` quando a abertura não é hoje.

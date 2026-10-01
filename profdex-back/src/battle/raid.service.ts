@@ -10,6 +10,7 @@ import {
   buildRaidFirstClearFallbackEmail,
   EMAIL_DO_PRIMEIRO,
 } from './raid-first-clear.mail';
+import { estadoDaJanela, fechaEm } from './raid-janela';
 import { rotuloDaAbertura } from './raid-opening';
 import {
   PUBLIC_PROFESSOR_SELECT,
@@ -52,7 +53,21 @@ export interface RaidStatus {
   opensAt: number;
   /** A mesma hora já escrita no fuso do evento — ver `raid-opening.ts`. */
   opensAtLabel: string;
-  /** Já passou da hora de abertura. */
+  /**
+   * Quando a porta (re)abre: `opensAt` antes do evento, a próxima vez que o
+   * relógio bate a hora de abrir quando é só a janela diária que está fechada, e
+   * `null` quando já está aberta.
+   *
+   * Existe separado de `opensAt` porque os dois divergem depois do primeiro dia:
+   * `opensAt` é o marco do evento e não se move, e é dele que sai a contagem de
+   * antes da estreia. Quem desenha "ABRE EM 40MIN" às 17h20 de um sábado é este.
+   */
+  abreEm: number | null;
+  /** `abreEm` já escrito no fuso do evento. */
+  abreEmLabel: string;
+  /** Quando a janela de hoje fecha. `null` se a janela está desligada. */
+  fechaEm: number | null;
+  /** A porta está aberta AGORA: abertura do evento e janela diária, as duas. */
   open: boolean;
   /**
    * O relógio do SERVIDOR no instante da resposta.
@@ -219,15 +234,16 @@ export class RaidService implements OnModuleInit {
 
   /** Tudo que a Profdex precisa para desenhar (ou não) o card do lendário. */
   async status(userId: string): Promise<RaidStatus> {
-    const [lendario, dex, unlockRow, opensAt] = await Promise.all([
+    const [lendario, dex, unlockRow, janela] = await Promise.all([
       this.legendary(),
       this.dexProgress(userId),
       this.prisma.raidUnlock.findUnique({
         where: { userId },
         select: { id: true },
       }),
-      this.settings.raidOpensAtMs(),
+      this.settings.raidJanela(),
     ]);
+    const opensAt = janela.opensAt;
 
     // Destrava na leitura quando a dex acabou de fechar: o aluno não precisa
     // de outra ação para o card aparecer — ele captura o último professor e a
@@ -266,6 +282,14 @@ export class RaidService implements OnModuleInit {
           spriteFrontUrl: lendario.spriteFrontUrl,
           spriteBackUrl: lendario.spriteBackUrl,
           modelUrl: lendario.modelUrl,
+          // O card da coleção não desenha estágio — quem troca de sprite na
+          // virada é a arena. Vão porque a cópia é explícita de propósito (é
+          // ela que torna visível o que atravessa a fronteira) e o tipo
+          // `PublicProfessor` cobra o conjunto inteiro.
+          spriteFrontE2Url: lendario.spriteFrontE2Url,
+          spriteBackE2Url: lendario.spriteBackE2Url,
+          spriteFrontE3Url: lendario.spriteFrontE3Url,
+          spriteBackE3Url: lendario.spriteBackE3Url,
           pixelArt: lendario.pixelArt,
           active: lendario.active,
         }
@@ -274,6 +298,8 @@ export class RaidService implements OnModuleInit {
     // podem cair em milissegundos diferentes, e aí o `open` e a contagem que o
     // front deriva não estariam falando do mesmo instante.
     const now = Date.now();
+    const estado = estadoDaJanela({ agora: now, ...janela });
+    const abreEm = estado.reabreEm;
     return {
       unlocked,
       captured,
@@ -284,7 +310,16 @@ export class RaidService implements OnModuleInit {
       // única informação que faz a fila estar na frente do estande às 19h.
       opensAt,
       opensAtLabel: rotuloDaAbertura(opensAt, now),
-      open: now >= opensAt,
+      abreEm,
+      abreEmLabel: abreEm ? rotuloDaAbertura(abreEm, now) : '',
+      fechaEm: estado.aberta
+        ? fechaEm({
+            agora: now,
+            horaDeAbrir: janela.horaDeAbrir,
+            horaDeFechar: janela.horaDeFechar,
+          })
+        : null,
+      open: estado.aberta,
       now,
       cooldownUntil: cooldownMs > 0 ? now + cooldownMs : null,
       attempts,
@@ -308,12 +343,24 @@ export class RaidService implements OnModuleInit {
     if (!legendary) return { ok: false, code: RAID_SEM_LENDARIO };
 
     // A trava do relógio vem ANTES da do aluno, e a ordem é a resposta que se
-    // quer dar: antes das 19h a recusa é a mesma para todo mundo ("abre às
-    // 19h"), em vez de o aluno que fechou a Profdex às 15h ler "complete a
+    // quer dar: fora do horário a recusa é a mesma para todo mundo ("abre às
+    // 18h"), em vez de o aluno que fechou a Profdex às 15h ler "complete a
     // Profdex" e ir procurar o professor que falta — não falta nenhum.
-    const opensAt = await this.settings.raidOpensAtMs();
-    if (Date.now() < opensAt) {
-      return { ok: false, code: RAID_FECHADA, retryAt: opensAt };
+    //
+    // Duas travas num cheque só (ver `raid-janela.ts`): a abertura do evento e a
+    // janela diária. É o ÚNICO ponto que consulta a janela, e é isso que faz
+    // "quem está no meio termina" sair de graça — a partida em curso nunca
+    // volta a passar por aqui.
+    const estado = estadoDaJanela({
+      agora: Date.now(),
+      ...(await this.settings.raidJanela()),
+    });
+    if (!estado.aberta) {
+      return {
+        ok: false,
+        code: RAID_FECHADA,
+        retryAt: estado.reabreEm ?? undefined,
+      };
     }
 
     if (!(await this.ensureUnlocked(userId))) {

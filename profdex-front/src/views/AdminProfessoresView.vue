@@ -50,6 +50,50 @@ const CAMPOS_DE_ARTE = [
   },
 ]
 
+/**
+ * A arte dos ESTÁGIOS 2 e 3 da raid — só o lendário tem.
+ *
+ * Lista separada porque a obrigatoriedade é outra: o servidor exige os três de
+ * cima de todo mundo e estes quatro só quando `legendary = true`. Juntá-los
+ * numa lista só faria o cadastro de um professor comum pedir sete arquivos.
+ *
+ * Não há par para o estágio 1: ele usa o sprite de frente de cima, o mesmo que
+ * a Profdex mostra.
+ */
+const CAMPOS_DE_ESTAGIO = [
+  {
+    key: 'spriteFrontE2',
+    label: 'Estágio 2 — frente',
+    accept: 'image/png',
+    max: MAX_PNG,
+    ajuda: 'PNG até 2 MB. A cara dele depois de perder o primeiro terço da vida.',
+  },
+  {
+    key: 'spriteBackE2',
+    label: 'Estágio 2 — costas',
+    accept: 'image/png',
+    max: MAX_PNG,
+    ajuda: 'PNG até 2 MB. Par de costas do estágio 2.',
+  },
+  {
+    key: 'spriteFrontE3',
+    label: 'Estágio 3 — frente',
+    accept: 'image/png',
+    max: MAX_PNG,
+    ajuda: 'PNG até 2 MB. A forma final, do último terço da vida.',
+  },
+  {
+    key: 'spriteBackE3',
+    label: 'Estágio 3 — costas',
+    accept: 'image/png',
+    max: MAX_PNG,
+    ajuda: 'PNG até 2 MB. Par de costas do estágio 3.',
+  },
+]
+
+/** Tudo que pode ser enviado — é por aqui que previews e FormData iteram. */
+const TODOS_OS_CAMPOS = [...CAMPOS_DE_ARTE, ...CAMPOS_DE_ESTAGIO]
+
 const carregando = ref(true)
 const erro = ref('')
 const professores = ref([])
@@ -64,14 +108,36 @@ const form = reactive({
   rare: false,
   legendary: false,
 })
-const arquivos = reactive({ spriteFront: null, spriteBack: null, model: null })
-const previews = reactive({ spriteFront: '', spriteBack: '', model: '' })
+const arquivos = reactive(
+  Object.fromEntries(TODOS_OS_CAMPOS.map((c) => [c.key, null])),
+)
+const previews = reactive(
+  Object.fromEntries(TODOS_OS_CAMPOS.map((c) => [c.key, ''])),
+)
 const erroForm = ref('')
 const enviando = ref(false)
 const progresso = ref(0)
 const alternandoId = ref(null)
 
 const editandoUm = computed(() => Boolean(editando.value))
+
+/**
+ * Os campos de arquivo que o formulário mostra.
+ *
+ * Os quatro de estágio aparecem só quando o professor é — ou está sendo
+ * cadastrado como — lendário. Para os outros seriam quatro caixas mortas, e o
+ * servidor nem tem onde guardar: as colunas de estágio só são escritas para o
+ * lendário.
+ *
+ * `editando.value?.legendary` cobre a EDIÇÃO: `rare`/`legendary` são imutáveis,
+ * então o formulário de edição não tem a caixa de marcar — quem diz que este
+ * professor tem estágios é o dado que veio do servidor.
+ */
+const camposVisiveis = computed(() =>
+  form.legendary || editando.value?.legendary
+    ? TODOS_OS_CAMPOS
+    : CAMPOS_DE_ARTE,
+)
 
 // A cor canônica preenche área; em traço sobre fundo escuro o cinza da Eng. de
 // Software (#495057) daria 1,7:1. `legibleColor` clareia mantendo o matiz.
@@ -136,7 +202,7 @@ function alternarTipo(id) {
 }
 
 function limparPreviews() {
-  for (const campo of CAMPOS_DE_ARTE) {
+  for (const campo of TODOS_OS_CAMPOS) {
     // Blob URL não é liberada sozinha: sem isto, cada arquivo escolhido durante
     // uma sessão de cadastro fica retido até a aba fechar.
     if (previews[campo.key]) URL.revokeObjectURL(previews[campo.key])
@@ -201,7 +267,11 @@ function validar() {
   if (form.name.trim().length < 2) return 'O nome precisa ter pelo menos 2 letras.'
   if (!form.types.length) return 'Escolha pelo menos um tipo.'
   if (!editandoUm.value) {
-    const faltando = CAMPOS_DE_ARTE.filter((c) => !arquivos[c.key])
+    // O lendário tem estágios, e por isso os quatro pares entram na conta. A
+    // mesma regra vale no servidor (`validarArte`); aqui ela existe para o admin
+    // não esperar 17 MB subirem no Wi-Fi do evento para então ouvir que falta um.
+    const exigidos = form.legendary ? TODOS_OS_CAMPOS : CAMPOS_DE_ARTE
+    const faltando = exigidos.filter((c) => !arquivos[c.key])
     if (faltando.length) {
       return `Falta enviar: ${faltando.map((c) => c.label.toLowerCase()).join(', ')}.`
     }
@@ -225,7 +295,7 @@ async function salvar() {
     corpo.append('rare', String(form.rare))
     corpo.append('legendary', String(form.legendary))
   }
-  for (const campo of CAMPOS_DE_ARTE) {
+  for (const campo of TODOS_OS_CAMPOS) {
     if (arquivos[campo.key]) corpo.append(campo.key, arquivos[campo.key])
   }
 
@@ -379,7 +449,7 @@ onMounted(carregar)
         </fieldset>
 
         <div class="arte">
-          <div v-for="campo in CAMPOS_DE_ARTE" :key="campo.key" class="arte__campo">
+          <div v-for="campo in camposVisiveis" :key="campo.key" class="arte__campo">
             <label class="campo-rotulo">
               {{ campo.label }}
               <input

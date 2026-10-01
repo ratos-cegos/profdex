@@ -101,6 +101,13 @@ function criar(
   const settings = {
     raidCooldownMs: jest.fn().mockResolvedValue(cooldownMs),
     raidOpensAtMs: jest.fn().mockResolvedValue(opensAt),
+    // A janela DESLIGADA (abrir == fechar) nos testes que nao sao sobre ela:
+    // com 18h-22h de verdade, metade desta suite passaria ou falharia conforme
+    // a hora em que o CI rodasse. As bordas de horario vivem em
+    // `raid-janela.spec.ts`, com o relogio entrando por parametro.
+    raidJanela: jest
+      .fn()
+      .mockResolvedValue({ opensAt, horaDeAbrir: 0, horaDeFechar: 0 }),
   };
   const mail = { send: jest.fn().mockResolvedValue(true) };
   const service = new RaidService(
@@ -375,7 +382,13 @@ describe('RaidService — a hora de abrir', () => {
     expect(status).toMatchObject({
       unlocked: true,
       opensAt: abre,
-      opensAtLabel: '01/10 19h',
+      // Só a HORA, nunca o dia: `rotuloDaAbertura` omite o dia quando a abertura
+      // é hoje, e `status()` usa o relógio real. Fixar '01/10 19h' aqui era uma
+      // bomba de data — passava até 30/09/2026 e quebrou em 01/10, o dia do
+      // evento. Como o rótulo é formatado com o relógio por parâmetro, as duas
+      // formas já estão travadas em `raid-opening.spec.ts`; este teste é sobre o
+      // status CARREGAR o rótulo.
+      opensAtLabel: expect.stringContaining('19h'),
       open: false,
     });
     expect(Math.abs(status.now - Date.now())).toBeLessThan(1_000);

@@ -426,6 +426,20 @@ model Professor {
   spriteBackUrl  String? @map("sprite_back_url")
   modelUrl       String? @map("model_url")
 
+  // Arte dos ESTÁGIOS 2 e 3 da raid: o lendário troca de corpo a cada terço de
+  // vida (ver src/battle/raid-estagios.ts). Não há par para o estágio 1 — ele
+  // usa a arte normal acima, que é a mesma da ficha da Profdex.
+  //
+  // Nullable no banco porque todo professor comum tem estas quatro colunas
+  // vazias, e porque as linhas anteriores a esta migration nasceram sem elas.
+  // Quem exige é o CADASTRO, e só quando `legendary = true`. O combate cai na
+  // arte de base quando faltam, então estágio sem arte funciona — só não muda
+  // de cara.
+  spriteFrontE2Url String? @map("sprite_front_e2_url")
+  spriteBackE2Url  String? @map("sprite_back_e2_url")
+  spriteFrontE3Url String? @map("sprite_front_e3_url")
+  spriteBackE3Url  String? @map("sprite_back_e3_url")
+
   // A arte é mista: o Gustavo é pixel art de verdade e precisa de
   // `image-rendering: pixelated`; os cartoons entram reduzidos e o mesmo filtro
   // serrilharia as bordas deles. Substituiu o SPRITES_PIXEL_ART do front.

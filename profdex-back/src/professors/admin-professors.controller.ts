@@ -21,7 +21,7 @@ import {
   SetActiveDto,
   UpdateProfessorDto,
 } from './dto/professor-form.dto';
-import { MAX_UPLOAD_BYTES } from './professor-assets';
+import { ASSET_FIELDS, MAX_UPLOAD_BYTES } from './professor-assets';
 import { MulterErrorFilter } from './multer-error.filter';
 
 /**
@@ -33,18 +33,23 @@ import { MulterErrorFilter } from './multer-error.filter';
  * professor que já está em circulação, e a versão antiga não voltaria.
  *
  * Em memória, nada toca o disco até a validação passar e o banco aceitar. O
- * custo máximo é 9 MB por requisição (2 + 2 + 5), num painel operado por uma
- * pessoa de cada vez.
+ * custo máximo é 17 MB por requisição — os três de sempre (2 + 2 + 5) mais os
+ * quatro sprites de estágio do lendário (4 × 2) —, num painel operado por uma
+ * pessoa de cada vez, e só o cadastro do lendário chega perto disso.
  */
 const UPLOAD = FileFieldsInterceptor(
-  [
-    { name: 'spriteFront', maxCount: 1 },
-    { name: 'spriteBack', maxCount: 1 },
-    { name: 'model', maxCount: 1 },
-  ],
+  // Derivado de `ASSET_FIELDS` em vez de escrito à mão: a lista cresceu de três
+  // para sete com os sprites de estágio da raid, e um campo que existe no
+  // validador mas não aqui é rejeitado pelo Multer ANTES de o validador rodar —
+  // o admin veria "Unexpected field" no lugar da mensagem de arte.
+  ASSET_FIELDS.map((name) => ({ name, maxCount: 1 })),
   {
     storage: memoryStorage(),
-    limits: { fileSize: MAX_UPLOAD_BYTES, files: 3, fields: 10 },
+    limits: {
+      fileSize: MAX_UPLOAD_BYTES,
+      files: ASSET_FIELDS.length,
+      fields: 10,
+    },
   },
 );
 
