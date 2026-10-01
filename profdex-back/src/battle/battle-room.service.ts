@@ -21,6 +21,7 @@ import {
   benchCombatant,
   hasAlive,
   isAlive,
+  movimentosAcumuladosVisiveis,
   nextAliveIndex,
   ownMemberView,
   publicMemberView,
@@ -971,6 +972,9 @@ export class BattleRoomService implements OnModuleDestroy {
       status: statusLabel(c.status),
       // O estado dos efeitos, cru: quem escreve o rotulo e a tela.
       ...efeitosVisiveis(c),
+      // Mostra apenas os acúmulos do combatente ativo; golpes usados já são
+      // públicos na batalha, e os golpes ainda não usados continuam privados.
+      movimentosAcumulados: movimentosAcumuladosVisiveis(active),
       activeCaptureId: own ? active.captureId : undefined,
       team: slot.team.map(own ? ownMemberView : publicMemberView),
       ...(own ? { moves: active.moves } : {}),

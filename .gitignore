@@ -7,6 +7,8 @@ node_modules/
 .agents/
 
 temp/
+# Capturas de tela e diagnósticos usados na validação do ambiente local.
+/.local/
 
 # Contexto de passagem entre sessões de trabalho; vale só para a máquina local
 /HANDOFF.md

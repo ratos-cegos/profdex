@@ -31,7 +31,7 @@ const ESCUDO_ROTULO = {
 
 /**
  * `[{ id, rotulo, tom }]` dos efeitos ativos de um lado, na ordem em que a HUD
- * os desenha: status, estágios de atributo, escudo.
+ * os desenha: status, estágios de atributo, escudo e golpes acumulativos.
  *
  * `tom` é `'bom'` ou `'ruim'` do ponto de vista de QUEM TEM o efeito — a tela
  * pinta igual nos dois lados, e é o sinal que o jogador lê sem traduzir nada.
@@ -45,9 +45,10 @@ export function efeitosDe(lado) {
   const efeitos = []
 
   if (lado.statusKind) {
+    const duracao = Number.isFinite(lado.statusTurns) ? ` · ${lado.statusTurns}t` : ''
     efeitos.push({
       id: 'status',
-      rotulo: STATUS_ROTULO[lado.statusKind] ?? lado.statusKind,
+      rotulo: `${STATUS_ROTULO[lado.statusKind] ?? lado.statusKind}${duracao}`,
       tom: 'ruim',
     })
   }
@@ -67,7 +68,21 @@ export function efeitosDe(lado) {
   if (lado.escudo) {
     efeitos.push({
       id: 'escudo',
-      rotulo: ESCUDO_ROTULO[lado.escudo] ?? 'Escudo',
+      rotulo: `${ESCUDO_ROTULO[lado.escudo] ?? 'Escudo'} · próximo golpe`,
+      tom: 'bom',
+    })
+  }
+
+  // Só chegam golpes que já foram usados. O nome torna o acúmulo identificável;
+  // contador e bônus mostram quanto ficou guardado no combatente atual.
+  for (const movimento of lado.movimentosAcumulados ?? []) {
+    const bonus = []
+    if (movimento.bonusPoder) bonus.push(`POD +${movimento.bonusPoder}`)
+    if (movimento.bonusPrecisao) bonus.push(`PREC +${movimento.bonusPrecisao}%`)
+    efeitos.push({
+      id: `acumulado:${movimento.moveId}`,
+      rotulo: bonus.join(' · ') || `×${movimento.usos}`,
+      detalhe: `${movimento.name} · ${movimento.usos} ${movimento.usos === 1 ? 'uso acumulado' : 'usos acumulados'}`,
       tom: 'bom',
     })
   }

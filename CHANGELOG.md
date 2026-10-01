@@ -6,6 +6,28 @@ O formato segue o espírito do [Keep a Changelog](https://keepachangelog.com/pt-
 `Adicionado` para novidades, `Alterado` para mudanças de comportamento existente,
 `Corrigido` para defeitos e `Removido` para o que saiu.
 
+## [Não publicado] — ordem de turno pela Velocidade e ajustes da raid no painel
+
+### Alterado
+
+- **Quem tem mais Velocidade sempre ataca primeiro.** A ordem do turno era
+  uma moeda pesada pela Velocidade. Como as fichas vão só de 100 a 105, ela
+  parecia sorteada, e os alunos liam como "bate primeiro quem aperta
+  primeiro". Agora vale a Velocidade efetiva (base, IV e estágios de
+  buff/debuff), e só o empate exato é cara ou coroa. A regra vale para PvP,
+  treino e raid, e é igual nos dois motores. Medido com o motor real, o
+  exemplar de IV total maior passa a vencer ~57% das partidas (era ~52%). Na
+  raid, o lendário de IV 15 passa a abrir o turno, a não ser que o aluno
+  empate em Velocidade ou use golpes de Velocidade.
+
+### Corrigido
+
+- **Os ajustes numéricos da raid não salvavam pelo painel.** Vida, atributos,
+  teto de turnos, cooldown e as horas de abrir e fechar estavam no catálogo,
+  mas não no DTO do PATCH, e a validação recusava com "property
+  raidHpMultiplier should not exist". Um teste agora confere que todo ajuste
+  listado no painel passa pela mesma validação do servidor.
+
 ## [Não publicado] — revisão do PWA: matrícula na bancada
 
 ### Corrigido

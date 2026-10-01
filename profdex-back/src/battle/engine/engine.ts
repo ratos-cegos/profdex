@@ -56,14 +56,6 @@ export const CONFUSION_SELF_HIT_FRACTION = 0.08;
 export const DOT_DEFAULT_POWER = 8;
 export const DOT_DEFAULT_TURNS = 3;
 
-/**
- * Expoente da razão de Velocidade na ordem do turno (ver `turnOrder`).
- *
- * Espelhado em `profdex-front/src/data/battle-constants.js`, como todas as
- * constantes de balanceamento — `engine-parity.spec.ts` falha se divergirem.
- */
-export const SPEED_ORDER_EXPONENT = 21;
-
 // ── Precisão ────────────────────────────────────────────────────────────────
 export const EVASION_PER_STAGE = 0.05;
 export const MIN_HIT_CHANCE = 0.1;
@@ -225,8 +217,8 @@ export interface BattleState {
  * jogadores tem de continuar sendo decisão, não sorte de captura. Medido com
  * o motor real, em espelho perfeito e escolha de golpe aleatória (n=6000):
  * com teto 15, o exemplar de IV total maior vencia 64% das partidas; com
- * teto 5 e a ordem de turno proporcional (ver `turnOrder`), cai para ~53%.
- * Ver `iv-balance.spec.ts`, que falha se esse número voltar a subir.
+ * teto 5, cai para ~57% (com a ordem de turno decidida pela Velocidade, ver
+ * `turnOrder`). Ver `iv-balance.spec.ts`, que falha se esse número subir.
  */
 export const IV_BONUS_MAX = 5;
 
@@ -303,27 +295,17 @@ export interface TurnEntry {
   move: Move | null;
 }
 
-// ── Ordem do turno: a velocidade PESA a moeda, não decide sozinha ───────────
+// ── Ordem do turno: a Velocidade decide ─────────────────────────────────────
 //
-// A versão original era um degrau (`ps > es`): quem tivesse 1 ponto a mais de
-// raciocínio agia primeiro em TODOS os turnos da partida. Com o teto de IV em
-// 15 isso valia 69% de vitória para o lado mais rápido, e virou moeda pesada
-// por `ps/(ps+es)` para a sorte da captura não decidir o ranqueado.
+// Quem tem a Velocidade efetiva maior age primeiro — atributo base, IV e os
+// estágios de buff/debuff, exatamente o que `effectiveStat` devolve. Empate
+// exato vira cara ou coroa (em PvP os dois lados são humanos).
 //
-// Só que a moeda ficou JUSTA DEMAIS. A Velocidade vai de 100 a 105 (o IV rende
-// no máximo IV_BONUS_MAX), e sobre uma faixa tão curta a razão crua não move
-// quase nada: 15 contra 0 dava 51,2%, e o caso que apareceu no evento — raro de
-// IV 15 contra comum de IV 9, 105 contra 103 — dava 50,5%. Os alunos relatavam
-// o raro de cinco estrelas abrindo o turno depois de um comum qualquer, e
-// estavam certos: era cara ou coroa, e o guia de batalha prometia o contrário.
-//
-// `SPEED_ORDER_EXPONENT` estica a faixa curta sem mexer no atributo: 105 contra
-// 100 vira ~74% e 105 contra 103 vira ~60%. A Velocidade volta a ser sentida,
-// os estágios de buff/debuff passam a praticamente garantir a iniciativa (é o
-// que os nove golpes de Velocidade existem para fazer), e a guarda de Elo não
-// piora — medido com o motor real, quem tem IV maior vence 52,8% das partidas
-// contra 53,3% da razão crua, porque a iniciativa é só um dos quatro atributos.
-// Ver `iv-balance.spec.ts`, que falha se esse número voltar a subir.
+// Já foi uma moeda pesada por `ps/(ps+es)` (depois com a razão elevada a 21),
+// para a sorte da captura não decidir o ranqueado. Na prática, com Velocidades
+// parecidas a ordem parecia aleatória — os alunos liam como "bate primeiro quem
+// aperta primeiro" — e o golpe de +Velocidade não garantia a iniciativa que o
+// guia promete. Agora a regra é a que o jogador enxerga na ficha.
 export function turnOrder(
   state: BattleState,
   playerMove: Move | null,
@@ -336,18 +318,16 @@ export function turnOrder(
 }
 
 /**
- * A probabilidade de o `player` abrir o turno.
+ * A probabilidade de o `player` abrir o turno: 1 se for mais rápido, 0 se for
+ * mais lento, ½ no empate.
  *
- * Separada de `turnOrder` para a regra poder ser conferida sem sortear — é o
- * que o teste de balanceamento faz, porque medir uma probabilidade por
- * amostragem transforma a guarda num teste instável.
+ * Separada de `turnOrder` para a regra poder ser conferida sem sortear.
  */
 export function playerFirstChance(state: BattleState): number {
-  const ps =
-    effectiveStat(state.player, STAT.RACIOCINIO) ** SPEED_ORDER_EXPONENT;
-  const es =
-    effectiveStat(state.enemy, STAT.RACIOCINIO) ** SPEED_ORDER_EXPONENT;
-  return ps / (ps + es);
+  const ps = effectiveStat(state.player, STAT.RACIOCINIO);
+  const es = effectiveStat(state.enemy, STAT.RACIOCINIO);
+  if (ps === es) return 0.5;
+  return ps > es ? 1 : 0;
 }
 
 // ── Upkeep: início do turno de um combatente ─────────────────────────────────

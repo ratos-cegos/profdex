@@ -7,6 +7,8 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview",
+    "pwa:preview": "vite build && vite preview",
+    "pwa:mobile": "vite build && vite preview --mode mobile --port 4175 --strictPort",
     "test": "node --test \"test/*.test.js\"",
     "lint": "run-s lint:*",
     "lint:oxlint": "oxlint . --fix",

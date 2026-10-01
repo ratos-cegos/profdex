@@ -95,8 +95,8 @@ export const useProfessorsStore = defineStore('professors', () => {
   // telas podem pedir a lista ao mesmo tempo.
   let inflight = null
 
-  async function fetch() {
-    loading.value = true
+  async function fetch({ silent = false } = {}) {
+    if (!silent) loading.value = true
     try {
       const [dex, raros, raidStatus] = await Promise.all([
         api.get('/professors'),
@@ -113,7 +113,7 @@ export const useProfessorsStore = defineStore('professors', () => {
         ancorarRelogio(raidStatus.data)
       }
     } finally {
-      loading.value = false
+      if (!silent) loading.value = false
     }
   }
 

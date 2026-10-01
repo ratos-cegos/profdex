@@ -46,6 +46,74 @@ export class UpdateSettingsDto {
   })
   battlePairCooldownHours?: number;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'A vida do lendário precisa ser um número inteiro.' })
+  @Min(SETTINGS.raidHpMultiplier.min, {
+    message: `Mínimo de ${SETTINGS.raidHpMultiplier.min}× a vida de um professor.`,
+  })
+  @Max(SETTINGS.raidHpMultiplier.max, {
+    message: `Máximo de ${SETTINGS.raidHpMultiplier.max}× a vida de um professor.`,
+  })
+  raidHpMultiplier?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({
+    message: 'Os atributos do lendário precisam ser um número inteiro.',
+  })
+  @Min(SETTINGS.raidLegendaryIv.min, {
+    message: `Mínimo de ${SETTINGS.raidLegendaryIv.min}.`,
+  })
+  @Max(SETTINGS.raidLegendaryIv.max, {
+    message: `Máximo de ${SETTINGS.raidLegendaryIv.max}.`,
+  })
+  raidLegendaryIv?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'O teto de turnos da raid precisa ser um número inteiro.' })
+  @Min(SETTINGS.raidTurnCap.min, {
+    message: `Mínimo de ${SETTINGS.raidTurnCap.min} turnos.`,
+  })
+  @Max(SETTINGS.raidTurnCap.max, {
+    message: `Máximo de ${SETTINGS.raidTurnCap.max} turnos.`,
+  })
+  raidTurnCap?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'O cooldown da raid precisa ser um número inteiro.' })
+  @Min(SETTINGS.raidCooldownMinutes.min, {
+    message: `Mínimo de ${SETTINGS.raidCooldownMinutes.min} (0 desliga).`,
+  })
+  @Max(SETTINGS.raidCooldownMinutes.max, {
+    message: `Máximo de ${SETTINGS.raidCooldownMinutes.max} minutos.`,
+  })
+  raidCooldownMinutes?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'A hora de abrir a raid precisa ser um número inteiro.' })
+  @Min(SETTINGS.raidDailyOpenHour.min, {
+    message: `Mínimo de ${SETTINGS.raidDailyOpenHour.min}h.`,
+  })
+  @Max(SETTINGS.raidDailyOpenHour.max, {
+    message: `Máximo de ${SETTINGS.raidDailyOpenHour.max}h.`,
+  })
+  raidDailyOpenHour?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'A hora de fechar a raid precisa ser um número inteiro.' })
+  @Min(SETTINGS.raidDailyCloseHour.min, {
+    message: `Mínimo de ${SETTINGS.raidDailyCloseHour.min}h.`,
+  })
+  @Max(SETTINGS.raidDailyCloseHour.max, {
+    message: `Máximo de ${SETTINGS.raidDailyCloseHour.max}h.`,
+  })
+  raidDailyCloseHour?: number;
+
   /**
    * A abertura da raid. Também sem `@Type(() => Number)`, pelo mesmo motivo do
    * ajuste abaixo.

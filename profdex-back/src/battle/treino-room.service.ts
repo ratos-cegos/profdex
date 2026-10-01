@@ -23,11 +23,13 @@ import {
   upkeep,
 } from './engine/engine';
 import { buildMoveset } from './engine/moves';
+import { efeitosVisiveis } from './efeitos-visiveis';
 import {
   Action,
   benchCombatant,
   hasAlive,
   isAlive,
+  movimentosAcumuladosVisiveis,
   nextAliveIndex,
   ownMemberView,
   publicMemberView,
@@ -728,6 +730,8 @@ export class TreinoRoomService implements OnModuleDestroy {
       hp: Math.max(0, c.hp),
       maxHp: c.maxHp,
       status: statusLabel(c.status),
+      ...efeitosVisiveis(c),
+      movimentosAcumulados: movimentosAcumuladosVisiveis(active),
       activeCaptureId: own ? active.captureId : undefined,
       team: team.map(own ? ownMemberView : publicMemberView),
       ...(own ? { moves: active.moves } : {}),

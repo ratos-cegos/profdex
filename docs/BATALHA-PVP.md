@@ -114,6 +114,7 @@ banco). O `resync` cobre as quatro fases.
 - Portar para `profdex-back/src/battle/engine/` (TypeScript): `battleEngine`, `types`, `moves`, `professorTypes` (dados canônicos passam a viver no back).
 - Adaptações mínimas ao motor:
   - `turnOrder`: empate de raciocínio hoje favorece `player`; em PvP vira **cara ou coroa**.
+    (Hoje a regra é a mesma nos dois motores: Velocidade maior age primeiro, empate é moeda.)
   - Rodada sem escolha: resolve só o golpe de quem escolheu (upkeep roda para os dois).
 - O front **não roda mais o motor em PvP** — ele recebe do servidor os eventos já com texto (`message`, `damage`, `faint`…), que é exatamente o formato que `useBattle.js` já anima. O moveset do jogador chega no evento de início da batalha (nome, tipo, categoria, descrição — o necessário pra UI de escolha).
 - A batalha vs. IA existente (ArenaView atual) continua client-side e **não ranqueia** — vira modo treino.
@@ -214,11 +215,18 @@ O peso dos IVs foi calibrado para que a captura **influencie sem decidir**:
 
 - o banco guarda 0–15 por atributo (é essa faixa que vira as estrelas de 0 a 5
   na coleção), mas o combate reescala para **0–5** (`IV_BONUS_MAX` no motor);
-- a velocidade **pesa a moeda** da ordem de turno, em vez de definir quem age
-  primeiro — antes, 1 ponto de diferença dava a iniciativa em todos os turnos
-  da partida, o que sozinho valia ~69% de vitória;
 - medido com o motor real, em espelho perfeito: entre dois jogadores com IVs
-  aleatórios, o exemplar de IV total maior vence ~53% das partidas (era 64%).
+  aleatórios, o exemplar de IV total maior vence ~57% das partidas (era 64%
+  com teto 15).
+
+A ordem de turno passou por três versões. Primeiro um degrau (quem tem mais
+Velocidade age primeiro), depois uma moeda pesada pela Velocidade, para a
+sorte da captura pesar menos. A moeda foi revertida em 01/10/2026: com fichas
+parecidas a ordem parecia sorteada, e os alunos liam como "bate primeiro quem
+aperta primeiro". Hoje vale de novo a Velocidade efetiva — base, IV e estágios
+de buff/debuff —, e só o empate exato é cara ou coroa. Medido com n=6000, isso
+subiu a taxa acima de ~52% para ~57%, e o pior caso (15/15/15/15 contra
+0/0/0/0) de ~66% para ~73%.
 
 `iv-balance.spec.ts` roda essa simulação no CI e falha se o número voltar a
 subir. Mexer em `IV_BONUS_MAX` ou na ordem de turno exige rever esse teste — e,
