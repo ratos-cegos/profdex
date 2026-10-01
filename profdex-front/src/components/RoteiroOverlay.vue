@@ -40,10 +40,15 @@ const linhas = computed(() => props.roteiro?.linhas ?? [])
 const linhaAtual = computed(() => linhas.value[indice.value] ?? '')
 const naUltima = computed(() => indice.value >= linhas.value.length - 1)
 
-const ator = computed(() => {
-  const a = props.roteiro?.ator
-  return a?.sprites?.some(Boolean) ? a : null
-})
+/**
+ * Basta o evento trazer um ator — não se exige que a arte esteja lá.
+ *
+ * Antes isto era `a?.sprites?.some(Boolean) ? a : null`: sem URL de sprite, o
+ * ator sumia da cena inteira e não sobrava nada dizendo quem tinha chegado. O
+ * `AtorDoRoteiro` desenha a placa com o nome quando não há arte, que é pior que
+ * a sprite e muito melhor que o nada silencioso.
+ */
+const ator = computed(() => props.roteiro?.ator ?? null)
 
 /** Virada de estágio: o ator tem para onde se transformar. */
 const temTransformacao = computed(() => Boolean(ator.value?.spriteDepois))
