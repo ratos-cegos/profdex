@@ -21,7 +21,6 @@ import {
   IV_BONUS_MAX,
   MIN_HIT_CHANCE,
   PARALYSIS_SKIP_CHANCE,
-  SPEED_ORDER_EXPONENT,
   STAB,
   STAGE_MAX,
   STAGE_MIN,
@@ -104,18 +103,13 @@ const rand = (min, max) => min + Math.random() * (max - min)
 const randint = (min, max) => Math.floor(rand(min, max + 1))
 const chance = (p) => Math.random() < p
 
-// ── Ordem do turno: a velocidade PESA a moeda, não decide sozinha ───────────
+// ── Ordem do turno: a Velocidade decide ─────────────────────────────────────
 //
-// Idêntico ao motor do servidor (`engine.ts`), de propósito. Antes divergiam:
-// aqui o empate ia sempre para o jogador (`ps >= es`), lá era cara-ou-coroa.
-// Com o inimigo do PvE sem IVs, esse `>=` dava ao jogador a iniciativa em
-// todos os turnos — e a batalha de treino ensinava um jogo que não é o
-// ranqueado. Como o treino existe justamente para preparar para o PvP, os
-// dois motores agora resolvem a ordem da mesma forma.
-//
-// O expoente está em `battle-constants.js` com o porquê: sobre a faixa curta
-// da Velocidade (100 a 105) a razão crua não movia a moeda, e o raro de IV
-// perfeito abria o turno em 50,5% das vezes contra um comum de IV 9.
+// Idêntico ao motor do servidor (`engine.ts`), de propósito: o treino existe
+// para preparar para o PvP. Quem tem a Velocidade efetiva maior (base, IV e
+// estágios de buff/debuff) age primeiro; empate exato é cara ou coroa — e não
+// "empate vai para o jogador", que dava iniciativa permanente contra o bot sem
+// IVs. Ver o porquê da troca da moeda pesada em `engine.ts`.
 export function turnOrder(state, playerMove, enemyMove) {
   const playerFirst = chance(playerFirstChance(state))
   const p = { key: 'player', move: playerMove }
@@ -123,11 +117,12 @@ export function turnOrder(state, playerMove, enemyMove) {
   return playerFirst ? [p, e] : [e, p]
 }
 
-/** A probabilidade de o `player` abrir o turno — conferível sem sortear. */
+/** A probabilidade de o `player` abrir o turno: 1, 0 ou ½ no empate. */
 export function playerFirstChance(state) {
-  const ps = effectiveStat(state.player, STAT.RACIOCINIO) ** SPEED_ORDER_EXPONENT
-  const es = effectiveStat(state.enemy, STAT.RACIOCINIO) ** SPEED_ORDER_EXPONENT
-  return ps / (ps + es)
+  const ps = effectiveStat(state.player, STAT.RACIOCINIO)
+  const es = effectiveStat(state.enemy, STAT.RACIOCINIO)
+  if (ps === es) return 0.5
+  return ps > es ? 1 : 0
 }
 
 // ── Upkeep: início do turno de um combatente ─────────────────────────────────

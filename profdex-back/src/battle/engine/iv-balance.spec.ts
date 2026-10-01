@@ -1,4 +1,4 @@
-import { createCombatant, effectiveStat, performMove, playerFirstChance, turnOrder, upkeep, IV_BONUS_MAX, ivBonus } from './engine';
+import { createCombatant, performMove, playerFirstChance, turnOrder, upkeep, IV_BONUS_MAX, ivBonus } from './engine';
 import { buildMoveset } from './moves';
 import type { Move } from './moves';
 import type { BattleState } from './engine';
@@ -77,68 +77,57 @@ describe('balanceamento dos IVs', () => {
       enemy: createCombatant({ name: 'B', types: ['humanas'], ivs: { ...ZERO, ivRaciocinio: ivB } }),
     }) as BattleState;
 
-  it('não dá iniciativa permanente a quem tem 1 ponto a mais de velocidade', () => {
-    // Este é o caso que quebrou antes: com ordem de turno em degrau, 1 ponto
-    // de diferença garantia agir primeiro em todos os turnos, e valia ~69%.
-    // Mesmo com o expoente, 1 ponto continua sendo quase uma moeda justa — é a
-    // diferença GRANDE que precisa ser sentida, não qualquer diferença.
-    const probabilidade = playerFirstChance(duelistas(8, 7));
-    expect(probabilidade).toBeGreaterThan(0.5);
-    expect(probabilidade).toBeLessThan(0.55);
+  it('quem tem mais Velocidade sempre abre o turno', () => {
+    // A ordem já foi uma moeda pesada pela Velocidade. Com fichas parecidas
+    // ela parecia sorteada, e os alunos liam como "bate primeiro quem aperta
+    // primeiro". Agora vale o número da ficha, por menor que seja a diferença.
+    expect(playerFirstChance(duelistas(8, 7))).toBe(1);
+    expect(playerFirstChance(duelistas(15, 9))).toBe(1);
+    expect(playerFirstChance(duelistas(0, 15))).toBe(0);
   });
 
-  it('o raro de velocidade perfeita abre o turno contra um comum bom', () => {
-    // A regressão que trouxe esta mudança: aluno com raro de IV 15 (Velocidade
-    // 105) relatando que um comum de IV 9 (103) batia primeiro. Com a razão
-    // crua eram 50,5% — cara ou coroa sobre uma faixa de atributo que vai só de
-    // 100 a 105. Se este número voltar para perto de 50%, a Velocidade voltou a
-    // ser decorativa e o guia de batalha voltou a mentir.
-    expect(playerFirstChance(duelistas(15, 9))).toBeGreaterThan(0.57);
+  it('empate exato de Velocidade é cara ou coroa', () => {
+    expect(playerFirstChance(duelistas(9, 9))).toBe(0.5);
   });
 
-  it('mantém a velocidade relevante: 0 vs 15 pende forte, mas não é absoluto', () => {
-    const state = duelistas(15, 0);
+  it('buff e debuff de Velocidade contam na ordem', () => {
+    // É para isso que existem os golpes de Velocidade do movepool: um estágio
+    // vale mais que o IV inteiro, então quem investe o turno compra a
+    // iniciativa.
+    const acelerado = duelistas(0, 15);
+    acelerado.player.stages.raciocinio = 1;
+    expect(playerFirstChance(acelerado)).toBe(1);
 
-    // Determinístico de propósito: a probabilidade É a regra, e conferi-la
-    // por amostragem tornaria o teste instável.
-    const probabilidade = playerFirstChance(state);
-
-    // Vantagem que o jogador sente, sem virar o degrau de antes (100%).
-    expect(probabilidade).toBeGreaterThan(0.7);
-    expect(probabilidade).toBeLessThan(0.8);
-    // O ATRIBUTO continua curto: quem estica a faixa é o expoente, não o IV.
-    expect(effectiveStat(state.player, 'raciocinio')).toBeLessThan(1.06);
+    const atrasado = duelistas(0, 15);
+    atrasado.enemy.stages.raciocinio = -1;
+    expect(playerFirstChance(atrasado)).toBe(1);
   });
 
-  it('um estágio de buff pesa mais que o IV inteiro', () => {
-    // É para isso que existem os nove golpes de Velocidade do movepool: quem
-    // investe um turno em acelerar (ou em atrasar o outro) compra a iniciativa,
-    // e isso tem de valer mais do que a sorte da captura.
-    const state = duelistas(0, 15);
-    state.player.stages.raciocinio = 1;
-    expect(playerFirstChance(state)).toBeGreaterThan(0.9);
-  });
-
-  it('turnOrder de fato sorteia com essa probabilidade', () => {
-    // Guarda de fumaça: garante que a probabilidade acima é mesmo usada, e não
-    // apenas calculável. Margem larga, para não virar teste instável.
-    const state = duelistas(15, 0);
-
-    let primeiroDoA = 0;
-    for (let i = 0; i < 4000; i++) {
-      if (turnOrder(state, null, null)[0].key === 'player') primeiroDoA++;
+  it('turnOrder segue a Velocidade, e só sorteia no empate', () => {
+    // Guarda de fumaça: garante que a regra acima é a usada de fato.
+    const maisRapido = duelistas(15, 0);
+    for (let i = 0; i < 200; i++) {
+      expect(turnOrder(maisRapido, null, null)[0].key).toBe('player');
     }
 
-    expect(primeiroDoA / 4000).toBeGreaterThan(0.69);
-    expect(primeiroDoA / 4000).toBeLessThan(0.79);
+    const empatados = duelistas(9, 9);
+    const lados = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      lados.add(turnOrder(empatados, null, null)[0].key);
+    }
+    expect([...lados].sort()).toEqual(['enemy', 'player']);
   });
 
   it('no pior caso (15/15/15/15 vs 0/0/0/0) o IV não decide a partida', () => {
+    // Medido com n=6000: ~73% (era ~66% com a ordem sorteada). A iniciativa
+    // garantida do exemplar perfeito custa esses pontos, e é o caso extremo:
+    // entre alunos quaisquer (teste abaixo) o IV maior vence ~57%. O teto
+    // folgado cobre o ruído de n=400.
     const taxa = taxaDeVitoriaDeA(
       { ivHp: 15, ivRigor: 15, ivDidatica: 15, ivRaciocinio: 15 },
       ZERO,
     );
-    expect(taxa).toBeLessThan(70);
+    expect(taxa).toBeLessThan(80);
   });
 
   it('entre jogadores aleatórios, o exemplar de IV maior não vence demais', () => {
