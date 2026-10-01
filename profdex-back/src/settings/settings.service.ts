@@ -81,7 +81,7 @@ export class SettingsService {
 
   /** O cooldown da dupla no PvP ranqueado, em milissegundos. */
   async battlePairCooldownMs(): Promise<number> {
-    return (await this.get('battlePairCooldownHours')) * 60 * 60_000;
+    return (await this.get('battlePairCooldownMinutes')) * 60_000;
   }
 
   /** O cooldown entre tentativas de raid, em milissegundos. */
