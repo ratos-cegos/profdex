@@ -288,15 +288,15 @@ describe('a roleta do Ricardo', () => {
 
   it('o roteiro da chegada gira a roleta com as nove opções', () => {
     const buff = BUFFS_DO_RICARDO[0];
-    const ev = roteiroDaChegadaDoRicardo('Ricardo Infiltrado', buff) as Extract<
-      BattleEvent,
-      { type: 'roteiro' }
-    >;
+    const ev = roteiroDaChegadaDoRicardo(
+      professor('ricardo-infiltrado'),
+      buff,
+    ) as Extract<BattleEvent, { type: 'roteiro' }>;
 
     expect(ev.roleta?.kind).toBe('buff');
     expect(ev.roleta?.opcoes).toHaveLength(9);
     expect(ev.roleta?.resultado).toBe(buff.nome);
-    expect(ev.linhas.join(' ')).toContain('Ricardo Infiltrado');
+    expect(ev.linhas.join(' ')).toContain('Prof ricardo-infiltrado');
   });
 });
 

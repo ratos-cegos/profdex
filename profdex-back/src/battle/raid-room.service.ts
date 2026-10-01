@@ -28,6 +28,7 @@ import {
   efeitoDoTipo,
   estagioDoHp,
   limpaCampoDoChefe,
+  spriteDoEstagio,
   tiposDosEstagios,
   TOTAL_DE_ESTAGIOS,
 } from './raid-estagios';
@@ -747,6 +748,7 @@ export class RaidRoomService implements OnModuleDestroy {
     const alvo = estagioDoHp(chefe.hp, chefe.maxHp);
     if (alvo <= room.estagio) return [];
 
+    const estagioAnterior = room.estagio;
     room.estagio += 1;
     room.turnoDoEstagio = 0;
 
@@ -769,6 +771,18 @@ export class RaidRoomService implements OnModuleDestroy {
         target: CHEFE,
         estagio: room.estagio,
         roleta: { kind: 'tipo', opcoes: [...TYPE_CYCLE], resultado: tipos[0] },
+        // A arte dos dois lados da transformação: a tela cresce a de ANTES e
+        // troca pela de DEPOIS. Sem `spriteDepois` ela ainda funciona — só não
+        // muda de cara, que é o que acontece enquanto a arte de estágio não
+        // estiver cadastrada.
+        ator: {
+          nome: room.boss.professor.name,
+          sprites: [
+            spriteDoEstagio(room.boss.professor, estagioAnterior) ?? '',
+          ],
+          pixelArt: room.boss.professor.pixelArt,
+          spriteDepois: spriteDoEstagio(room.boss.professor, room.estagio),
+        },
         linhas: [
           `${room.boss.professor.name} não vai mais segurar.`,
           `Estágio ${alvo} de ${TOTAL_DE_ESTAGIOS} — ele agora é ${tipos.join(' / ')}!`,
@@ -898,7 +912,7 @@ export class RaidRoomService implements OnModuleDestroy {
     this.logger.log(`Raid ${room.id}: Ricardo entregou ${buff.nome}`);
 
     return [
-      roteiroDaChegadaDoRicardo(room.elenco.ricardo.name, buff),
+      roteiroDaChegadaDoRicardo(room.elenco.ricardo, buff),
       ...buff.aplica({
         aluno: room.state.player,
         chefe: room.boss.combatant,

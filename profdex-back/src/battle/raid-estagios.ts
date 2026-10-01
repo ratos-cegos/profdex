@@ -311,6 +311,29 @@ export function limpaCampoDoChefe(chefe: Combatant): void {
   chefe.forceMiss = false;
 }
 
+/**
+ * A arte de frente de um estágio, com queda para a arte de base.
+ *
+ * Espelha `spriteFrenteDoEstagio` do front, e existe aqui porque o evento de
+ * roteiro leva URL resolvida: o Ricardo não está em campo, então a tela não teria
+ * de onde tirar a arte dele, e resolver metade no servidor e metade no cliente
+ * seria pior que as quatro linhas repetidas.
+ */
+export function spriteDoEstagio(
+  professor: {
+    spriteFrontUrl: string | null;
+    spriteFrontE2Url?: string | null;
+    spriteFrontE3Url?: string | null;
+  },
+  estagio: number,
+): string | null {
+  if (estagio === 2)
+    return professor.spriteFrontE2Url ?? professor.spriteFrontUrl;
+  if (estagio === 3)
+    return professor.spriteFrontE3Url ?? professor.spriteFrontUrl;
+  return professor.spriteFrontUrl;
+}
+
 /** Costura os efeitos do estágio em cada golpe do moveset do chefe. */
 export function costuraEfeitos<T extends { effects: Effect[] }>(
   golpes: T[],
