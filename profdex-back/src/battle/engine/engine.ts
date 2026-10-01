@@ -56,6 +56,14 @@ export const CONFUSION_SELF_HIT_FRACTION = 0.08;
 export const DOT_DEFAULT_POWER = 8;
 export const DOT_DEFAULT_TURNS = 3;
 
+/**
+ * Expoente da razão de Velocidade na ordem do turno (ver `turnOrder`).
+ *
+ * Espelhado em `profdex-front/src/data/battle-constants.js`, como todas as
+ * constantes de balanceamento — `engine-parity.spec.ts` falha se divergirem.
+ */
+export const SPEED_ORDER_EXPONENT = 21;
+
 // ── Precisão ────────────────────────────────────────────────────────────────
 export const EVASION_PER_STAGE = 0.05;
 export const MIN_HIT_CHANCE = 0.1;
@@ -257,28 +265,49 @@ export interface TurnEntry {
 
 // ── Ordem do turno: a velocidade PESA a moeda, não decide sozinha ───────────
 //
-// A versão anterior era um degrau (`ps > es`): quem tivesse 1 ponto a mais de
-// raciocínio agia primeiro em TODOS os turnos da partida. Como `ivRaciocinio`
-// é uniforme em 0–15, dois jogadores empatam em só 1 caso em 16 — ou seja, em
-// ~94% das partidas ranqueadas um dos lados ganhava a iniciativa permanente no
-// sorteio da captura. Medido com o motor real, isso sozinho valia 69% de
-// vitória para o lado mais rápido, com 1 único ponto de diferença.
+// A versão original era um degrau (`ps > es`): quem tivesse 1 ponto a mais de
+// raciocínio agia primeiro em TODOS os turnos da partida. Com o teto de IV em
+// 15 isso valia 69% de vitória para o lado mais rápido, e virou moeda pesada
+// por `ps/(ps+es)` para a sorte da captura não decidir o ranqueado.
 //
-// Como peso de moeda, a mesma diferença de 1 ponto vale ~50,7%: o atributo
-// continua importando (e os buffs/debuffs de estágio passam a importar mais,
-// porque mexem na probabilidade em vez de já estarem saturados), sem que a
-// sorte da captura decida a partida.
+// Só que a moeda ficou JUSTA DEMAIS. A Velocidade vai de 100 a 105 (o IV rende
+// no máximo IV_BONUS_MAX), e sobre uma faixa tão curta a razão crua não move
+// quase nada: 15 contra 0 dava 51,2%, e o caso que apareceu no evento — raro de
+// IV 15 contra comum de IV 9, 105 contra 103 — dava 50,5%. Os alunos relatavam
+// o raro de cinco estrelas abrindo o turno depois de um comum qualquer, e
+// estavam certos: era cara ou coroa, e o guia de batalha prometia o contrário.
+//
+// `SPEED_ORDER_EXPONENT` estica a faixa curta sem mexer no atributo: 105 contra
+// 100 vira ~74% e 105 contra 103 vira ~60%. A Velocidade volta a ser sentida,
+// os estágios de buff/debuff passam a praticamente garantir a iniciativa (é o
+// que os nove golpes de Velocidade existem para fazer), e a guarda de Elo não
+// piora — medido com o motor real, quem tem IV maior vence 52,8% das partidas
+// contra 53,3% da razão crua, porque a iniciativa é só um dos quatro atributos.
+// Ver `iv-balance.spec.ts`, que falha se esse número voltar a subir.
 export function turnOrder(
   state: BattleState,
   playerMove: Move | null,
   enemyMove: Move | null,
 ): TurnEntry[] {
-  const ps = effectiveStat(state.player, STAT.RACIOCINIO);
-  const es = effectiveStat(state.enemy, STAT.RACIOCINIO);
-  const playerFirst = chance(ps / (ps + es));
+  const playerFirst = chance(playerFirstChance(state));
   const p: TurnEntry = { key: 'player', move: playerMove };
   const e: TurnEntry = { key: 'enemy', move: enemyMove };
   return playerFirst ? [p, e] : [e, p];
+}
+
+/**
+ * A probabilidade de o `player` abrir o turno.
+ *
+ * Separada de `turnOrder` para a regra poder ser conferida sem sortear — é o
+ * que o teste de balanceamento faz, porque medir uma probabilidade por
+ * amostragem transforma a guarda num teste instável.
+ */
+export function playerFirstChance(state: BattleState): number {
+  const ps =
+    effectiveStat(state.player, STAT.RACIOCINIO) ** SPEED_ORDER_EXPONENT;
+  const es =
+    effectiveStat(state.enemy, STAT.RACIOCINIO) ** SPEED_ORDER_EXPONENT;
+  return ps / (ps + es);
 }
 
 // ── Upkeep: início do turno de um combatente ─────────────────────────────────

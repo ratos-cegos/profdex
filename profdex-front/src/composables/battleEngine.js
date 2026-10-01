@@ -21,6 +21,7 @@ import {
   IV_BONUS_MAX,
   MIN_HIT_CHANCE,
   PARALYSIS_SKIP_CHANCE,
+  SPEED_ORDER_EXPONENT,
   STAB,
   STAGE_MAX,
   STAGE_MIN,
@@ -111,13 +112,22 @@ const chance = (p) => Math.random() < p
 // todos os turnos — e a batalha de treino ensinava um jogo que não é o
 // ranqueado. Como o treino existe justamente para preparar para o PvP, os
 // dois motores agora resolvem a ordem da mesma forma.
+//
+// O expoente está em `battle-constants.js` com o porquê: sobre a faixa curta
+// da Velocidade (100 a 105) a razão crua não movia a moeda, e o raro de IV
+// perfeito abria o turno em 50,5% das vezes contra um comum de IV 9.
 export function turnOrder(state, playerMove, enemyMove) {
-  const ps = effectiveStat(state.player, STAT.RACIOCINIO)
-  const es = effectiveStat(state.enemy, STAT.RACIOCINIO)
-  const playerFirst = chance(ps / (ps + es))
+  const playerFirst = chance(playerFirstChance(state))
   const p = { key: 'player', move: playerMove }
   const e = { key: 'enemy', move: enemyMove }
   return playerFirst ? [p, e] : [e, p]
+}
+
+/** A probabilidade de o `player` abrir o turno — conferível sem sortear. */
+export function playerFirstChance(state) {
+  const ps = effectiveStat(state.player, STAT.RACIOCINIO) ** SPEED_ORDER_EXPONENT
+  const es = effectiveStat(state.enemy, STAT.RACIOCINIO) ** SPEED_ORDER_EXPONENT
+  return ps / (ps + es)
 }
 
 // ── Upkeep: início do turno de um combatente ─────────────────────────────────
