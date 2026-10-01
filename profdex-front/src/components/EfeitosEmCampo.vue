@@ -15,16 +15,24 @@
 defineProps({
   /** `[{ id, rotulo, tom }]` — ver `data/battle-efeitos.js`. */
   efeitos: { type: Array, default: () => [] },
+  /** Exibe as etiquetas ao lado do nome na barra de HP. */
+  inline: { type: Boolean, default: false },
 })
 </script>
 
 <template>
-  <div v-if="efeitos.length" class="efeitos" aria-live="polite">
+  <div
+    v-if="efeitos.length"
+    class="efeitos"
+    :class="{ 'efeitos--inline': inline }"
+    aria-live="polite"
+  >
     <span
       v-for="efeito in efeitos"
       :key="efeito.id"
       class="pixel efeitos__chip"
       :class="`efeitos__chip--${efeito.tom}`"
+      :title="efeito.detalhe ?? efeito.rotulo"
     >
       {{ efeito.rotulo }}
     </span>
@@ -42,11 +50,23 @@ defineProps({
   pointer-events: none;
 }
 
+.efeitos--inline {
+  position: static;
+  z-index: auto;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .efeitos__chip {
-  padding: 2px 5px;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 3px 6px;
   border-radius: 100px;
-  font-size: 6px;
-  line-height: 1.5;
+  font-size: 7px;
+  line-height: 1.4;
   white-space: nowrap;
   background: rgba(0, 0, 0, 0.72);
   border: 1px solid currentColor;

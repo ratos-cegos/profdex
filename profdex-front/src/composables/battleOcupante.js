@@ -26,6 +26,15 @@
  * mesmo motivo do resto: o `foe` é o estado do FIM da rodada.
  */
 
+/** Os lados anteriores à rodada quando há eventos esperando reprodução. */
+export function ladosParaInicioDaAnimacao(batalha) {
+  // A rodada já recebida contém um snapshot FINAL. Para reproduzi-la depois
+  // de montar a arena, começa com os ocupantes anteriores à troca e ao dano.
+  return batalha?.pendingEvents?.length && batalha.inicioDosEventos
+    ? batalha.inicioDosEventos
+    : batalha
+}
+
 /** O ocupante como o servidor o descreve agora (fim de rodada, reconexão). */
 export function ocupanteDoServidor(lado, entrada = 0) {
   const hp = Math.max(0, lado?.hp ?? 0)

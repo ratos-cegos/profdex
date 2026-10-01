@@ -309,8 +309,9 @@ describe('BattleRoomService', () => {
         expect(m).not.toHaveProperty('captureId');
         expect(m).not.toHaveProperty('moves');
         expect(m).not.toHaveProperty('ivs');
+        expect(m).not.toHaveProperty('movimentosAcumulados');
         expect(Object.keys(m).sort()).toEqual(
-          ['fainted', 'hp', 'maxHp', 'professor', 'types'].sort(),
+          ['escudo', 'fainted', 'hp', 'maxHp', 'professor', 'stages', 'statusKind', 'statusTurns', 'types'].sort(),
         );
       }
       // O seu vem com captureId: é com ele que você escolhe o lead.

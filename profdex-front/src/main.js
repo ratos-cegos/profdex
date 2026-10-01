@@ -4,6 +4,9 @@ import './style.css'
 
 import App from './App.vue'
 import router from './router/index.js'
+import { acompanharAlturaVisivel } from './services/viewport.js'
+
+acompanharAlturaVisivel()
 
 const app = createApp(App)
 

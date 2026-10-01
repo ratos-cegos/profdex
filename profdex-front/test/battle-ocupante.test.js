@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   aplicarEvento,
   chaveDoOcupante,
+  ladosParaInicioDaAnimacao,
   ocupanteDoServidor,
 } from '../src/composables/battleOcupante.js'
 
@@ -17,6 +18,28 @@ function inicio() {
 }
 
 const aplicar = (estado, eventos) => eventos.reduce(aplicarEvento, estado)
+
+test('arena montada com rodada pendente mantém o atingido até a troca ser animada', () => {
+  const antes = { you: { professor: eron, hp: 100, maxHp: 120 },
+    foe: { professor: mario, hp: 10, maxHp: 100 } }
+  const eventos = [
+    { type: 'damage', target: 'enemy', amount: 140 },
+    { type: 'faint', target: 'enemy' },
+    { type: 'switch', target: 'enemy', professor: eron, hp: 120, maxHp: 120 },
+  ]
+  const batalha = { you: antes.you, foe: { professor: eron, hp: 120, maxHp: 120 },
+    inicioDosEventos: antes, pendingEvents: eventos }
+  const inicial = ladosParaInicioDaAnimacao(batalha)
+  const estado = { player: ocupanteDoServidor(inicial.you), enemy: ocupanteDoServidor(inicial.foe) }
+  const caido = aplicar(estado, eventos.slice(0, 2))
+  assert.equal(caido.enemy.professor, mario)
+  assert.equal(caido.enemy.fainted, true)
+  const substituto = aplicarEvento(caido, eventos[2])
+  assert.equal(substituto.enemy.professor, eron)
+  assert.equal(substituto.enemy.hp, 120)
+  assert.equal(substituto.enemy.fainted, false)
+  assert.equal(ladosParaInicioDaAnimacao({ ...batalha, pendingEvents: [] }).foe, batalha.foe)
+})
 
 test('queda de verdade marca só quem caiu', () => {
   const fim = aplicar(inicio(), [

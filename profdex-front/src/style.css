@@ -256,6 +256,9 @@ body {
      iOS. O `100vh` fica de reserva para navegadores sem suporte. */
   height: 100vh;
   height: 100dvh;
+  /* No PWA móvel, a área visível pode ser menor que `dvh` por causa das
+     barras do sistema. viewport.js acompanha resize e retorno ao app. */
+  height: var(--app-viewport-height, 100dvh);
   display: flex;
   flex-direction: column;
   max-width: 480px;

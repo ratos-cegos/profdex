@@ -13,7 +13,8 @@
  */
 
 import { BattleEvent, Combatant } from './engine/engine';
-import { Move } from './engine/moves';
+import { EFFECT, Move } from './engine/moves';
+import { efeitosVisiveis } from './efeitos-visiveis';
 
 export const MAX_TEAM_SIZE = 3;
 
@@ -76,25 +77,17 @@ export type Action =
 export const isAlive = (m: TeamMember): boolean => m.combatant.hp > 0;
 
 /**
- * Limpa o que é de CAMPO quando o exemplar sai (por troca ou por nocaute).
- *
- * Fica: `hp`, paralisia e queimadura — são condições que o professor carrega.
- * Sai: tudo que foi construído durante a permanência em campo, incluindo
- * confusão, que é "está tonto agora" e não uma condição persistente.
- *
- * As duas pontas importam. Se o status sobrevivesse por inteiro, trocar viraria
- * cura e paralisia deixaria de valer algo; se os buffs sobrevivessem,
- * trocar-e-voltar viraria um reset grátis do combo (e `usage`, que alimenta
- * grow/accuracyGain, se acumularia para sempre).
+ * Limpa efeitos de uso imediato quando o exemplar sai (por troca ou nocaute).
+ * HP, condições, estágios de atributo e usos de golpes acumulativos pertencem
+ * ao exemplar e continuam quando ele volta. Confusão, escudos e efeitos de
+ * campo com duração curta continuam sendo descartados na troca.
  */
 export function benchCombatant(c: Combatant): void {
-  c.stages = { rigor: 0, didatica: 0, raciocinio: 0 };
   c.shields = [];
   c.timedBuffs = [];
   c.regen = [];
   c.debuffImmuneTurns = 0;
   c.forceMiss = false;
-  c.usage = {};
   c.lastAttackId = null;
   c.hpAtTurnStart = c.hp;
   if (c.status?.kind === 'confusao') c.status = null;
@@ -115,7 +108,7 @@ export function nextAliveIndex(team: TeamMember[], exclude: number): number {
   return team.findIndex((m, i) => i !== exclude && isAlive(m));
 }
 
-/** Só o que é público de um exemplar: professor e tipos. Nunca IVs nem golpes. */
+/** Estado já revelado da batalha, sem IVs nem o conjunto de golpes. */
 export function publicMemberView(m: TeamMember) {
   return {
     professor: m.professor,
@@ -123,12 +116,55 @@ export function publicMemberView(m: TeamMember) {
     hp: Math.max(0, m.combatant.hp),
     maxHp: m.combatant.maxHp,
     fainted: !isAlive(m),
+    ...efeitosVisiveis(m.combatant),
   };
 }
 
-/** A mesma visão, mais o `captureId` — só para o DONO do time. */
+/**
+ * Golpes acumulativos já usados. Só seguem para o dono do time, porque esse
+ * resumo revela quais golpes o exemplar conhece.
+ */
+export function movimentosAcumuladosVisiveis(m: TeamMember) {
+  return m.moves.flatMap((move) => {
+    const usos = m.combatant.usage[move.id] ?? 0;
+    if (!usos) return [];
+
+    let bonusPoder = 0;
+    let bonusPrecisaoBase = 0;
+    let acumula = false;
+    for (const effect of move.effects) {
+      if (effect.kind === EFFECT.GROW) {
+        bonusPoder += (effect.inc ?? 0) * usos;
+        acumula = true;
+      }
+      if (effect.kind === EFFECT.ACCURACY_GAIN) {
+        bonusPrecisaoBase += (effect.inc ?? 0) * usos;
+        acumula = true;
+      }
+    }
+    if (!acumula) return [];
+
+    const precisaoBase = move.accuracy ?? 1;
+    const bonusPrecisao = Math.round(
+      (Math.min(1, precisaoBase + bonusPrecisaoBase) - precisaoBase) * 100,
+    );
+    return [{
+      moveId: move.id,
+      name: move.name,
+      usos,
+      bonusPoder,
+      bonusPrecisao,
+    }];
+  });
+}
+
+/** A mesma visão, mais os dados particulares do dono do time. */
 export function ownMemberView(m: TeamMember) {
-  return { ...publicMemberView(m), captureId: m.captureId };
+  return {
+    ...publicMemberView(m),
+    captureId: m.captureId,
+    movimentosAcumulados: movimentosAcumuladosVisiveis(m),
+  };
 }
 
 /**

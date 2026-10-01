@@ -28,14 +28,14 @@ test('lado ausente não explode', () => {
   assert.deepEqual(efeitosDe({}), [])
 })
 
-test('status vira pílula com o nome que o jogador lê', () => {
+test('status vira pílula com nome e duração que o jogador lê', () => {
   for (const [kind, rotulo] of [
     ['paralisia', 'Travado'],
     ['confusao', 'Confuso'],
     ['queimadura', 'Queimando'],
   ]) {
     const [pilula] = efeitosDe({ ...semEfeito, statusKind: kind, statusTurns: 3 })
-    assert.equal(pilula.rotulo, rotulo)
+    assert.equal(pilula.rotulo, `${rotulo} · 3t`)
     assert.equal(pilula.tom, 'ruim')
   }
 })
@@ -59,16 +59,36 @@ test('buff e debuff não têm o mesmo tom', () => {
 
 test('cada modo de escudo tem o seu rótulo', () => {
   for (const [modo, rotulo] of [
-    ['block', 'Bloqueio'],
-    ['evade', 'Esquiva'],
-    ['reflect', 'Reflexo'],
-    ['reduce', 'Meio dano'],
+    ['block', 'Bloqueio · próximo golpe'],
+    ['evade', 'Esquiva · próximo golpe'],
+    ['reflect', 'Reflexo · próximo golpe'],
+    ['reduce', 'Meio dano · próximo golpe'],
   ]) {
     const [pilula] = efeitosDe({ ...semEfeito, escudo: modo })
     assert.equal(pilula.id, 'escudo')
     assert.equal(pilula.rotulo, rotulo)
     assert.equal(pilula.tom, 'bom')
   }
+})
+
+test('golpe acumulativo mostra o nome, usos e bônus armazenados', () => {
+  const [golpe] = efeitosDe({
+    ...semEfeito,
+    movimentosAcumulados: [{
+      moveId: 'gradiente',
+      name: 'Gradiente descendente',
+      usos: 2,
+      bonusPoder: 30,
+      bonusPrecisao: 16,
+    }],
+  })
+
+  assert.deepEqual(golpe, {
+    id: 'acumulado:gradiente',
+    rotulo: 'POD +30 · PREC +16%',
+    detalhe: 'Gradiente descendente · 2 usos acumulados',
+    tom: 'bom',
+  })
 })
 
 // A ordem não pode variar entre turnos: pílula que troca de lugar obriga o
@@ -106,5 +126,5 @@ test('status e escudo desconhecidos caem num rótulo de fallback', () => {
   assert.equal(status.rotulo, 'sono')
 
   const [escudo] = efeitosDe({ ...semEfeito, escudo: 'barreira' })
-  assert.equal(escudo.rotulo, 'Escudo')
+  assert.equal(escudo.rotulo, 'Escudo · próximo golpe')
 })
