@@ -836,9 +836,24 @@ export class RaidRoomService implements OnModuleDestroy {
         );
       }
 
+      const ricardo = porSlug.get(SLUG_DO_RICARDO) ?? null;
+      // Dois avisos distintos, e a diferença importa no dia do evento: sem o
+      // slug, o evento nunca acontece; com o slug e sem arte, ele acontece e a
+      // cena fica sem ninguém em campo. Silenciar o segundo foi o que deixou
+      // "o Ricardo não aparece" sem explicação possível pelo log.
+      if (!ricardo) {
+        this.logger.warn(
+          `Evento do Ricardo desligado: slug ${SLUG_DO_RICARDO} não está no banco`,
+        );
+      } else if (!ricardo.spriteFrontUrl) {
+        this.logger.warn(
+          `Ricardo ${ricardo.slug} sem sprite de frente: a cena vai rodar sem ele em campo`,
+        );
+      }
+
       return {
         nde: nde.length === SLUGS_DO_NDE.length ? nde : [],
-        ricardo: porSlug.get(SLUG_DO_RICARDO) ?? null,
+        ricardo,
       };
     } catch (error) {
       this.logger.error(
