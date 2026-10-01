@@ -234,7 +234,7 @@ export class RaidService implements OnModuleInit {
 
   /** Tudo que a Profdex precisa para desenhar (ou não) o card do lendário. */
   async status(userId: string): Promise<RaidStatus> {
-    const [lendario, dex, unlockRow, janela] = await Promise.all([
+    const [lendario, dex, unlockRow, janela, admin] = await Promise.all([
       this.legendary(),
       this.dexProgress(userId),
       this.prisma.raidUnlock.findUnique({
@@ -242,6 +242,7 @@ export class RaidService implements OnModuleInit {
         select: { id: true },
       }),
       this.settings.raidJanela(),
+      this.ehAdmin(userId),
     ]);
     const opensAt = janela.opensAt;
 
@@ -299,7 +300,13 @@ export class RaidService implements OnModuleInit {
     // front deriva não estariam falando do mesmo instante.
     const now = Date.now();
     const estado = estadoDaJanela({ agora: now, ...janela });
-    const abreEm = estado.reabreEm;
+    // Para o organizador a porta está sempre aberta, e a TELA precisa saber:
+    // `podeDesafiar` no front exige `open`, então sem isto o botão ficaria
+    // desabilitado e o privilégio de `canStart` não teria como ser alcançado.
+    const aberta = estado.aberta || admin;
+    // Aberta não tem para onde reabrir — inclusive para o organizador, que não
+    // deve ver contagem nenhuma.
+    const abreEm = aberta ? null : estado.reabreEm;
     return {
       unlocked,
       captured,
@@ -312,14 +319,17 @@ export class RaidService implements OnModuleInit {
       opensAtLabel: rotuloDaAbertura(opensAt, now),
       abreEm,
       abreEmLabel: abreEm ? rotuloDaAbertura(abreEm, now) : '',
-      fechaEm: estado.aberta
-        ? fechaEm({
-            agora: now,
-            horaDeAbrir: janela.horaDeAbrir,
-            horaDeFechar: janela.horaDeFechar,
-          })
-        : null,
-      open: estado.aberta,
+      // O organizador não tem hora de fechar: mostrar "fecha às 22h" para quem
+      // ignora a janela seria a tela contradizendo a regra.
+      fechaEm:
+        estado.aberta && !admin
+          ? fechaEm({
+              agora: now,
+              horaDeAbrir: janela.horaDeAbrir,
+              horaDeFechar: janela.horaDeFechar,
+            })
+          : null,
+      open: aberta,
       now,
       cooldownUntil: cooldownMs > 0 ? now + cooldownMs : null,
       attempts,
@@ -355,7 +365,10 @@ export class RaidService implements OnModuleInit {
       agora: Date.now(),
       ...(await this.settings.raidJanela()),
     });
-    if (!estado.aberta) {
+    // O organizador entra fora do horário — e só ele, e só esta trava: as do
+    // ALUNO (dex fechada, já capturou, cooldown) continuam valendo para todo
+    // mundo. Ver `ehAdmin`.
+    if (!estado.aberta && !(await this.ehAdmin(userId))) {
       return {
         ok: false,
         code: RAID_FECHADA,
@@ -385,19 +398,50 @@ export class RaidService implements OnModuleInit {
     return { ok: true, legendary };
   }
 
+  /**
+   * A conta de ORGANIZADOR (`role: 'admin'`), que tem três privilégios na raid:
+   * entra fora do horário, não entra na contagem e nunca é "o primeiro".
+   *
+   * A conta `@unifil.br` existe para exercitar o app — dar a si mesmo a Profdex
+   * inteira e conferir a raid é operação normal (ver `scripts/dar-capturas.ts`).
+   * Sem isto, testar a raid às três da tarde exigiria mexer na janela no painel e
+   * lembrar de desfazer, com o estande cheio.
+   *
+   * Lê do BANCO e não do `role` do token, de propósito: o token guarda o papel
+   * que a conta tinha no LOGIN, e um privilégio que ignora a trava de horário não
+   * deve depender de um crachá velho. É uma consulta por tentativa, no caminho
+   * que já faz várias.
+   *
+   * `=== 'admin'` e não `!== 'aluno'`: papel novo que aparecer NÃO ganha
+   * privilégio por omissão.
+   */
+  private async ehAdmin(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    return user?.role === 'admin';
+  }
+
   /** Abre a linha da tentativa. É ela que sustenta cooldown e contagem. */
   async openAttempt(userId: string, professorId: string): Promise<string> {
     const attempt = await this.prisma.raidAttempt.create({
       data: { userId, professorId },
       select: { id: true },
     });
-    this.metrics.record(userId, null, [
-      {
-        type: 'raid_started',
-        occurredAt: new Date(),
-        metadata: { professorId },
-      },
-    ]);
+    // A LINHA da tentativa é criada para todo mundo — é ela que sustenta o
+    // cooldown e a contagem de tentativas do próprio jogador, e o organizador
+    // também precisa que a dele feche. O que ele não alimenta é a MÉTRICA: o
+    // funil da raid no painel e os pontos de engajamento são sobre os alunos.
+    if (!(await this.ehAdmin(userId))) {
+      this.metrics.record(userId, null, [
+        {
+          type: 'raid_started',
+          occurredAt: new Date(),
+          metadata: { professorId },
+        },
+      ]);
+    }
     return attempt.id;
   }
 
@@ -456,6 +500,8 @@ export class RaidService implements OnModuleInit {
       ivRaciocinio: IV_MAX,
     };
 
+    const admin = await this.ehAdmin(userId);
+
     try {
       const { capture, clear } = await this.prisma.$transaction(async (tx) => {
         const criada = await tx.capture.create({
@@ -468,6 +514,17 @@ export class RaidService implements OnModuleInit {
           },
           select: { id: true },
         });
+
+        // O organizador leva o exemplar, mas NÃO entra na fila do prêmio.
+        //
+        // É a linha de `RaidClear` que decide quem foi "o primeiro" (pelo
+        // `count` abaixo), que desenha a fila do prêmio no painel e que, sendo
+        // `@unique` por conta, impede uma segunda tentativa. Criá-la para a
+        // conta da mesa faria três estragos de uma vez: o primeiro ALUNO a
+        // vencer deixaria de ser o primeiro e nunca receberia o e-mail, a fila
+        // nasceria com a mesa em 1º lugar, e o organizador não conseguiria
+        // testar a raid de novo.
+        if (admin) return { capture: criada, clear: null };
         // Quem já venceu ANTES desta linha existir. A ordem é decidida aqui
         // dentro, e não depois, porque dois alunos vencendo no mesmo segundo
         // veriam a tabela vazia nos dois `count` e o evento ganharia dois
@@ -492,28 +549,36 @@ export class RaidService implements OnModuleInit {
       // Fora da transação e sem `await`: a tela de vitória do aluno não pode
       // esperar uma chamada HTTP para o serviço de e-mail, e uma falha dela não
       // pode desfazer a captura que já está no banco.
-      if (clear.primeiro) {
+      // `clear` é null para o organizador, então ele nunca é "o primeiro" —
+      // que é exatamente o ponto: o e-mail do primeiro vencedor é sobre aluno.
+      if (clear?.primeiro) {
         void this.avisarPrimeiroVencedor(userId, clear.em, attempts);
       }
 
-      const occurredAt = new Date();
-      this.metrics.record(userId, null, [
-        {
-          type: 'professor_discovered',
-          occurredAt,
-          metadata: { professorId: legendary.id },
-        },
-        {
-          type: 'professor_captured',
-          occurredAt,
-          metadata: { professorId: legendary.id },
-        },
-        {
-          type: 'legendary_captured',
-          occurredAt,
-          metadata: { professorId: legendary.id, attempts },
-        },
-      ]);
+      // Nem ponto de engajamento, nem contagem de captura: a vitória da mesa não
+      // pode mexer no ranking nem no funil do painel. A captura em si existe (ela
+      // é o que o organizador testa); o que não existe é o registro dela como
+      // conquista de alguém que disputa com os alunos.
+      if (!admin) {
+        const occurredAt = new Date();
+        this.metrics.record(userId, null, [
+          {
+            type: 'professor_discovered',
+            occurredAt,
+            metadata: { professorId: legendary.id },
+          },
+          {
+            type: 'professor_captured',
+            occurredAt,
+            metadata: { professorId: legendary.id },
+          },
+          {
+            type: 'legendary_captured',
+            occurredAt,
+            metadata: { professorId: legendary.id, attempts },
+          },
+        ]);
+      }
 
       this.logger.log(
         JSON.stringify({
@@ -522,6 +587,9 @@ export class RaidService implements OnModuleInit {
           professorId: legendary.id,
           attempts,
           captureId: capture.id,
+          // No log fica: é como se explica, depois, por que a fila do prêmio não
+          // tem uma linha para esta vitória.
+          admin,
         }),
       );
       return { captureId: capture.id };
