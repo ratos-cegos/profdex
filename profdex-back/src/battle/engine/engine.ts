@@ -131,8 +131,21 @@ export type BattleEvent =
       type: 'roteiro';
       /** Narradas uma a uma, cada uma esperando o toque do jogador. */
       linhas: string[];
-      /** Gira ANTES das linhas. `opcoes` é a ordem em que a roleta desfila. */
-      roleta?: { kind: 'tipo' | 'buff'; opcoes: string[]; resultado: string };
+      /**
+       * Gira ANTES das linhas. `opcoes` é a ordem dos nós na roda, no sentido
+       * horário a partir do topo, e `resultado` tem de ser um deles.
+       *
+       * `pesos` é opcional e existe para a roda do Ricardo: ela pinta os nós por
+       * RARIDADE, então o jogador vê o ponteiro parar num nó dourado e já sabe
+       * que tirou algo raro antes de ler o nome. A roda de tipos não manda —
+       * tipo não tem raridade, e os nós já têm a cor do próprio tipo.
+       */
+      roleta?: {
+        kind: 'tipo' | 'buff';
+        opcoes: string[];
+        resultado: string;
+        pesos?: number[];
+      };
       /**
        * Só a virada de ESTÁGIO manda estes dois: eles trocam a arte do chefe no
        * ponto certo da fila.
@@ -144,6 +157,22 @@ export type BattleEvent =
        */
       target?: CombatantKey;
       estagio?: number;
+      /**
+       * Quem protagoniza o momento, para a tela desenhar o sprite dele entrando
+       * em cena — o Sérgio na virada de estágio, os quatro do NDE, o Ricardo.
+       *
+       * As URLs vêm resolvidas do servidor e não o professor inteiro porque o
+       * Ricardo não está em campo: ele não existe no `you`/`foe` da rodada, e a
+       * tela não teria de onde tirar a arte dele.
+       */
+      ator?: {
+        nome: string;
+        /** Sprites de frente. O NDE são quatro; os outros, um. */
+        sprites: string[];
+        pixelArt: boolean;
+        /** Só na virada de estágio: a arte em que ele vai se transformar. */
+        spriteDepois?: string | null;
+      };
     };
 
 interface Shield {

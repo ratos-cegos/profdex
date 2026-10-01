@@ -143,6 +143,12 @@ export function roteiroDaChegadaDoNde(
   const primeiros = professores.map((p) => p.name.split(' ')[0]).join(', ');
   return {
     type: 'roteiro',
+    // Os quatro entram em cena juntos, que é como eles lutam.
+    ator: {
+      nome: 'NDE da Coordenação',
+      sprites: professores.map((p) => p.spriteFrontUrl ?? ''),
+      pixelArt: professores.some((p) => p.pixelArt),
+    },
     linhas: [
       'O NDE DA COORDENAÇÃO APARECE!',
       `${primeiros} entram na frente de ${nomeDoChefe}.`,
@@ -399,15 +405,25 @@ export function sorteiaBuffDoRicardo(
 }
 
 export function roteiroDaChegadaDoRicardo(
-  nomeDoRicardo: string,
+  ricardo: BattleProfessor,
   buff: BuffDoRicardo,
 ): BattleEvent {
+  const nomeDoRicardo = ricardo.name;
   return {
     type: 'roteiro',
+    // Ele NÃO está em campo: a tela não teria de onde tirar a arte dele se a URL
+    // não viesse aqui. É o motivo de `ator` carregar sprite resolvido.
+    ator: {
+      nome: nomeDoRicardo,
+      sprites: [ricardo.spriteFrontUrl ?? ''],
+      pixelArt: ricardo.pixelArt,
+    },
     roleta: {
       kind: 'buff',
       opcoes: BUFFS_DO_RICARDO.map((b) => b.nome),
       resultado: buff.nome,
+      // Os pesos viajam para a roda poder pintar os nós por raridade.
+      pesos: BUFFS_DO_RICARDO.map((b) => b.peso),
     },
     linhas: [
       `${nomeDoRicardo} aparece — ele estava infiltrado esse tempo todo.`,

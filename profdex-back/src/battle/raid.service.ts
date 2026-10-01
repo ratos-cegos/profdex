@@ -264,7 +264,10 @@ export class RaidService implements OnModuleInit {
     const captured = !!clear;
 
     const [cooldownMs, attempts] = await Promise.all([
-      unlocked && !captured ? this.cooldownRemainingMs(userId) : 0,
+      // `!admin` junto das outras condições: o organizador não espera entre
+      // tentativas (ver `canStart`), e mostrar "aguarde 28 min" no card para
+      // quem o servidor vai deixar entrar seria a tela contradizendo a regra.
+      unlocked && !captured && !admin ? this.cooldownRemainingMs(userId) : 0,
       unlocked
         ? this.prisma.raidAttempt.count({ where: { userId } })
         : Promise.resolve(0),
@@ -365,10 +368,11 @@ export class RaidService implements OnModuleInit {
       agora: Date.now(),
       ...(await this.settings.raidJanela()),
     });
-    // O organizador entra fora do horário — e só ele, e só esta trava: as do
-    // ALUNO (dex fechada, já capturou, cooldown) continuam valendo para todo
-    // mundo. Ver `ehAdmin`.
-    if (!estado.aberta && !(await this.ehAdmin(userId))) {
+    // Uma leitura do papel para as duas dispensas abaixo. Ver `ehAdmin`.
+    const admin = await this.ehAdmin(userId);
+
+    // O organizador entra fora do horário.
+    if (!estado.aberta && !admin) {
       return {
         ok: false,
         code: RAID_FECHADA,
@@ -386,7 +390,13 @@ export class RaidService implements OnModuleInit {
     });
     if (clear) return { ok: false, code: RAID_JA_CAPTURADO };
 
-    const espera = await this.cooldownRemainingMs(userId);
+    // E não espera entre tentativas: o cooldown existe para o ALUNO não ocupar a
+    // fila do estande repetindo a raid, e quem testa precisa repetir. Para o
+    // aluno ele continua igual.
+    //
+    // As duas travas que SOBRAM para o organizador são as que protegem os dados
+    // dele mesmo: dex fechada e já capturado.
+    const espera = admin ? 0 : await this.cooldownRemainingMs(userId);
     if (espera > 0) {
       return {
         ok: false,
