@@ -38,13 +38,13 @@ export class UpdateSettingsDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt({ message: 'O cooldown de batalha precisa ser um número inteiro.' })
-  @Min(SETTINGS.battlePairCooldownHours.min, {
-    message: `Mínimo de ${SETTINGS.battlePairCooldownHours.min} hora.`,
+  @Min(SETTINGS.battlePairCooldownMinutes.min, {
+    message: `Mínimo de ${SETTINGS.battlePairCooldownMinutes.min} minuto.`,
   })
-  @Max(SETTINGS.battlePairCooldownHours.max, {
-    message: `Máximo de ${SETTINGS.battlePairCooldownHours.max} horas.`,
+  @Max(SETTINGS.battlePairCooldownMinutes.max, {
+    message: `Máximo de ${SETTINGS.battlePairCooldownMinutes.max} minutos (72 horas).`,
   })
-  battlePairCooldownHours?: number;
+  battlePairCooldownMinutes?: number;
 
   @IsOptional()
   @Type(() => Number)

@@ -51,7 +51,8 @@ describe('catálogo de ajustes', () => {
     // Mudar o padrão aqui mudaria o comportamento de toda instalação que nunca
     // editou o painel.
     expect(SETTINGS.themeCooldownMinutes.default).toBe(10);
-    expect(SETTINGS.battlePairCooldownHours.default).toBe(12);
+    // 12h, agora escrito em minutos: a troca de unidade não mudou o padrão.
+    expect(SETTINGS.battlePairCooldownMinutes.default).toBe(720);
     expect(SETTINGS.captureQrMode.default).toBe('ficha');
   });
 
@@ -61,19 +62,26 @@ describe('catálogo de ajustes', () => {
    */
   it('nenhum cooldown pode ser zerado', () => {
     expect(SETTINGS.themeCooldownMinutes.min).toBeGreaterThan(0);
-    expect(SETTINGS.battlePairCooldownHours.min).toBeGreaterThan(0);
+    expect(SETTINGS.battlePairCooldownMinutes.min).toBeGreaterThan(0);
+  });
+
+  it('o cooldown de batalha aceita menos de uma hora e volta a passar dela', () => {
+    expect(isInRange('battlePairCooldownMinutes', 30)).toBe(true);
+    expect(isInRange('battlePairCooldownMinutes', 90)).toBe(true);
+    // O teto de antes (72h) continua sendo o teto.
+    expect(SETTINGS.battlePairCooldownMinutes.max).toBe(72 * 60);
   });
 });
 
 describe('leitura de um ajuste', () => {
   it('chave ausente cai no padrão', () => {
     expect(parseSetting('themeCooldownMinutes', null)).toBe(10);
-    expect(parseSetting('battlePairCooldownHours', null)).toBe(12);
+    expect(parseSetting('battlePairCooldownMinutes', null)).toBe(720);
   });
 
   it('lê o valor gravado', () => {
     expect(parseSetting('themeCooldownMinutes', '3')).toBe(3);
-    expect(parseSetting('battlePairCooldownHours', '24')).toBe(24);
+    expect(parseSetting('battlePairCooldownMinutes', '45')).toBe(45);
   });
 
   /**
@@ -89,7 +97,7 @@ describe('leitura de um ajuste', () => {
   it('valor fora da faixa é trazido para dentro dela', () => {
     expect(parseSetting('themeCooldownMinutes', '9999')).toBe(120);
     expect(parseSetting('themeCooldownMinutes', '-5')).toBe(1);
-    expect(parseSetting('battlePairCooldownHours', '0')).toBe(1);
+    expect(parseSetting('battlePairCooldownMinutes', '0')).toBe(1);
   });
 
   it('decimal é arredondado — minuto e hora são inteiros na tela', () => {
@@ -232,7 +240,7 @@ describe('validação de faixa', () => {
   });
 
   it('clamp devolve as bordas', () => {
-    expect(clampSetting('battlePairCooldownHours', 999)).toBe(72);
-    expect(clampSetting('battlePairCooldownHours', -1)).toBe(1);
+    expect(clampSetting('battlePairCooldownMinutes', 99_999)).toBe(4320);
+    expect(clampSetting('battlePairCooldownMinutes', -1)).toBe(1);
   });
 });

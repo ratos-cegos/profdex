@@ -27,7 +27,7 @@ describe('SettingsService', () => {
     await expect(service.all()).resolves.toEqual({
       themeCooldownMinutes: 10,
       quizGlobalRepeatWindow: 10,
-      battlePairCooldownHours: 12,
+      battlePairCooldownMinutes: 720,
       raidHpMultiplier: 4,
       raidLegendaryIv: 15,
       raidTurnCap: 60,
@@ -43,12 +43,12 @@ describe('SettingsService', () => {
     const service = criar(
       criarPrisma([
         { key: 'quiz.theme_cooldown_minutes', value: '3' },
-        { key: 'battle.pair_cooldown_hours', value: '2' },
+        { key: 'battle.pair_cooldown_minutes', value: '45' },
       ]),
     );
 
     await expect(service.themeCooldownMs()).resolves.toBe(3 * 60_000);
-    await expect(service.battlePairCooldownMs()).resolves.toBe(2 * 60 * 60_000);
+    await expect(service.battlePairCooldownMs()).resolves.toBe(45 * 60_000);
   });
 
   /**
@@ -88,7 +88,7 @@ describe('SettingsService', () => {
     await expect(service.all()).resolves.toEqual({
       themeCooldownMinutes: 5,
       quizGlobalRepeatWindow: 10,
-      battlePairCooldownHours: 12,
+      battlePairCooldownMinutes: 720,
       raidHpMultiplier: 4,
       raidLegendaryIv: 15,
       raidTurnCap: 60,
