@@ -1,5 +1,13 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  useTemplateRef,
+  watch,
+} from 'vue'
 import { useRouter } from 'vue-router'
 import BottomNav from '../components/BottomNav.vue'
 import EstadoErro from '../components/EstadoErro.vue'
@@ -134,26 +142,43 @@ const esperaTexto = computed(() => {
 })
 
 // ── A hora de abrir ─────────────────────────────────────────────────────────
-// A raid tem uma trava de HORÁRIO além da coleção: quem fecha a Profdex de
-// tarde vê o card com a contagem, e o botão só existe depois da hora marcada
-// (`raid.opens_at`, no painel). Quem decide é o servidor — isto aqui é a mesma
-// verdade desenhada, para o aluno não descobrir a trava apertando o botão.
+// A raid tem DUAS travas de horário além da coleção, e o servidor resolve as
+// duas (ver `raid-janela.ts`): a abertura do evento (`raid.opens_at`) e a janela
+// diária de 18h às 22h. Isto aqui é a mesma verdade DESENHADA, para o aluno não
+// descobrir a regra apertando o botão.
 //
-// O mesmo relógio do cooldown move as duas contagens.
-const abreEm = computed(() => raid.value.opensAt ?? 0)
-const aberturaRestante = computed(() => Math.max(0, abreEm.value - agora.value))
-const aberto = computed(() => aberturaRestante.value <= 0)
+// `abreEm` é a próxima vez que a porta abre — `null` quando já está aberta — e
+// `fechaEm` é quando a janela de hoje fecha (`null` = janela desligada). O mesmo
+// relógio do cooldown move tudo.
+const proximaAbertura = computed(() => raid.value.abreEm ?? null)
+const fechamentoDeHoje = computed(() => raid.value.fechaEm ?? null)
 
-// A hora vem ESCRITA do servidor (`19H`, ou `01/10 19H` quando não é hoje).
-// Formatar aqui a partir de `opensAt` deixaria o texto à mercê do fuso do
-// aparelho: quem trocasse o fuso no celular leria "abre às 22h" e iria embora.
+const aberturaRestante = computed(() =>
+  proximaAbertura.value ? Math.max(0, proximaAbertura.value - agora.value) : 0,
+)
+
+// Derivado do RELÓGIO, não do `open` da última resposta: sem isso o botão só
+// trocaria de estado no próximo fetch, e às 18h em ponto o aluno ficaria olhando
+// "ABRE EM 0S". Vale nas duas pontas — às 22h ele fecha sozinho.
+const aberto = computed(() => {
+  if (proximaAbertura.value) return aberturaRestante.value <= 0
+  return !fechamentoDeHoje.value || agora.value < fechamentoDeHoje.value
+})
+
+// A hora vem ESCRITA do servidor (`18H`, ou `02/10 18H` quando não é hoje).
+// Formatar aqui a partir do timestamp deixaria o texto à mercê do fuso do
+// aparelho: quem trocasse o fuso no celular leria "abre às 21h" e iria embora.
 const horaDeAbrir = computed(() =>
-  (raid.value.opensAtLabel ?? '').toUpperCase(),
+  (raid.value.abreEmLabel || raid.value.opensAtLabel || '').toUpperCase(),
 )
 
 const aberturaTexto = computed(() => {
+  if (aberto.value) return ''
+  // Fechou agora, no relógio local, e a resposta atual ainda diz "aberta": o
+  // `abreEm` do próximo fetch (disparado abaixo) dirá quando reabre. Até ele
+  // chegar, "FECHADO" é melhor que um botão sem texto.
+  if (!proximaAbertura.value) return 'FECHADO'
   const ms = aberturaRestante.value
-  if (ms <= 0) return ''
   // Na última hora a contagem fica viva, ao minuto: é ela que junta a fila na
   // frente do estande antes de abrir. Antes disso, a hora marcada — um relógio
   // de 4h20min parado na tela não diz nada a quem vai embora e volta.
@@ -162,6 +187,14 @@ const aberturaTexto = computed(() => {
   return minutos >= 1
     ? `ABRE EM ${minutos}MIN`
     : `ABRE EM ${Math.floor(ms / 1000)}S`
+})
+
+// A porta virando no relógio local pede o estado de volta: `abreEm` e `fechaEm`
+// novos só existem no servidor. Sem isto, quem está com a tela aberta às 22h
+// ficaria em "FECHADO" sem saber quando reabre — e quem espera as 18h veria
+// "CAPTURAR" sem o cooldown recalculado.
+watch(aberto, () => {
+  store.fetchRaid().catch(() => {})
 })
 
 const podeDesafiar = computed(

@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, useTemplateRef, watch } from 'vue'
 import BattleHpBar from './BattleHpBar.vue'
 import DamagePopup from './DamagePopup.vue'
+import EfeitosEmCampo from './EfeitosEmCampo.vue'
 import { spritesDaBatalha } from '../composables/battleSprites.js'
 import { openBackCamera } from '../composables/useBackCamera.js'
 import { ehPixelArt, spriteFrenteDe } from '../data/professorArte.js'
@@ -53,7 +54,9 @@ const emit = defineEmits(['ar-indisponivel'])
 // Perspectiva clássica de turnos, num módulo puro para ser testável: você de
 // costas, o rival de frente. O PvP usava o sprite de FRENTE nos dois lados e o
 // jogador via a própria cara em primeiro plano.
-const sprites = computed(() => spritesDaBatalha(props.you?.professor, props.foe?.professor))
+const sprites = computed(() =>
+  spritesDaBatalha(props.you?.professor, props.foe?.professor, props.foe?.estagio),
+)
 
 // O bloco do NDE: quando o lado do inimigo é um GRUPO, não um professor.
 //
@@ -202,6 +205,7 @@ onUnmounted(desligarCamera)
       :max-hp="foe.maxHp"
       :avatar-src="sprites.foe"
     />
+    <EfeitosEmCampo class="palco__efeitos--foe" :efeitos="foe.efeitos ?? []" />
     <BattleHpBar
       class="palco__barra palco__barra--you"
       :name="you.name"
@@ -209,6 +213,7 @@ onUnmounted(desligarCamera)
       :hp="you.hp"
       :max-hp="you.maxHp"
     />
+    <EfeitosEmCampo class="palco__efeitos--you" :efeitos="you.efeitos ?? []" />
   </div>
 </template>
 
@@ -444,6 +449,21 @@ onUnmounted(desligarCamera)
   top: calc(12px + env(safe-area-inset-top));
   left: 12px;
   max-width: 62%;
+}
+
+/* As tiras de efeito, logo ABAIXO da barra do rival e ACIMA da do jogador —
+   em cada caso, o lado que não encosta na borda da tela. O deslocamento usa
+   `--palco-barra-altura`, o token que existe exatamente para isto. */
+.palco__efeitos--foe {
+  top: calc(12px + env(safe-area-inset-top) + var(--palco-barra-altura) + 14px);
+  left: 12px;
+  max-width: 62%;
+}
+
+.palco__efeitos--you {
+  left: 12px;
+  bottom: calc(var(--palco-barra-jogador) + var(--palco-barra-altura) + 4px);
+  max-width: 58%;
 }
 
 /* Junto da faixa de comandos, que se sobrepõe ao rodapé do palco. */

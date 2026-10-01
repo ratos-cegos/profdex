@@ -33,6 +33,8 @@ describe('SettingsService', () => {
       raidTurnCap: 60,
       raidCooldownMinutes: 30,
       raidOpensAt: '2026-10-01T19:00:00-03:00',
+      raidDailyOpenHour: 18,
+      raidDailyCloseHour: 22,
       captureQrMode: 'ficha',
     });
   });
@@ -92,6 +94,8 @@ describe('SettingsService', () => {
       raidTurnCap: 60,
       raidCooldownMinutes: 30,
       raidOpensAt: '2026-10-01T19:00:00-03:00',
+      raidDailyOpenHour: 18,
+      raidDailyCloseHour: 22,
       captureQrMode: 'ficha',
     });
   });

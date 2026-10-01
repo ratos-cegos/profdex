@@ -13,6 +13,7 @@ import {
   turnOrder,
   upkeep,
 } from './engine/engine';
+import { efeitosVisiveis } from './efeitos-visiveis';
 import { Move } from './engine/moves';
 import { RatingOutcome, RatingService } from './rating.service';
 import {
@@ -968,6 +969,8 @@ export class BattleRoomService implements OnModuleDestroy {
       hp: Math.max(0, c.hp),
       maxHp: c.maxHp,
       status: statusLabel(c.status),
+      // O estado dos efeitos, cru: quem escreve o rotulo e a tela.
+      ...efeitosVisiveis(c),
       activeCaptureId: own ? active.captureId : undefined,
       team: slot.team.map(own ? ownMemberView : publicMemberView),
       ...(own ? { moves: active.moves } : {}),
@@ -1003,8 +1006,11 @@ export class BattleRoomService implements OnModuleDestroy {
     if (recipient === 'player') return events;
     const flip = (t: CombatantKey): CombatantKey =>
       t === 'player' ? 'enemy' : 'player';
+    // `ev.target` virou OPCIONAL quando o `roteiro` entrou no tipo: ele existe
+    // só na virada de estágio da raid. Sem a checagem de valor, espelhar um
+    // roteiro sem alvo gravaria `target: 'player'` num evento que não tem lado.
     return events.map((ev) =>
-      'target' in ev ? { ...ev, target: flip(ev.target) } : ev,
+      'target' in ev && ev.target ? { ...ev, target: flip(ev.target) } : ev,
     );
   }
 

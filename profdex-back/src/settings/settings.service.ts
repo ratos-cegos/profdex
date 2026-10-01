@@ -105,6 +105,29 @@ export class SettingsService {
   }
 
   /**
+   * As três travas de horário da raid, de uma vez.
+   *
+   * Lidas JUNTAS e a cada tentativa, pelo mesmo motivo do `raidOpensAtMs`: é
+   * trava de PORTA, e adiantar a janela no painel precisa valer para a próxima
+   * pessoa que apertar o botão. O oposto de `raidRules`, que congela na sala.
+   *
+   * Juntas também porque sozinhas mentem: `opens_at` sem a janela diz "aberta"
+   * às três da tarde.
+   */
+  async raidJanela(): Promise<{
+    opensAt: number;
+    horaDeAbrir: number;
+    horaDeFechar: number;
+  }> {
+    const valores = await this.all();
+    return {
+      opensAt: dateTimeSettingMs(valores.raidOpensAt),
+      horaDeAbrir: valores.raidDailyOpenHour,
+      horaDeFechar: valores.raidDailyCloseHour,
+    };
+  }
+
+  /**
    * Os três dials da raid, lidos de uma vez.
    *
    * Juntos porque são lidos juntos, no nascimento da sala, e porque congelá-los

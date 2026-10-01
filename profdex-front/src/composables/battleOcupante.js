@@ -33,6 +33,8 @@ export function ocupanteDoServidor(lado, entrada = 0) {
     professor: lado?.professor ?? null,
     grupo: lado?.professores ?? null,
     nome: lado?.nomeEmCampo ?? null,
+    // Só a raid manda: escolhe o par de sprites do estagio do lendario.
+    estagio: lado?.estagio ?? null,
     types: lado?.types ?? [],
     hp,
     maxHp: lado?.maxHp ?? 0,
@@ -94,6 +96,14 @@ export function aplicarEvento(estado, ev) {
         // substituto tombado; o sprite e a barra se acertam no fim da fila.
         proximo = { ...atual, fainted: false, entrada: atual.entrada + 1 }
       }
+      break
+    // A virada de estagio da raid. O chefe nao sai do assento — so troca de
+    // corpo —, entao nada aqui mexe em vida nem em `entrada`: a arte muda e o
+    // resto continua. Roteiro sem `estagio` (NDE, Ricardo) nao chega aqui,
+    // porque sem `target` a funcao sai na primeira linha.
+    case 'roteiro':
+      if (!Number.isFinite(ev.estagio)) return estado
+      proximo = { ...atual, estagio: ev.estagio }
       break
     default:
       return estado

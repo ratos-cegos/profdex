@@ -317,7 +317,50 @@ export const SETTINGS = {
     help:
       'Antes desta hora ninguém desafia o lendário — quem fechou a Profdex vê ' +
       'o card com a contagem até abrir. A hora é a do evento (Londrina). ' +
-      'Para liberar agora, escolha uma data já passada.',
+      'Para liberar agora, escolha uma data já passada — mas repare que a ' +
+      'JANELA DIÁRIA abaixo continua valendo: fora dela a raid segue fechada.',
+  },
+  /**
+   * A janela diária, depois de a raid ter aberto.
+   *
+   * `raid.opens_at` responde "a raid já existe?"; estas duas respondem "é hora
+   * de raid agora?". O lendário é o momento de palco do estande, e o que faz dele
+   * palco é ter gente em volta — liberar 24h por dia devolveria a raid para as
+   * três da tarde de uma quarta, com o ginásio vazio.
+   *
+   * A janela barra a ENTRADA, nunca a partida em curso: quem entrou 21h58 joga
+   * até acabar. A sala vive em memória, então cortar no meio não teria como
+   * devolver o progresso de quem estava no estágio 3.
+   *
+   * **Abrir >= fechar DESLIGA a janela** (0 e 24 é o par óbvio). É o interruptor
+   * de emergência, e é a escolha segura: configuração torta não pode trancar o
+   * estande inteiro fora da raid no meio do evento. Ver `raid-janela.ts`.
+   */
+  raidDailyOpenHour: {
+    kind: 'number',
+    key: 'raid.daily_open_hour',
+    default: 18,
+    min: 0,
+    max: 23,
+    label: 'Hora em que a raid abre, todo dia',
+    unit: 'h',
+    help:
+      'Hora do evento (Londrina). Antes dela a raid fica fechada, mesmo depois ' +
+      'de a abertura já ter passado. Iguale ao campo de fechar para desligar a ' +
+      'janela e deixar a raid disponível o dia inteiro.',
+  },
+  raidDailyCloseHour: {
+    kind: 'number',
+    key: 'raid.daily_close_hour',
+    default: 22,
+    min: 1,
+    max: 24,
+    label: 'Hora em que a raid fecha, todo dia',
+    unit: 'h',
+    help:
+      'Hora do evento (Londrina). A partir dela ninguém INICIA uma raid — quem ' +
+      'já estava lutando termina a tentativa. 22 significa que a última entrada ' +
+      'acontece até 21h59.',
   },
   /**
    * Como a ficha de QR chega ao aluno que acertou.
