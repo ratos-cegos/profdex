@@ -377,7 +377,7 @@ describe('RaidService — a hora de abrir', () => {
    */
   it('o status leva a hora, o rótulo e o relógio do servidor', async () => {
     const prisma = criarPrisma();
-    const abre = Date.parse('2026-10-01T22:00:00Z'); // 19h em Londrina
+    const abre = proximaAberturaAs19h();
     const { service } = criar(prisma, 30 * 60_000, abre);
 
     const status = await service.status('ana');
@@ -396,6 +396,31 @@ describe('RaidService — a hora de abrir', () => {
     });
     expect(Math.abs(status.now - Date.now())).toBeLessThan(1_000);
   });
+
+  /**
+   * A próxima 19h de Londrina que ainda NÃO chegou, em epoch ms.
+   *
+   * `open: false` exige uma abertura no futuro, e `opensAtLabel` exige que ela
+   * caia às 19h. Fixar o dia juntava as duas numa bomba de data: a primeira
+   * versão era `'01/10 19h'` e quebrou em 01/10/2026; a segunda cravou
+   * `2026-10-01T22:00:00Z` e quebrou quando ESSE dia passou — a raid virou
+   * "aberta" e o teste acusou um bug que não existia. Calcular a próxima
+   * ocorrência tira a validade do teste.
+   *
+   * 19h em Londrina = 22:00 UTC, por offset fixo: o Brasil aboliu o horário de
+   * verão em 2019 (a mesma premissa de `OFFSET_DO_EVENTO`). A margem de um minuto
+   * evita a corrida de rodar a suíte exatamente às 18h59.
+   */
+  function proximaAberturaAs19h(): number {
+    const agora = new Date();
+    const hoje = Date.UTC(
+      agora.getUTCFullYear(),
+      agora.getUTCMonth(),
+      agora.getUTCDate(),
+      22,
+    );
+    return hoje > Date.now() + 60_000 ? hoje : hoje + 86_400_000;
+  }
 
   it('o status abre quando a hora já passou', async () => {
     const prisma = criarPrisma();
