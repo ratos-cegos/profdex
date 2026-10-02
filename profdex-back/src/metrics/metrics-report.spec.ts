@@ -15,23 +15,24 @@ function dados(over: Partial<MetricsReportData> = {}): MetricsReportData {
     geradoEm: new Date('2026-09-29T23:32:00Z'), // 20h32 em São Paulo
     de: DE,
     ate: ATE,
-    horas: HORAS,
+    escala: 'hora',
+    baldes: HORAS,
     interacoes: {
       total: 18420,
       deTempo: 1200,
       deTurnos: 3100,
-      porHora: zeros().map((_, i) => (i === 3 ? 900 : 100)),
+      porBalde: zeros().map((_, i) => (i === 3 ? 900 : 100)),
     },
     quiz: {
       respondidas: 320,
       acertadas: 210,
       taxa: 65.6,
-      porHora: zeros().map((_, i) => (i === 3 ? 40 : 5)),
-      acertosPorHora: zeros().map((_, i) => (i === 3 ? 28 : 3)),
+      porBalde: zeros().map((_, i) => (i === 3 ? 40 : 5)),
+      acertosPorBalde: zeros().map((_, i) => (i === 3 ? 28 : 3)),
     },
-    capturas: { total: 540, raros: 12, porHora: zeros() },
-    batalhas: { total: 88, raids: 9, turnos: 3100, porHora: zeros() },
-    usuarios: { total: 137, porHora: zeros() },
+    capturas: { total: 540, raros: 12, porBalde: zeros() },
+    batalhas: { total: 88, raids: 9, turnos: 3100, porBalde: zeros() },
+    usuarios: { total: 137, porBalde: zeros() },
     fontes: [
       { fonte: 'Quiz respondido na bancada', interacoes: 6400, pct: 34.7 },
       { fonte: 'Turnos de batalha (PvP e raid)', interacoes: 3100, pct: 16.8 },
@@ -121,17 +122,17 @@ describe('buildMetricsReport', () => {
   it('não quebra com tudo zerado', () => {
     const html = buildMetricsReport(
       dados({
-        interacoes: { total: 0, deTempo: 0, deTurnos: 0, porHora: zeros() },
+        interacoes: { total: 0, deTempo: 0, deTurnos: 0, porBalde: zeros() },
         quiz: {
           respondidas: 0,
           acertadas: 0,
           taxa: 0,
-          porHora: zeros(),
-          acertosPorHora: zeros(),
+          porBalde: zeros(),
+          acertosPorBalde: zeros(),
         },
-        capturas: { total: 0, raros: 0, porHora: zeros() },
-        batalhas: { total: 0, raids: 0, turnos: 0, porHora: zeros() },
-        usuarios: { total: 0, porHora: zeros() },
+        capturas: { total: 0, raros: 0, porBalde: zeros() },
+        batalhas: { total: 0, raids: 0, turnos: 0, porBalde: zeros() },
+        usuarios: { total: 0, porBalde: zeros() },
         fontes: [],
       }),
     );
@@ -199,5 +200,142 @@ describe('buildMetricsReport', () => {
 
     expect(html).toContain('&lt;script&gt;');
     expect(html).not.toContain('<script>x</script>');
+  });
+});
+
+/**
+ * O consolidado da semana sai da MESMA função, só com `escala: 'dia'`. O que
+ * muda é o eixo, o título do período e o aviso do rodapé — e cada um deles já
+ * seria um jeito de o papel mentir sobre o que está mostrando.
+ */
+describe('buildMetricsReport no consolidado da semana', () => {
+  /** 17h de 23/09 em São Paulo = 20:00 UTC. Sete turnos até 29/09. */
+  const PRIMEIRO_TURNO = new Date('2026-09-23T20:00:00Z');
+  const DIAS = Array.from(
+    { length: 7 },
+    (_, i) => PRIMEIRO_TURNO.getTime() + i * 86_400_000,
+  );
+
+  const naSemana = (over: Partial<MetricsReportData> = {}) =>
+    buildMetricsReport(
+      dados({
+        escala: 'dia',
+        de: PRIMEIRO_TURNO,
+        ate: new Date('2026-09-30T03:00:00Z'),
+        baldes: DIAS,
+        ...over,
+      }),
+    );
+
+  /**
+   * A data embaixo da barra, nunca a hora: com `escala: 'dia'` cada barra é um
+   * turno inteiro, e "17h" ali diria que o gráfico é de um dia só.
+   */
+  it('rotula o eixo com as datas dos sete dias', () => {
+    const html = naSemana();
+
+    for (const dia of ['23/09', '24/09', '27/09', '29/09']) {
+      expect(html).toContain(`>${dia}<`);
+    }
+    // A hora não aparece como rótulo de barra em lugar nenhum do eixo.
+    expect(html).not.toContain('>17h<');
+  });
+
+  /**
+   * `ate` é EXCLUSIVO e cai na meia-noite. Sem descontar, o título diria "a
+   * 30/09" — um dia que não entrou em número nenhum da folha.
+   */
+  it('anuncia a faixa de dias coberta, sem invadir o dia seguinte', () => {
+    const html = naSemana();
+
+    expect(html).toContain('23/09/2026 a 29/09/2026');
+    expect(html).toContain(
+      '<title>ProfDex — métricas de 23/09/2026 a 29/09/2026</title>',
+    );
+    expect(html).not.toContain('30/09/2026');
+  });
+
+  /**
+   * A faixa de horas sozinha faria a semana parecer um bloco contínuo de sete
+   * dias. Ela é a janela de CADA dia — e o `×` é o que diz isso.
+   */
+  it('diz que são sete turnos de 17h às 24h, não um bloco contínuo', () => {
+    const html = naSemana();
+
+    expect(html).toContain('7 dias × 17h–24h');
+  });
+
+  it('troca "por hora" por "por dia" nos títulos dos gráficos', () => {
+    const html = naSemana();
+
+    expect(html).toContain('Interações por dia');
+    expect(html).toContain('Capturas, batalhas e presença por dia');
+    expect(html).not.toContain('por hora');
+  });
+
+  /**
+   * `active_users` é "alunos distintos NAQUELA HORA". Somar as sete horas de um
+   * turno numa barra de dia faz quem ficou das 18h às 21h contar quatro vezes —
+   * chamar isso de "alunos ativos" inflaria a plateia em três a cinco vezes num
+   * papel que vai para a coordenação. A barra continua útil (é a forma da
+   * semana); só não pode usar o nome de gente.
+   */
+  it('não chama de "alunos ativos" a barra que é aluno×hora', () => {
+    const html = naSemana();
+
+    expect(html).toContain('Presença (aluno×hora)');
+    expect(html).not.toContain('Alunos ativos');
+    // E o rodapé diz onde está a plateia de verdade.
+    expect(html).toContain('aluno×hora, não gente');
+  });
+
+  /** Numa barra de HORA a série é exatamente "alunos ativos" — e segue assim. */
+  it('mantém "alunos ativos" no relatório de um dia', () => {
+    const html = buildMetricsReport(dados());
+
+    expect(html).toContain('Alunos ativos');
+    expect(html).not.toContain('aluno×hora');
+  });
+
+  /**
+   * O aviso que evita o relatório parecer defeituoso: tudo fecha por soma com os
+   * sete diários, MENOS alunos no evento, que é contagem de distintos. Vai no
+   * rodapé porque o rodapé imprime — a dúvida nasce com o papel na mão.
+   */
+  it('explica no rodapé o que fecha por soma e o que não fecha', () => {
+    const html = naSemana();
+
+    expect(html).toContain('Consolidado de 7 dias');
+    expect(html).toContain('Alunos no evento é a exceção');
+    expect(html).toContain('DISTINTOS');
+  });
+
+  /** O relatório de um dia não pode carregar o aviso do consolidado. */
+  it('não mostra o aviso do consolidado no relatório de um dia', () => {
+    const html = buildMetricsReport(dados());
+
+    expect(html).not.toContain('Consolidado de');
+    expect(html).not.toContain('Alunos no evento é a exceção');
+  });
+
+  it('não quebra com a semana inteira zerada', () => {
+    const html = naSemana({
+      interacoes: { total: 0, deTempo: 0, deTurnos: 0, porBalde: zeros() },
+      quiz: {
+        respondidas: 0,
+        acertadas: 0,
+        taxa: 0,
+        porBalde: zeros(),
+        acertosPorBalde: zeros(),
+      },
+      capturas: { total: 0, raros: 0, porBalde: zeros() },
+      batalhas: { total: 0, raids: 0, turnos: 0, porBalde: zeros() },
+      usuarios: { total: 0, porBalde: zeros() },
+      fontes: [],
+    });
+
+    expect(html).not.toContain('NaN');
+    expect(html).not.toContain('Infinity');
+    expect(html).toContain('Sem registros nesta janela.');
   });
 });

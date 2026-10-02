@@ -239,20 +239,31 @@ Duas consequências que valem saber ao ler o painel:
   ainda não aparece nessa fatia.
 - **O número anda a cada 5 minutos**, no ritmo do rollup, não em tempo real.
 
-## Relatório do dia (PDF)
+## Relatório do estande (PDF)
 
-No topo de `/admin/metrics` há um seletor de **dia** e o botão **Exportar PDF**,
-que abre `GET /admin/metrics/report?date=AAAA-MM-DD` numa aba: interações,
-bancada (respondidas × acertadas), professores capturados, batalhas e alunos no
-evento, com três gráficos por hora e a quebra das interações. `Ctrl+P` →
+No topo de `/admin/metrics` há um seletor de **dia** e dois botões — **PDF do
+dia** e **PDF da semana** —, que abrem `GET /admin/metrics/report` numa aba:
+interações, bancada (respondidas × acertadas), professores capturados, batalhas
+e alunos no evento, com três gráficos e a quebra das interações. `Ctrl+P` →
 "Salvar como PDF".
 
-**A janela é das 17h à meia-noite** do dia escolhido, no fuso do evento — o
-horário em que o estande funciona. Um relatório de 24h diluía a feira em
-dezessete horas de campus dormindo: a taxa de acerto da bancada e o pico de
-batalhas só significam alguma coisa dentro do turno em que houve gente. São 7
-baldes, e todos aparecem no gráfico mesmo vazios, porque uma hora sem registro
-é informação sobre o ritmo do evento.
+| Botão | Rota | Eixo X |
+| --- | --- | --- |
+| PDF do dia | `?date=AAAA-MM-DD` (ou `&periodo=dia`) | 7 barras, uma por hora |
+| PDF da semana | `?date=AAAA-MM-DD&periodo=semana` | 7 barras, uma por dia |
+
+A data escolhida é o **último** dia nos dois casos: a semana conta para trás a
+partir dela. É o que o organizador quer no fim da feira ("a semana até hoje"),
+sem ter de calcular qual foi a segunda-feira. `periodo` fora de `dia`/`semana` é
+recusado com 400 — cair em silêncio no relatório do dia entregaria um papel de
+um dia só, com cara de certo, a quem pediu a semana.
+
+**A janela é das 17h à meia-noite** do dia, no fuso do evento — o horário em que
+o estande funciona. Um relatório de 24h diluía a feira em dezessete horas de
+campus dormindo: a taxa de acerto da bancada e o pico de batalhas só significam
+alguma coisa dentro do turno em que houve gente. São 7 baldes, e todos aparecem
+no gráfico mesmo vazios, porque uma hora sem registro é informação sobre o ritmo
+do evento.
 
 O recorte é fechado nos dois extremos (`gte` e `lt`). Só com `gte`, um relatório
 de terça somaria o evento inteiro dali para a frente, e o número impresso
@@ -263,6 +274,49 @@ seguinte: o relatório abriria vazio justamente no fim da feira.
 Os limites são `REPORT_HORA_INICIO`/`REPORT_HORA_FIM` em
 `admin-metrics.service.ts`, e o fuso entra como offset fixo `-03:00` (o Brasil
 aboliu o horário de verão em 2019, então não há salto a tratar).
+
+### O consolidado da semana
+
+> 🔑 **A semana soma o mesmo que os sete relatórios diários.** É a única coisa
+> que este relatório promete, e é dela que sai todo o resto do desenho.
+
+A semana são **sete janelas de estande** (`janelaDaSemana`), não um bloco
+contínuo de sete dias. Alguém vai somar os PDFs do dia na calculadora e
+comparar; se o consolidado incluísse as 17 horas mortas de cada dia, as duas
+contas divergiriam e as duas perderiam a credibilidade junto. Batalha é a prova
+viva disso — ela acontece do celular, a qualquer hora.
+
+Em consequência:
+
+- as sete faixas vão ao banco como sete (`where: { OR: [...] }`), e a leitura de
+  `metrics_hourly` descarta em memória o balde que caiu fora de todas elas;
+- o deslocamento entre dias é feito em **epoch** (`- 86_400_000`), nunca em
+  calendário: virar o mês ou o ano não exige conta nenhuma;
+- cada barra do gráfico é o turno inteiro de um dia, rotulada `29/09` em vez de
+  `17h`. Sete barras em vez de 49 é o que mantém o papel legível.
+
+**Duas exceções, e as duas são sobre público** — uma puxa o número para baixo, a
+outra para cima. O rodapé do PDF avisa das duas, porque um número que não fecha
+com a soma das partes, sem explicação, parece defeito:
+
+- **"Alunos no evento" (o KPI) é menor que a soma dos sete dias.** É contagem de
+  alunos **distintos** na semana: quem veio quarta e quinta é um aluno, não dois.
+  Somar daria uma plateia que nunca existiu. São `UNION` (nunca `UNION ALL`) numa
+  consulta só, com as sete faixas como parâmetros — ver `distinctUsersEmJanelas`.
+- **A barra de "presença" é maior que a plateia.** A série é `active_users`, que
+  é "alunos distintos *naquela hora*"; numa barra de DIA ela é a soma de sete
+  horas, então quem ficou das 18h às 21h conta quatro vezes. É **aluno×hora**, e
+  por isso o relatório da semana a chama assim em vez de "alunos ativos" —
+  mantê-la com o nome de gente inflaria a plateia em três a cinco vezes num papel
+  que vai para a coordenação. No relatório do DIA a barra é de uma hora só e
+  "alunos ativos" está exato, então lá o nome não muda.
+
+Quem responde "quantos alunos vieram?" é sempre o KPI do topo, nunca a barra.
+
+O dia e a semana saem do **mesmo** `AdminMetricsService.relatorio` e do mesmo
+`buildMetricsReport`, parametrizados por `escala: 'hora' | 'dia'`. Com dois
+caminhos, bastava uma correção entrar num deles para o consolidado deixar de
+bater com a soma dos diários.
 
 É **HTML com `@media print`**, não PDF binário — o mesmo caminho das fichas de
 QR (`captures/capture-sheet.ts`). Gerar PDF de verdade exigiria Chromium

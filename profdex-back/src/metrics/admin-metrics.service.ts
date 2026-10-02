@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   QUIZ_THEMES,
@@ -25,6 +26,15 @@ export const MAX_SERIES_HOURS = 24 * 7;
  */
 export const REPORT_HORA_INICIO = 17;
 export const REPORT_HORA_FIM = 24;
+
+/**
+ * Quantos dias o relatório CONSOLIDADO cobre, contando o dia escolhido.
+ *
+ * Sete porque é a semana da feira — a pergunta que a coordenação faz no fim do
+ * evento é "como foi a semana?", e responder isso somando sete PDFs à mão é
+ * onde o número erra.
+ */
+export const REPORT_DIAS_DA_SEMANA = 7;
 
 /**
  * Fuso do evento, como offset fixo.
@@ -60,6 +70,84 @@ export function janelaDoRelatorio(dia: string): { de: Date; ate: Date } {
     de.getTime() + (REPORT_HORA_FIM - REPORT_HORA_INICIO) * 3_600_000,
   );
   return { de, ate };
+}
+
+/**
+ * As SETE janelas do estande que terminam no dia escolhido — a semana do
+ * consolidado.
+ *
+ * Uma lista de janelas, e não um bloco contínuo de sete dias, e é a decisão
+ * central deste relatório: **o consolidado da semana tem de ser a soma dos sete
+ * relatórios diários**. Alguém vai somar os PDFs do dia na calculadora e
+ * comparar; se o número da semana incluísse as 17 horas de campus dormindo de
+ * cada dia, as duas contas divergiriam e as duas perderiam a credibilidade
+ * junto. Batalha é a prova viva disso: ela acontece do celular, a qualquer
+ * hora, e só a janela do estande a mantém comparável com o papel do dia.
+ *
+ * O deslocamento é feito em EPOCH (`- 86_400_000` por dia), nunca em calendário:
+ * assim virar o mês ou o ano não exige conta nenhuma, e sem horário de verão no
+ * Brasil desde 2019 um dia é exatamente 24h (ver `OFFSET_DO_EVENTO`).
+ *
+ * `dias` sai em ordem cronológica — o mais antigo primeiro —, que é a ordem em
+ * que os baldes vão para o gráfico.
+ */
+export function janelaDaSemana(diaFinal: string): {
+  de: Date;
+  ate: Date;
+  dias: { de: Date; ate: Date }[];
+} {
+  const ultimo = janelaDoRelatorio(diaFinal);
+  const dias = Array.from({ length: REPORT_DIAS_DA_SEMANA }, (_, i) => {
+    const desloc = (REPORT_DIAS_DA_SEMANA - 1 - i) * 86_400_000;
+    return {
+      de: new Date(ultimo.de.getTime() - desloc),
+      ate: new Date(ultimo.ate.getTime() - desloc),
+    };
+  });
+  return { de: dias[0].de, ate: ultimo.ate, dias };
+}
+
+/**
+ * A escala do eixo X do relatório: uma barra por hora (um dia) ou uma barra por
+ * dia (a semana consolidada).
+ */
+export type EscalaDoRelatorio = 'hora' | 'dia';
+
+/**
+ * Os baldes do gráfico e como cair neles.
+ *
+ * `indiceDe` devolve **-1** para o que está fora das janelas, e é isso que
+ * sustenta o consolidado: a leitura da semana pode trazer linhas das horas
+ * mortas entre dois turnos sem que elas contaminem soma nenhuma.
+ */
+function baldesDoRelatorio(
+  janelas: { de: Date; ate: Date }[],
+  escala: EscalaDoRelatorio,
+): { baldes: number[]; indiceDe: (t: number) => number } {
+  if (escala === 'dia') {
+    // Um balde por janela, rotulado pelo início dela (17h daquele dia).
+    const inicios = janelas.map((j) => j.de.getTime());
+    const fins = janelas.map((j) => j.ate.getTime());
+    return {
+      baldes: inicios,
+      indiceDe: (t) => inicios.findIndex((de, i) => t >= de && t < fins[i]),
+    };
+  }
+
+  // Todas as horas da janela explícitas, inclusive as vazias: um gráfico que
+  // pula a hora sem registro mente sobre o ritmo do evento.
+  const [janela] = janelas;
+  const baldes: number[] = [];
+  for (let t = janela.de.getTime(); t < janela.ate.getTime(); t += 3_600_000) {
+    baldes.push(t);
+  }
+  return {
+    baldes,
+    indiceDe: (t) => {
+      const i = Math.floor((t - janela.de.getTime()) / 3_600_000);
+      return i >= 0 && i < baldes.length ? i : -1;
+    },
+  };
 }
 
 const PLAYED = {
@@ -206,55 +294,102 @@ export class AdminMetricsService {
   }
 
   /**
-   * Os números do relatório de 24 horas — o que o PDF imprime.
+   * O relatório de UM dia do evento — o turno do estande, com uma barra por
+   * hora. É o papel que o organizador tira no fim da feira.
    *
-   * Janela MÓVEL de 24h, e não "hoje": às 9h da manhã "hoje" são duas horas de
-   * evento, e o relatório existe justamente para ser tirado no meio da feira.
-   * É a mesma janela que o rollup recalcula a cada passada, então tudo aqui
-   * está na régua atual — nada de balde congelado num peso velho.
-   *
-   * As séries horárias vêm de `metrics_hourly` (pré-agregado). Os totais de
-   * batalha e de usuários vêm das TABELAS, porque são perguntas com resposta
-   * única e exata, e é delas que a coordenação vai cobrar: `battles` conta uma
-   * linha por batalha (o evento conta uma por jogador) e o total de usuários
-   * precisa do `UNION` com `app_events` para não perder a bancada.
+   * A janela é das 17h à meia-noite daquele dia: ver `janelaDoRelatorio`.
    */
   async reportDoDia(dia: string) {
     const { de, ate } = janelaDoRelatorio(dia);
+    return this.relatorio([{ de, ate }], 'hora');
+  }
 
-    const dentro = { gte: de, lt: ate };
+  /**
+   * O consolidado da SEMANA que termina no dia escolhido — sete turnos de
+   * estande num papel só, com uma barra por dia.
+   *
+   * O que ele soma é exatamente o que os sete relatórios diários somam: só a
+   * janela das 17h à meia-noite de cada dia (ver `janelaDaSemana`). Quem
+   * conferir somando os PDFs do dia na calculadora acha o mesmo número.
+   *
+   * **Uma exceção, e ela é intencional:** "alunos no evento" conta alunos
+   * DISTINTOS na semana, então é menor que a soma dos sete dias — quem veio
+   * quarta e quinta é um aluno, não dois. Somar daria uma plateia que nunca
+   * existiu, que é o erro mais fácil de cometer num consolidado. O relatório
+   * diz isso no rodapé, porque um número menor que a soma das partes sem
+   * explicação parece defeito.
+   */
+  async reportDaSemana(diaFinal: string) {
+    const { dias } = janelaDaSemana(diaFinal);
+    return this.relatorio(dias, 'dia');
+  }
+
+  /**
+   * Os números do relatório — o que o PDF imprime —, para UMA ou VÁRIAS janelas
+   * do estande.
+   *
+   * Um caminho só para o dia e para a semana, de propósito: com dois, bastava
+   * uma correção aplicada num deles para o consolidado deixar de bater com a
+   * soma dos diários, que é a única propriedade que este relatório promete.
+   *
+   * As séries vêm de `metrics_hourly` (pré-agregado). Os totais de batalha e de
+   * usuários vêm das TABELAS, porque são perguntas com resposta única e exata, e
+   * é delas que a coordenação vai cobrar: `battles` conta uma linha por batalha
+   * (o evento conta uma por jogador) e o total de usuários precisa do `UNION`
+   * com `app_events` para não perder a bancada.
+   */
+  private async relatorio(
+    janelas: { de: Date; ate: Date }[],
+    escala: EscalaDoRelatorio,
+  ) {
+    // `OR` mesmo com uma janela só: é o `lt` de cada faixa que recorta os DOIS
+    // extremos. Só com `gte`, um relatório de terça somaria o evento inteiro
+    // dali para a frente, e o número impresso cresceria a cada dia sem ninguém
+    // notar.
+    const dentro = janelas.map((j) => ({ gte: j.de, lt: j.ate }));
+    const de = janelas[0].de;
+    const ate = janelas[janelas.length - 1].ate;
+
     const [linhas, batalhas, usuarios, raids, quebra] = await Promise.all([
       this.prisma.metricHourly.findMany({
-        where: { bucket: dentro },
+        where: { OR: dentro.map((bucket) => ({ bucket })) },
         orderBy: { bucket: 'asc' },
         select: { bucket: true, metric: true, value: true },
       }),
       this.prisma.battle.count({
-        where: { status: 'finished', finishedAt: dentro },
+        where: {
+          status: 'finished',
+          OR: dentro.map((finishedAt) => ({ finishedAt })),
+        },
       }),
-      this.distinctSessionUsers(de, ate),
-      this.prisma.raidAttempt.count({ where: { endedAt: dentro } }),
+      this.distinctUsersEmJanelas(janelas),
+      this.prisma.raidAttempt.count({
+        where: { OR: dentro.map((endedAt) => ({ endedAt })) },
+      }),
       this.interactions(),
     ]);
 
-    // Uma passada só sobre as linhas: por métrica (total) e por hora (série).
+    const { baldes, indiceDe } = baldesDoRelatorio(janelas, escala);
+
+    // Uma passada só sobre as linhas: por métrica (total) e por balde (série).
+    // A linha que cai fora das janelas é descartada nos DOIS — é o que mantém a
+    // hora morta entre dois turnos fora do consolidado da semana.
     const total = new Map<string, number>();
-    const porHora = new Map<string, Map<number, number>>();
+    const series = new Map<string, number[]>();
     for (const linha of linhas) {
+      const i = indiceDe(linha.bucket.getTime());
+      if (i < 0) continue;
       total.set(linha.metric, (total.get(linha.metric) ?? 0) + linha.value);
-      const serie = porHora.get(linha.metric) ?? new Map<number, number>();
-      serie.set(linha.bucket.getTime(), linha.value);
-      porHora.set(linha.metric, serie);
+      const serie =
+        series.get(linha.metric) ?? new Array<number>(baldes.length).fill(0);
+      serie[i] += linha.value;
+      series.set(linha.metric, serie);
     }
 
-    // Todas as horas da janela explícitas, inclusive as vazias: um gráfico que
-    // pula a hora sem registro mente sobre o ritmo do evento.
-    const horas: number[] = [];
-    for (let t = de.getTime(); t < ate.getTime(); t += 3_600_000) {
-      horas.push(t);
-    }
+    // Baldes vazios continuam no array: um dia (ou uma hora) sem registro é
+    // informação sobre o ritmo do evento, e omiti-lo faria o gráfico mentir.
     const serie = (metric: string) =>
-      horas.map((t) => porHora.get(metric)?.get(t) ?? 0);
+      series.get(metric) ?? new Array<number>(baldes.length).fill(0);
 
     const respondidas = total.get('event_quiz_answered') ?? 0;
     const acertadas = total.get('event_quiz_correct') ?? 0;
@@ -263,12 +398,13 @@ export class AdminMetricsService {
       geradoEm: new Date(),
       de,
       ate,
-      horas,
+      escala,
+      baldes,
       interacoes: {
         total: total.get('interactions') ?? 0,
         deTempo: total.get('interactions_time') ?? 0,
         deTurnos: total.get('interactions_turns') ?? 0,
-        porHora: serie('interactions'),
+        porBalde: serie('interactions'),
       },
       quiz: {
         respondidas,
@@ -278,27 +414,27 @@ export class AdminMetricsService {
         taxa: respondidas
           ? Math.round((acertadas / respondidas) * 1000) / 10
           : 0,
-        porHora: serie('event_quiz_answered'),
-        acertosPorHora: serie('event_quiz_correct'),
+        porBalde: serie('event_quiz_answered'),
+        acertosPorBalde: serie('event_quiz_correct'),
       },
       capturas: {
         total: total.get('event_professor_captured') ?? 0,
         raros: total.get('event_rare_captured') ?? 0,
-        porHora: serie('event_professor_captured'),
+        porBalde: serie('event_professor_captured'),
       },
       batalhas: {
         total: batalhas,
         raids,
         turnos:
           (total.get('interactions_turns') ?? 0) / INTERACTIONS_PER_BATTLE_TURN,
-        // `/ 2` porque a série horária vem do EVENTO, que é gravado uma vez por
+        // `/ 2` porque a série vem do EVENTO, que é gravado uma vez por
         // jogador. O total ao lado vem da tabela `battles` e não precisa disso —
-        // e é por isso que os dois podem divergir em 1 numa hora de virada.
-        porHora: serie('event_battle_finished').map((v) => Math.round(v / 2)),
+        // e é por isso que os dois podem divergir em 1 num balde de virada.
+        porBalde: serie('event_battle_finished').map((v) => Math.round(v / 2)),
       },
       usuarios: {
         total: usuarios,
-        porHora: serie('active_users'),
+        porBalde: serie('active_users'),
       },
       fontes: quebra.fontes.map((f) => ({
         fonte: f.fonte,
@@ -706,24 +842,56 @@ export class AdminMetricsService {
    * `user_sessions` e sumia do DAU. Era a bancada inteira faltando no número
    * que a coordenação lê.
    */
-  private async distinctSessionUsers(
-    since: Date,
-    until?: Date,
-  ): Promise<number> {
-    // `until` opcional: o `overview` conta "de hoje até agora" e não tem teto;
-    // o relatório recorta uma janela fechada. `COALESCE` com um limite bem no
-    // futuro mantém UMA consulta em vez de duas quase iguais.
-    const ate = until ?? new Date(8_640_000_000_000);
+  private async distinctSessionUsers(since: Date): Promise<number> {
     const rows = await this.prisma.$queryRaw<{ total: number }[]>`
       SELECT COUNT(*)::int AS total
       FROM (
-        SELECT user_id FROM user_sessions
-         WHERE started_at >= ${since} AND started_at < ${ate}
+        SELECT user_id FROM user_sessions WHERE started_at >= ${since}
         UNION
-        SELECT user_id FROM app_events
-         WHERE occurred_at >= ${since} AND occurred_at < ${ate}
+        SELECT user_id FROM app_events WHERE occurred_at >= ${since}
       ) AS usuarios
     `;
+    return rows[0]?.total ?? 0;
+  }
+
+  /**
+   * Os mesmos alunos distintos, mas dentro das janelas FECHADAS do relatório.
+   *
+   * Separado de `distinctSessionUsers` porque a pergunta é outra: ali é "desde
+   * quando" (o `overview` conta até agora e não tem teto), aqui é "nestes
+   * turnos" — uma lista de faixas, cada uma recortada nos dois extremos.
+   *
+   * `UNION` (não `UNION ALL`) é o que faz o DISTINTO: no consolidado da semana
+   * quem veio quarta e quinta aparece nas duas janelas e precisa contar UMA vez.
+   * É também por isso que este número é menor que a soma dos sete relatórios
+   * diários — a única coisa no consolidado que não fecha por soma, e o rodapé do
+   * PDF avisa.
+   *
+   * SQL montado com `Prisma.sql`/`Prisma.join` porque o número de faixas varia
+   * (uma no dia, sete na semana); os instantes continuam indo como PARÂMETROS,
+   * nunca interpolados no texto.
+   */
+  private async distinctUsersEmJanelas(
+    janelas: { de: Date; ate: Date }[],
+  ): Promise<number> {
+    const dentro = (coluna: Prisma.Sql) =>
+      Prisma.join(
+        janelas.map(
+          (j) => Prisma.sql`(${coluna} >= ${j.de} AND ${coluna} < ${j.ate})`,
+        ),
+        ' OR ',
+      );
+
+    const rows = await this.prisma.$queryRaw<{ total: number }[]>(Prisma.sql`
+      SELECT COUNT(*)::int AS total
+      FROM (
+        SELECT user_id FROM user_sessions
+         WHERE ${dentro(Prisma.raw('started_at'))}
+        UNION
+        SELECT user_id FROM app_events
+         WHERE ${dentro(Prisma.raw('occurred_at'))}
+      ) AS usuarios
+    `);
     return rows[0]?.total ?? 0;
   }
 }
