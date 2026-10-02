@@ -1,7 +1,13 @@
 import { escapeHtml } from '../mail/escape-html';
 
 /**
- * O relatório de 24 horas, em HTML pronto para imprimir.
+ * O relatório do estande em HTML pronto para imprimir — de **um dia** (uma barra
+ * por hora) ou da **semana consolidada** (uma barra por dia).
+ *
+ * Os dois saem desta mesma função: o que muda é a `escala` dos dados, que decide
+ * o rótulo do eixo, o título do período e um aviso a mais no rodapé. Duas
+ * funções quase iguais garantiriam que uma correção de layout entrasse só numa
+ * delas.
  *
  * **Por que HTML e não PDF binário.** O projeto já imprime assim: as fichas de
  * QR saem como `text/html` com `@media print` e o organizador usa o "Salvar como
@@ -45,49 +51,70 @@ const COR = {
   alunos: '#a8b8c0',
 } as const;
 
-export interface SerieHoraria {
+export interface SerieDoRelatorio {
   label: string;
   valores: number[];
   cor: string;
 }
 
+/**
+ * O eixo X do relatório.
+ *
+ * - `hora` — um dia do evento: uma barra por hora do turno do estande.
+ * - `dia` — o consolidado da semana: uma barra por dia, cada uma já sendo o
+ *   turno inteiro daquele dia.
+ *
+ * Obrigatório, e não um campo com padrão: é ele que decide se o rótulo embaixo
+ * da barra é `17h` ou `29/09`. Um padrão silencioso imprimiria "17h" debaixo de
+ * sete dias e ninguém notaria até o papel estar na mão da coordenação.
+ */
+export type EscalaDoRelatorio = 'hora' | 'dia';
+
 export interface MetricsReportData {
   geradoEm: Date;
-  /** Início da janela (17h do dia escolhido, no fuso do evento). */
+  /** Início da primeira janela (17h, no fuso do evento). */
   de: Date;
-  /** Fim EXCLUSIVO da janela (meia-noite). */
+  /** Fim EXCLUSIVO da última janela (meia-noite). */
   ate: Date;
-  /** Um epoch ms por hora da janela — inclusive as sem registro. */
-  horas: number[];
+  escala: EscalaDoRelatorio;
+  /**
+   * Um epoch ms por balde — hora ou dia, conforme a `escala` —, inclusive os
+   * sem registro nenhum.
+   */
+  baldes: number[];
   interacoes: {
     total: number;
     deTempo: number;
     deTurnos: number;
-    porHora: number[];
+    porBalde: number[];
   };
   quiz: {
     respondidas: number;
     acertadas: number;
     taxa: number;
-    porHora: number[];
-    acertosPorHora: number[];
+    porBalde: number[];
+    acertosPorBalde: number[];
   };
-  capturas: { total: number; raros: number; porHora: number[] };
+  capturas: { total: number; raros: number; porBalde: number[] };
   batalhas: {
     total: number;
     raids: number;
     turnos: number;
-    porHora: number[];
+    porBalde: number[];
   };
-  usuarios: { total: number; porHora: number[] };
+  usuarios: { total: number; porBalde: number[] };
   /** De onde vieram as interações, já ordenado e com percentual. */
   fontes: { fonte: string; interacoes: number; pct: number }[];
 }
 
 export function buildMetricsReport(data: MetricsReportData): string {
-  const dia = formatarDia(data.de);
+  const naSemana = data.escala === 'dia';
+  const dia = periodoCoberto(data);
   const faixa = `${formatarHora(data.de.getTime())}–${formatarFim(data.ate)}`;
-  const periodo = `${dia} · ${faixa} · gerado ${formatarMomento(data.geradoEm)}`;
+  // Na semana a faixa de horas sozinha mentiria: ela é a janela de CADA dia, não
+  // um bloco contínuo de sete. O `×` é o que diz isso em três caracteres.
+  const turno = naSemana ? `${data.baldes.length} dias × ${faixa}` : faixa;
+  const periodo = `${dia} · ${turno} · gerado ${formatarMomento(data.geradoEm)}`;
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -99,7 +126,7 @@ ${estilo()}
 <body>
   <header class="topo">
     <h1>PROF<span>DEX</span></h1>
-    <p class="subtitulo">Métricas do estande · ${escapeHtml(faixa)}</p>
+    <p class="subtitulo">Métricas do estande · ${escapeHtml(turno)}</p>
     <p class="periodo">${escapeHtml(periodo)}</p>
   </header>
 
@@ -124,34 +151,82 @@ ${estilo()}
     )}
   </section>
 
-  ${grafico('Interações por hora', data.horas, [
+  ${grafico(`Interações ${naSemana ? 'por dia' : 'por hora'}`, data, [
     {
       label: 'Interações',
-      valores: data.interacoes.porHora,
+      valores: data.interacoes.porBalde,
       cor: COR.interacoes,
     },
   ])}
 
-  ${grafico('Bancada: respondidas × acertadas', data.horas, [
-    { label: 'Respondidas', valores: data.quiz.porHora, cor: COR.bancada },
-    { label: 'Acertadas', valores: data.quiz.acertosPorHora, cor: COR.acerto },
+  ${grafico('Bancada: respondidas × acertadas', data, [
+    { label: 'Respondidas', valores: data.quiz.porBalde, cor: COR.bancada },
+    { label: 'Acertadas', valores: data.quiz.acertosPorBalde, cor: COR.acerto },
   ])}
 
-  ${grafico('Capturas, batalhas e alunos ativos por hora', data.horas, [
-    { label: 'Capturas', valores: data.capturas.porHora, cor: COR.capturas },
-    { label: 'Batalhas', valores: data.batalhas.porHora, cor: COR.bancada },
-    { label: 'Alunos ativos', valores: data.usuarios.porHora, cor: COR.alunos },
-  ])}
+  ${grafico(
+    `Capturas, batalhas e presença ${naSemana ? 'por dia' : 'por hora'}`,
+    data,
+    [
+      { label: 'Capturas', valores: data.capturas.porBalde, cor: COR.capturas },
+      { label: 'Batalhas', valores: data.batalhas.porBalde, cor: COR.bancada },
+      {
+        // A série é `active_users`, que é "alunos distintos NAQUELA HORA". Numa
+        // barra de hora isso é exatamente "alunos ativos". Numa barra de DIA é a
+        // soma de sete horas, e aí o mesmo aluno presente das 18h às 21h conta
+        // quatro vezes: chamá-la de "alunos ativos" no consolidado inflaria a
+        // plateia em três a cinco vezes num papel que vai para a coordenação.
+        // O número continua útil (é a forma da semana, dia a dia) — só precisa
+        // do nome certo. Quem responde "quantos alunos?" é o KPI do topo, que
+        // conta DISTINTOS de verdade.
+        label: naSemana ? 'Presença (aluno×hora)' : 'Alunos ativos',
+        valores: data.usuarios.porBalde,
+        cor: COR.alunos,
+      },
+    ],
+  )}
 
   ${tabelaDeFontes(data)}
 
   <footer class="rodape">
-    Interações são uma régua PONDERADA, não cliques: uma captura exige estar
-    diante do QR, uma rodada de bancada custa fila e operador, e cada turno de
-    batalha conta. Os pesos estão em <code>src/metrics/engagement.ts</code>.
+    ${notaDoConsolidado(data)}Interações são uma régua PONDERADA, não cliques: uma
+    captura exige estar diante do QR, uma rodada de bancada custa fila e
+    operador, e cada turno de batalha conta. Os pesos estão em
+    <code>src/metrics/engagement.ts</code>.
   </footer>
 </body>
 </html>`;
+}
+
+/**
+ * O aviso que só o consolidado precisa — e precisa MUITO.
+ *
+ * Duas coisas que alguém vai conferir na calculadora, somando os PDFs dos sete
+ * dias, e que sem explicação parecem defeito do relatório:
+ *
+ * 1. tudo fecha por soma, porque a semana usa a MESMA janela de cada dia;
+ * 2. menos "alunos no evento", que é contagem de DISTINTOS e portanto menor que
+ *    a soma — quem veio quarta e quinta é um aluno, não dois;
+ * 3. e a barra de presença, que é aluno×hora e portanto MAIOR que a plateia —
+ *    quem ficou quatro horas aparece quatro vezes nela.
+ *
+ * Os dois últimos existem para ninguém ler um número de público na barra errada:
+ * um puxa para baixo, o outro para cima, e o certo é o KPI do topo.
+ *
+ * Vai no rodapé, que imprime, e não na dica do `Ctrl+P`, que o `@media print`
+ * esconde: a dúvida nasce com o papel na mão.
+ */
+function notaDoConsolidado(data: MetricsReportData): string {
+  if (data.escala !== 'dia') return '';
+  return `Consolidado de ${data.baldes.length} dias: cada dia entra só com o
+    turno do estande, a mesma janela dos relatórios diários — somar os
+    ${data.baldes.length} dá este número.
+    <strong>Alunos no evento é a exceção</strong>: são alunos DISTINTOS na
+    semana, então ele é menor que a soma dos dias (quem veio em dois dias conta
+    uma vez). Já a barra de <strong>presença</strong> é aluno×hora, não gente:
+    quem ficou das 18h às 21h conta quatro vezes nela. A plateia do evento é o
+    número do topo, nunca a barra.
+    `;
 }
 
 // ── Blocos ────────────────────────────────────────────────────────────────
@@ -177,9 +252,14 @@ function kpi(rotulo: string, valor: string, apoio: string): string {
  */
 function grafico(
   titulo: string,
-  horas: number[],
-  series: SerieHoraria[],
+  data: MetricsReportData,
+  series: SerieDoRelatorio[],
 ): string {
+  const { baldes, escala } = data;
+  // O rótulo embaixo da barra: a hora num relatório do dia, a data no
+  // consolidado da semana.
+  const rotular = escala === 'dia' ? formatarDiaCurto : formatarHora;
+
   const L = 44; // espaço do eixo Y
   const W = 720;
   const H = 190;
@@ -187,7 +267,7 @@ function grafico(
   const topo = 12;
 
   const maximo = Math.max(1, ...series.flatMap((s) => s.valores));
-  const largura = (W - L - 8) / horas.length;
+  const largura = (W - L - 8) / baldes.length;
   const larguraBarra = Math.max(2, (largura - 4) / series.length);
   const y = (valor: number) => base - (valor / maximo) * (base - topo);
 
@@ -204,15 +284,15 @@ function grafico(
     )
     .join('');
 
-  // Passo do rótulo conforme a largura disponível: numa janela curta (as 7
-  // horas do estande) cabem todas as horas, e omitir alguma obrigaria o leitor
-  // a contar barras. Numa janela longa, 24 rótulos colados viram uma tarja
+  // Passo do rótulo conforme a largura disponível: num eixo curto (as 7 horas do
+  // estande, ou os 7 dias da semana) cabem todos, e omitir algum obrigaria o
+  // leitor a contar barras. Num eixo longo, 24 rótulos colados viram uma tarja
   // preta no papel.
-  const passo = horas.length <= 12 ? 1 : 3;
-  const rotulos = horas
+  const passo = baldes.length <= 12 ? 1 : 3;
+  const rotulos = baldes
     .map((t, i) =>
       i % passo === 0
-        ? `<text class="eixo" x="${round(L + i * largura + largura / 2)}" y="${H - 10}" text-anchor="middle">${formatarHora(t)}</text>`
+        ? `<text class="eixo" x="${round(L + i * largura + largura / 2)}" y="${H - 10}" text-anchor="middle">${rotular(t)}</text>`
         : '',
     )
     .join('');
@@ -287,6 +367,29 @@ function formatarDia(date: Date): string {
     month: '2-digit',
     year: 'numeric',
   }).format(date);
+}
+
+/** `29/09` — o rótulo de um balde de dia; o ano não cabe debaixo da barra. */
+function formatarDiaCurto(epochMs: number): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: FUSO,
+    day: '2-digit',
+    month: '2-digit',
+  }).format(new Date(epochMs));
+}
+
+/**
+ * O período que o relatório cobre: um dia, ou `23/09/2026 a 29/09/2026`.
+ *
+ * `ate` é EXCLUSIVO e cai na meia-noite, então o último dia coberto é o
+ * anterior a ele. Sem o `- 1`, o título de um relatório que termina em 29/09
+ * diria "a 30/09" — um dia que não entrou em número nenhum da folha.
+ */
+function periodoCoberto(data: MetricsReportData): string {
+  const inicio = formatarDia(data.de);
+  if (data.escala !== 'dia') return inicio;
+  const fim = formatarDia(new Date(data.ate.getTime() - 1));
+  return inicio === fim ? inicio : `${inicio} a ${fim}`;
 }
 
 /**

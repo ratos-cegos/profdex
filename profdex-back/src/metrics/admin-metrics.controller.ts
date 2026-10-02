@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   DefaultValuePipe,
   Get,
@@ -49,8 +50,14 @@ export class AdminMetricsController {
   }
 
   /**
-   * Relatório de um DIA do evento — das 17h à meia-noite —, em HTML pronto
-   * para o "Salvar como PDF" do navegador.
+   * Relatório do estande em HTML pronto para o "Salvar como PDF" do navegador,
+   * em dois períodos:
+   *
+   * - `periodo=dia` (padrão) — o DIA escolhido, das 17h à meia-noite, uma barra
+   *   por hora;
+   * - `periodo=semana` — os SETE dias que terminam no dia escolhido, uma barra
+   *   por dia. Consolida as mesmas janelas de estande dos relatórios diários, de
+   *   modo que somar os sete PDFs dá o mesmo número (ver `reportDaSemana`).
    *
    * `text/html` e não um PDF binário, no mesmo padrão da folha de fichas: ver a
    * explicação inteira em `metrics-report.ts`. Continua atrás do `AdminGuard`,
@@ -62,9 +69,15 @@ export class AdminMetricsController {
    */
   @Get('report')
   @Header('Content-Type', 'text/html; charset=utf-8')
-  async report(@Query('date') date?: string): Promise<string> {
+  async report(
+    @Query('date') date?: string,
+    @Query('periodo') periodo?: string,
+  ): Promise<string> {
+    const dia = date || hojeNoEvento();
     return buildMetricsReport(
-      await this.metrics.reportDoDia(date || hojeNoEvento()),
+      periodoDoRelatorio(periodo) === 'semana'
+        ? await this.metrics.reportDaSemana(dia)
+        : await this.metrics.reportDoDia(dia),
     );
   }
 
@@ -120,6 +133,30 @@ export class AdminMetricsController {
   raid() {
     return this.metrics.raid();
   }
+}
+
+const PERIODOS = ['dia', 'semana'] as const;
+
+/**
+ * Valida o `periodo` do relatório, recusando ALTO o que não conhece.
+ *
+ * Um valor desconhecido caindo em silêncio no relatório do dia seria a pior
+ * resposta possível: quem pediu a semana receberia um papel de um dia só, com
+ * cara de certo, e levaria o número errado para a reunião. É a mesma decisão da
+ * validação de `date` em `janelaDoRelatorio`.
+ *
+ * Ausente continua sendo o dia — é o período que já existia, e nenhum link
+ * antigo tem o parâmetro.
+ */
+function periodoDoRelatorio(valor?: string): (typeof PERIODOS)[number] {
+  if (!valor) return 'dia';
+  const achado = PERIODOS.find((p) => p === valor);
+  if (!achado) {
+    throw new BadRequestException(
+      `Período inválido: use ${PERIODOS.join(' ou ')}.`,
+    );
+  }
+  return achado;
 }
 
 /**

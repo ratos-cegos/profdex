@@ -34,8 +34,11 @@ const horaLegivel = (iso) =>
 
 const numero = (v) => (v ?? 0).toLocaleString('pt-BR')
 
-// ── Relatório do dia ────────────────────────────────────────────────────────
-const exportando = ref(false)
+// ── Relatório (dia ou semana) ───────────────────────────────────────────────
+// `exportando` guarda QUAL período está gerando ('dia' | 'semana' | null), e não
+// um booleano: com dois botões, um booleano acenderia "Gerando…" nos dois e o
+// organizador não saberia qual pedido está no ar.
+const exportando = ref(null)
 const erroRelatorio = ref(null)
 
 /**
@@ -58,22 +61,28 @@ const diaDoRelatorio = ref(hoje())
 const maxDia = hoje()
 
 /**
- * Abre o relatório das últimas 24h numa aba nova, pronto para o "Salvar como
- * PDF" do navegador. Mesmo caminho da folha de fichas (AdminFichasView).
+ * Abre o relatório numa aba nova, pronto para o "Salvar como PDF" do navegador.
+ * Mesmo caminho da folha de fichas (AdminFichasView).
+ *
+ * `periodo` é `'dia'` (o turno do estande daquele dia, barra por hora) ou
+ * `'semana'` (os sete dias que terminam nele, barra por dia). A data escolhida
+ * é o ÚLTIMO dia nos dois casos, não o primeiro: o seletor já abre em hoje, e é
+ * daí que a semana conta para trás — pedir "a semana até hoje" é o que o
+ * organizador quer no fim da feira, sem ter de calcular a segunda-feira.
  *
  * Blob em vez de apontar `window.open` para a URL: a rota é autenticada por
  * cookie e o axios é quem trata o 401 do painel inteiro. Com a aba apontada
  * para a URL crua, uma sessão expirada mostraria um JSON de erro em vez do
  * aviso de "entre de novo" que o resto da tela dá.
  */
-async function exportarRelatorio() {
+async function exportarRelatorio(periodo = 'dia') {
   if (exportando.value || !diaDoRelatorio.value) return
-  exportando.value = true
+  exportando.value = periodo
   erroRelatorio.value = null
   let url = null
   try {
     const { data } = await api.get('/admin/metrics/report', {
-      params: { date: diaDoRelatorio.value },
+      params: { date: diaDoRelatorio.value, periodo },
       responseType: 'blob',
     })
     url = URL.createObjectURL(data)
@@ -88,7 +97,7 @@ async function exportarRelatorio() {
     // Só depois de a aba ter lido o blob. Revogar na hora deixaria a página em
     // branco em parte dos navegadores.
     if (url) setTimeout(() => URL.revokeObjectURL(url), 60_000)
-    exportando.value = false
+    exportando.value = null
   }
 }
 
@@ -184,8 +193,14 @@ const labelSerie = computed(
 
       <template v-else>
         <!-- Relatório para levar impresso. Fica no topo porque é a ação que o
-             organizador procura com pressa, no fim do dia. -->
-        <section class="relatorio" aria-label="Relatório do dia">
+             organizador procura com pressa, no fim do dia.
+
+             Dois botões em vez de um seletor de período: são duas AÇÕES, e com
+             um seletor o organizador teria de trocá-lo antes de clicar — um
+             passo a mais, feito com pressa, cujo erro só aparece depois de o
+             papel sair da impressora. A data é a mesma para os dois: o último
+             dia da semana e o dia do relatório diário. -->
+        <section class="relatorio" aria-label="Relatório do estande">
           <div class="relatorio__texto">
             <strong>Relatório do estande · 17h às 24h</strong>
             <span>Interações, bancada, capturas, batalhas e alunos — com gráficos.</span>
@@ -203,13 +218,27 @@ const labelSerie = computed(
             <button
               type="button"
               class="botao"
-              :disabled="exportando || !diaDoRelatorio"
-              @click="exportarRelatorio"
+              :disabled="!!exportando || !diaDoRelatorio"
+              @click="exportarRelatorio('dia')"
             >
-              {{ exportando ? 'Gerando…' : 'Exportar PDF' }}
+              {{ exportando === 'dia' ? 'Gerando…' : 'PDF do dia' }}
+            </button>
+            <button
+              type="button"
+              class="botao botao--semana"
+              :disabled="!!exportando || !diaDoRelatorio"
+              title="Os 7 dias que terminam na data escolhida, consolidados"
+              @click="exportarRelatorio('semana')"
+            >
+              {{ exportando === 'semana' ? 'Gerando…' : 'PDF da semana' }}
             </button>
           </div>
         </section>
+        <p class="relatorio__nota">
+          A semana consolida os sete turnos que terminam na data escolhida — uma
+          barra por dia. Soma o mesmo que os sete relatórios diários; só
+          "alunos no evento" é menor, porque conta alunos distintos.
+        </p>
         <p v-if="erroRelatorio" class="hint hint--error" role="alert">
           {{ erroRelatorio }}
         </p>
@@ -511,7 +540,7 @@ const labelSerie = computed(
   color: var(--red-light);
 }
 
-/* Relatório de 24h */
+/* Relatório do estande (dia e semana) */
 .relatorio {
   display: flex;
   align-items: center;
@@ -554,6 +583,16 @@ const labelSerie = computed(
   color: var(--text-muted);
 }
 
+/* Fica fora do card para não competir com os dois botões, mas colada nele: é a
+   legenda deles, não um aviso solto da tela. */
+.relatorio__nota {
+  margin: -6px 0 14px;
+  padding: 0 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .botao {
   padding: 9px 16px;
   border: none;
@@ -568,6 +607,19 @@ const labelSerie = computed(
 .botao:disabled {
   opacity: 0.6;
   cursor: progress;
+}
+
+/* A semana é a ação SECUNDÁRIA, e de propósito: o relatório do dia é o de todo
+   dia. Dois botões preenchidos disputariam o olho e fariam o organizador parar
+   para ler qual é qual, justamente no fim da feira. */
+.botao--semana {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.botao--semana:hover:not(:disabled) {
+  border-color: var(--red);
 }
 
 /* Destaque de interações */
