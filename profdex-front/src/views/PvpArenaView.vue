@@ -1379,12 +1379,12 @@ onUnmounted(() => {
    (ArenaView), e o palco recebe `--palco-foe-livre` para o sprite do bot não
    ficar atrás dele. */
 .pvp-arena--treino {
-  --palco-foe-livre: calc(103px + env(safe-area-inset-top));
+  --palco-foe-livre: calc(var(--palco-livre-abaixo-do-selo) + env(safe-area-inset-top));
 }
 
 .pvp-arena__selo {
   position: absolute;
-  top: calc(76px + env(safe-area-inset-top));
+  top: calc(var(--palco-selo-treino-topo) + env(safe-area-inset-top));
   left: 12px;
   z-index: 3;
   max-width: 62%;

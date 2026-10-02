@@ -79,11 +79,18 @@
      `palco bottom + --palco-faixa` é o topo da faixa nas DUAS telas. Um valor,
      dois lugares certos. */
   --palco-barra-jogador: calc(var(--palco-faixa) + 8px);
-  /* Altura renderizada de BattleHpBar SEM avatar (a do jogador): padding 8+8,
-     borda 2+2, e a coluna de três linhas (nome 13 + 5 + barra 10 + 5 + número
-     9). Existe para o chip de status poder ser empilhado ACIMA da barra sem
-     que ArenaView repita o número. Mudou o painel, muda aqui. */
+  /* Altura renderizada de BattleHpBar, com ou sem avatar: padding 8+8, borda
+     2+2, e a coluna de três linhas de altura FIXA (nome 13 + 3 + barra com os
+     números 10 + 3 + faixa de efeitos 13). A faixa existe mesmo vazia, para o
+     painel não pular quando um efeito aparece. O palco usa este número para pôr
+     o sprite do rival logo abaixo do painel — e mede o real como rede de
+     segurança (ArenaPalco). Mudou o painel, muda aqui. */
   --palco-barra-altura: 62px;
+  /* O selo "TREINO — NÃO VALE RANKING", logo abaixo da barra do rival (12px do
+     topo + a barra + 2px), e a primeira linha livre abaixo dele (+ ~21px do
+     selo + 6px de folga). Derivados, e não escritos à mão em cada tela. */
+  --palco-selo-treino-topo: calc(12px + var(--palco-barra-altura) + 2px);
+  --palco-livre-abaixo-do-selo: calc(var(--palco-selo-treino-topo) + 27px);
 
   /* Vocabulário da landing (profdex-landing/src/styles/tokens.css e
      retro-tech.css), trazido para o app quando o ranking e o aviso de desafio

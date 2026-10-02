@@ -54,7 +54,14 @@ function hideBrokenImage(event) {
 </script>
 
 <template>
-  <div class="hp-panel" :class="{ 'hp-panel--empty': percent === 0 }">
+  <!-- Três linhas de ALTURA FIXA — nome, barra com os números, faixa de efeitos
+       — somando os mesmos 62px de sempre (`--palco-barra-altura`). O palco põe o
+       sprite do rival logo abaixo deste painel: se ele crescer, cobre a cabeça
+       do professor. Era o que acontecia com as etiquetas quebrando linha. -->
+  <div
+    class="hp-panel"
+    :class="{ 'hp-panel--empty': percent === 0, 'hp-panel--com-efeitos': efeitos.length }"
+  >
     <div v-if="avatarSrc" class="hp-panel__avatar">
       <img :src="avatarSrc" :alt="name" @error="hideBrokenImage" />
     </div>
@@ -70,7 +77,6 @@ function hideBrokenImage(event) {
           />
         </span>
         <span class="pixel hp-panel__name">{{ name }}</span>
-        <EfeitosEmCampo :efeitos="efeitos" inline />
       </div>
       <div class="hp-panel__bar" role="progressbar" :aria-valuenow="hp" :aria-valuemax="maxHp"
         :aria-label="`HP de ${name}`">
@@ -78,8 +84,11 @@ function hideBrokenImage(event) {
         <div class="hp-panel__track" :class="{ 'hp-panel__track--empty': percent === 0 }">
           <div class="hp-panel__fill" :style="{ width: percent + '%', background: barColor }" />
         </div>
+        <!-- Na linha da barra, e não numa linha própria: a linha que sobrou é a
+             das etiquetas de efeito, sem o painel crescer. -->
+        <span class="pixel hp-panel__numbers">{{ hp }}/{{ maxHp }}</span>
       </div>
-      <span class="pixel hp-panel__numbers">{{ hp }}/{{ maxHp }}</span>
+      <EfeitosEmCampo :efeitos="efeitos" inline />
     </div>
   </div>
 </template>
@@ -116,12 +125,21 @@ function hideBrokenImage(event) {
   object-position: top;
 }
 
+/* Com efeitos, o painel ocupa a largura máxima que o palco permite (62% no
+   rival, 58% no jogador): as etiquetas usam o espaço para os LADOS, nunca para
+   baixo. A altura não muda. */
+.hp-panel--com-efeitos {
+  width: 100%;
+}
+
+/* 13 + 3 + 10 + 3 + 13 = 42px de coluna; com 8+8 de padding e 2+2 de borda, os
+   62px de `--palco-barra-altura`. Mudou uma altura aqui, muda o token. */
 .hp-panel__info {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 3px;
 }
 
 .hp-panel__row {
@@ -131,8 +149,9 @@ function hideBrokenImage(event) {
      extremos opostos do painel. */
   justify-content: flex-start;
   align-items: center;
-  flex-wrap: wrap;
   gap: 6px;
+  height: 13px;
+  min-width: 0;
 }
 
 .hp-panel__types {
@@ -155,6 +174,7 @@ function hideBrokenImage(event) {
   display: flex;
   align-items: center;
   gap: 6px;
+  height: 10px;
 }
 
 .hp-panel__hp-label {
@@ -164,6 +184,9 @@ function hideBrokenImage(event) {
 
 .hp-panel__track {
   flex: 1;
+  /* Barra curta não lê como vida: com o número dividindo a linha, ela não
+     encolhe abaixo disto (o painel alarga, dentro do máximo do palco). */
+  min-width: 48px;
   height: 8px;
   background: var(--bg-deep);
   border: 1px solid var(--border);
@@ -188,8 +211,11 @@ function hideBrokenImage(event) {
 }
 
 .hp-panel__numbers {
+  flex-shrink: 0;
   font-size: 7px;
+  line-height: 10px;
   color: var(--text-muted);
-  align-self: flex-end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 </style>
