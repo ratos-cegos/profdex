@@ -6,6 +6,7 @@ import BancoDeReservas from '../components/BancoDeReservas.vue'
 import MoveButton from '../components/MoveButton.vue'
 import ProfessorFace from '../components/ProfessorFace.vue'
 import RoteiroOverlay from '../components/RoteiroOverlay.vue'
+import { roteiroDoOverlay } from '../composables/battleRoteiro'
 import {
   aplicarEvento,
   chaveDoOcupante,
@@ -394,7 +395,9 @@ let fecharRoteiro = null
 
 function mostrarRoteiro(ev) {
   return new Promise((resolve) => {
-    roteiro.value = { linhas: ev.linhas ?? [], roleta: ev.roleta ?? null }
+    // O evento INTEIRO, com o `ator` (Ricardo, NDE, chefe que se transforma):
+    // montado à mão como `{ linhas, roleta }`, a sprite dele se perdia aqui.
+    roteiro.value = roteiroDoOverlay(ev)
     fecharRoteiro = () => {
       roteiro.value = null
       fecharRoteiro = null
@@ -701,7 +704,15 @@ onUnmounted(() => {
       @fim="soltarRoteiroPendente"
     />
 
-    <aside class="dicas-flutuantes" aria-label="Eventos recentes da luta" aria-live="polite">
+    <!-- Escondidas durante o roteiro: elas ficam acima do overlay (z-index 30)
+         e cobriam o Ricardo e a roda num celular pequeno. Nada se perde — tudo
+         continua no histórico do LOG. -->
+    <aside
+      v-show="!roteiro"
+      class="dicas-flutuantes"
+      aria-label="Eventos recentes da luta"
+      aria-live="polite"
+    >
       <article
         v-for="dica in dicas"
         :key="dica.id"
@@ -1379,12 +1390,12 @@ onUnmounted(() => {
    (ArenaView), e o palco recebe `--palco-foe-livre` para o sprite do bot não
    ficar atrás dele. */
 .pvp-arena--treino {
-  --palco-foe-livre: calc(103px + env(safe-area-inset-top));
+  --palco-foe-livre: calc(var(--palco-livre-abaixo-do-selo) + env(safe-area-inset-top));
 }
 
 .pvp-arena__selo {
   position: absolute;
-  top: calc(76px + env(safe-area-inset-top));
+  top: calc(var(--palco-selo-treino-topo) + env(safe-area-inset-top));
   left: 12px;
   z-index: 3;
   max-width: 62%;

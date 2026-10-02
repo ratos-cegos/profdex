@@ -243,9 +243,9 @@ function goBack() {
   overflow: hidden;
   background: var(--bg-deep);
   /* Primeira linha livre abaixo do HUD do topo, para o palco não pôr o
-     oponente atrás dele: aqui, além da barra de HP, há o selo de treino
-     (`.arena__selo`: 76px + ~21px de altura) + 6px de folga. */
-  --palco-foe-livre: calc(103px + env(safe-area-inset-top));
+     oponente atrás dele: aqui, além da barra de HP, há o selo de treino. Ver
+     os tokens em style.css. */
+  --palco-foe-livre: calc(var(--palco-livre-abaixo-do-selo) + env(safe-area-inset-top));
 }
 
 /* O palco (fundo, os dois lutadores e as barras de HP) é o ArenaPalco.vue —
@@ -308,8 +308,8 @@ function goBack() {
    luz forte e o texto fica sobre o cenário em movimento. */
 .arena__selo {
   position: absolute;
-  /* 12px do topo + ~56px da barra (avatar 40 + 8/8 de padding) + folga. */
-  top: calc(76px + env(safe-area-inset-top));
+  /* Logo abaixo da barra: 12px do topo + os 62px dela + 2px (token em style.css). */
+  top: calc(var(--palco-selo-treino-topo) + env(safe-area-inset-top));
   left: 12px;
   max-width: 62%;
   margin: 0;

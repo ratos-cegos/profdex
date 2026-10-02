@@ -16,7 +16,7 @@
 // O resultado vem do SERVIDOR. A animação é teatro sobre um dado já lançado —
 // inclusive no estágio 1, em que a roda cai viciada no tipo que o chefe já tinha.
 
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TypeIcon from './TypeIcon.vue'
 import { getType, legibleColor } from '../data/types.js'
 
@@ -27,6 +27,12 @@ const props = defineProps({
   resultado: { type: String, required: true },
   /** Pesos do sorteio, quando houver: pintam os nós por raridade. */
   pesos: { type: Array, default: null },
+  /**
+   * Libera o giro. O overlay segura a roda parada até o personagem da cena
+   * terminar de entrar (o Ricardo chega, DEPOIS a roda gira): duas coisas
+   * grandes se movendo ao mesmo tempo disputavam o olho. Sem ator, já vem true.
+   */
+  iniciar: { type: Boolean, default: true },
 })
 
 const emit = defineEmits(['fim'])
@@ -96,7 +102,11 @@ function parar() {
   emit('fim')
 }
 
-onMounted(() => {
+let comecou = false
+
+function girar() {
+  if (comecou) return
+  comecou = true
   const destino = VOLTAS * 360 + indiceVencedor.value * passo.value
 
   // Quem pede menos movimento recebe o resultado direto — convenção do projeto
@@ -116,7 +126,18 @@ onMounted(() => {
       timer = setTimeout(parar, DURACAO_MS)
     })
   })
+}
+
+onMounted(() => {
+  if (props.iniciar) girar()
 })
+
+watch(
+  () => props.iniciar,
+  (liberou) => {
+    if (liberou) girar()
+  },
+)
 
 onBeforeUnmount(() => {
   if (timer) clearTimeout(timer)

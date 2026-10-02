@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, useTemplateRef, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import BattleHpBar from './BattleHpBar.vue'
 import DamagePopup from './DamagePopup.vue'
 import { spritesDaBatalha } from '../composables/battleSprites.js'
@@ -104,18 +104,52 @@ function desligarCamera() {
   if (camVideo.value) camVideo.value.srcObject = null
 }
 
+// ── Rede de segurança do quadro do rival ─────────────────────────────────────
+// O painel de HP tem altura fixa (62px, `--palco-barra-altura`), e é ela que o
+// CSS usa para pôr o sprite do rival logo abaixo. Mas o painel é desenhado com
+// fonte, ícones e etiquetas — se um dia algo nele crescer, a estimativa mente e o
+// sprite volta para trás da barra, como aconteceu com as etiquetas de efeito.
+// Aqui a altura REAL é medida e vira um piso (`--palco-foe-medido`): no jogo
+// normal ela é igual à estimativa e nada muda; só age se o painel crescer.
+const barraFoe = useTemplateRef('barraFoe')
+const fimDaBarraFoe = ref(null)
+let observadorDaBarra = null
+
+function medirBarraFoe() {
+  const el = barraFoe.value?.$el
+  if (!el) return
+  fimDaBarraFoe.value = el.offsetTop + el.offsetHeight
+}
+
 onMounted(() => {
   if (props.ar) ligarCamera()
+  medirBarraFoe()
+  const el = barraFoe.value?.$el
+  if (el && typeof ResizeObserver !== 'undefined') {
+    observadorDaBarra = new ResizeObserver(medirBarraFoe)
+    observadorDaBarra.observe(el)
+  }
+  // O observador vê o TAMANHO do painel, não a posição: girar o celular muda a
+  // área segura (e o topo do painel) sem mudar a altura dele.
+  window.addEventListener('resize', medirBarraFoe)
 })
 watch(
   () => props.ar,
   (ligada) => (ligada ? ligarCamera() : desligarCamera()),
 )
-onUnmounted(desligarCamera)
+onUnmounted(() => {
+  desligarCamera()
+  observadorDaBarra?.disconnect()
+  window.removeEventListener('resize', medirBarraFoe)
+})
 </script>
 
 <template>
-  <div class="palco" :class="{ 'palco--ar': ar }">
+  <div
+    class="palco"
+    :class="{ 'palco--ar': ar }"
+    :style="fimDaBarraFoe ? { '--palco-foe-medido': `${fimDaBarraFoe + 6}px` } : null"
+  >
     <!-- Fundo do combate: câmera (AR) ou o ginásio da UNIFIL -->
     <video v-show="ar" ref="camVideo" class="palco__camera" autoplay playsinline muted />
     <!-- Tela deitada (desktop): a versão panorâmica do ginásio. A retrato,
@@ -197,6 +231,7 @@ onUnmounted(desligarCamera)
     <!-- Barras SOBREPOSTAS ao palco, não empilhadas em coluna com o sprite: é o
          empilhamento que fazia o personagem do rival encolher no PvP. -->
     <BattleHpBar
+      ref="barraFoe"
       class="palco__barra palco__barra--foe"
       :name="`Prof. ${foe.name}`"
       :types="foe.types ?? []"
@@ -349,11 +384,15 @@ onUnmounted(desligarCamera)
  *
  * `--palco-foe-livre` é a primeira linha livre abaixo do que a tela desenha no
  * topo. O padrão cobre a barra do rival; o treino, que ainda tem o selo de
- * "treino" logo abaixo dela, passa o próprio valor. */
+ * "treino" logo abaixo dela, passa o próprio valor.
+ *
+ * `--palco-foe-medido` é o fim REAL da barra, medido no script: um piso que só
+ * passa à frente se o painel crescer além dos 62px do token. */
 .palco__quadro--foe {
   top: max(
     10%,
-    var(--palco-foe-livre, calc(12px + env(safe-area-inset-top) + var(--palco-barra-altura) + 6px))
+    var(--palco-foe-livre, calc(12px + env(safe-area-inset-top) + var(--palco-barra-altura) + 6px)),
+    var(--palco-foe-medido, 0px)
   );
   bottom: 66%;
   left: 6%;

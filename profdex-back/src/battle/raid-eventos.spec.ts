@@ -108,6 +108,9 @@ describe('o bloco do NDE', () => {
 
     expect(texto).toContain('NDE DA COORDENAÇÃO');
     expect(texto).toContain('não vai atacar');
+    // Os quatro ENTRAM na cena: o overlay desenha estas sprites. Sem elas o
+    // momento do NDE era só texto.
+    expect(ev.ator?.sprites).toEqual(QUATRO.map((p) => p.spriteFrontUrl));
   });
 });
 
@@ -297,6 +300,21 @@ describe('a roleta do Ricardo', () => {
     expect(ev.roleta?.opcoes).toHaveLength(9);
     expect(ev.roleta?.resultado).toBe(buff.nome);
     expect(ev.linhas.join(' ')).toContain('Prof ricardo-infiltrado');
+  });
+
+  // A sprite do Ricardo é o centro da cena: ele entra andando ANTES de a roda
+  // girar. O servidor tem de mandá-la — a arte é a do cadastro (/uploads/…).
+  it('o roteiro da chegada traz o Ricardo como ator, com a sprite de frente', () => {
+    const ev = roteiroDaChegadaDoRicardo(
+      professor('ricardo-infiltrado'),
+      BUFFS_DO_RICARDO[0],
+    ) as Extract<BattleEvent, { type: 'roteiro' }>;
+
+    expect(ev.ator).toEqual({
+      nome: 'Prof ricardo-infiltrado',
+      sprites: ['/uploads/ricardo-infiltrado-frente.png'],
+      pixelArt: false,
+    });
   });
 });
 

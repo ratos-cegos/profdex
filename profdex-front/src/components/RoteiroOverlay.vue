@@ -53,6 +53,12 @@ const ator = computed(() => props.roteiro?.ator ?? null)
 /** Virada de estágio: o ator tem para onde se transformar. */
 const temTransformacao = computed(() => Boolean(ator.value?.spriteDepois))
 
+/**
+ * O ator já terminou de entrar? É a deixa da roda: o Ricardo chega andando e,
+ * só quando para, a roda do buff gira. Sem ator na cena, a roda gira na hora.
+ */
+const atorChegou = ref(true)
+
 function limparTimer() {
   if (timer) clearTimeout(timer)
   timer = null
@@ -62,6 +68,7 @@ function reiniciar() {
   limparTimer()
   indice.value = 0
   etapa.value = props.roteiro?.roleta ? 'roda' : 'linhas'
+  atorChegou.value = !props.roteiro?.ator
 }
 
 watch(() => props.roteiro, reiniciar, { immediate: true })
@@ -114,6 +121,7 @@ onBeforeUnmount(limparTimer)
         :opcoes="roteiro.roleta.opcoes"
         :resultado="roteiro.roleta.resultado"
         :pesos="roteiro.roleta.pesos ?? null"
+        :iniciar="atorChegou"
         class="roteiro__roda"
         :class="{ 'roteiro__roda--recuada': etapa !== 'roda' }"
         @fim="aoPararARoda"
@@ -123,6 +131,7 @@ onBeforeUnmount(limparTimer)
         v-if="ator"
         :ator="ator"
         :transformando="etapa === 'transformacao'"
+        @entrou="atorChegou = true"
         @fim-da-transformacao="aoFimDaTransformacao"
       />
     </div>
@@ -153,10 +162,19 @@ onBeforeUnmount(limparTimer)
   display: flex;
   flex-direction: column;
   justify-content: center;
+  /* `safe`: quando a cena não cabe e rola, ela começa do topo em vez de ter o
+     topo cortado pela centralização. */
+  justify-content: safe center;
   align-items: center;
   gap: 20px;
   padding: 24px 18px;
   padding-top: calc(24px + env(safe-area-inset-top));
+  /* PWA no iPhone: a caixa de texto não pode ficar sob a barra de gestos. */
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  /* Tela baixa ou deitada: a cena rola em vez de cortar o texto — e a rolagem
+     não vaza para a arena atrás. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
   /* Quase opaco: a cena precisa do palco apagado atrás dela, não translúcido —
      sprite sobre sprite não lê. */
   background: rgba(8, 9, 11, 0.96);

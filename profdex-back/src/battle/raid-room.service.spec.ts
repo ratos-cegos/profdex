@@ -931,6 +931,23 @@ describe('RaidRoomService — o evento do Ricardo', () => {
     expect(iRoteiro).toBeGreaterThan(iSwitch);
   });
 
+  it('o roteiro emitido na sala leva a sprite do Ricardo cadastrado', async () => {
+    // É a arte do CADASTRO (painel → /uploads), a mesma que o banco de produção
+    // tem. A arena desenha o Ricardo entrando a partir deste campo.
+    const ctx = montar({ tipoDoAluno: TIPO_EM_DESVANTAGEM });
+    await atePrimeiroTurno(ctx);
+    await jogarAteOFim(ctx);
+
+    const roteiro = ctx.emitidos
+      .flatMap((e) => (e.payload?.events ?? []) as any[])
+      .find((ev) => ev.type === 'roteiro' && ev.roleta?.kind === 'buff');
+
+    expect(roteiro?.ator?.sprites?.[0]).toBe(
+      '/uploads/ricardo-infiltrado-frente.png?v=1',
+    );
+    expect(roteiro?.ator?.nome).toBeTruthy();
+  });
+
   it('não chega com time de um só exemplar', async () => {
     // Com um exemplar, a primeira queda já é o fim da raid: não há substituto
     // para receber o buff, e o gatilho não pode disparar.
