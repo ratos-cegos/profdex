@@ -7,6 +7,8 @@ import { useAvisosStore } from './avisos'
 import { applyMoveAck } from './battle-move'
 import { applyResync, contraBot, rotaDeSaida } from './battle-resync'
 import { checarSocketVivo, ensureSocket } from './battle-socket'
+import { useCapturesStore } from './captures'
+import { useProfessorsStore } from './professors'
 
 // Estado do PvP: conexão com o lobby de batalha via Socket.IO.
 //
@@ -54,6 +56,35 @@ export const useBattleStore = defineStore('battle', () => {
   function falhar(mensagem, code) {
     lastError.value = mensagem
     avisos.mostrar(mensagem, { code })
+  }
+
+  /**
+   * A raid acabou de render um exemplar: relê a coleção.
+   *
+   * Vencer o lendário é a ÚNICA captura que não passa por `captureByToken` —
+   * ela nasce no servidor, no fim da batalha, e nenhuma tela pede a lista de
+   * novo depois disso. Sem este recarregamento, o aluno saía da arena com
+   * "LENDÁRIO CAPTURADO!" na tela e o app inteiro ainda achando que ele não
+   * tinha: a Profdex seguia com a silhueta `???` e a escolha de time da
+   * batalha não listava o prêmio que ele acabou de ganhar. Só um F5 resolvia.
+   *
+   * As DUAS listas, como em `professors.captureByToken`: `professors` traz
+   * `raid.legendary`/`captured` (é de lá que sai o professor) e `captures` traz
+   * o exemplar (é dele que sai o `captureId` que vai para a arena). Recarregar
+   * só uma deixaria o lendário listado sem exemplar para escolher, ou o
+   * contrário.
+   *
+   * Os stores são pedidos aqui dentro, não no topo do setup: este caminho roda
+   * uma vez por evento e não há por que atar a criação do store de batalha à
+   * dos outros dois. `catch` silencioso porque isto é uma atualização de
+   * conveniência — ela não pode derrubar a tela de resultado da batalha que o
+   * aluno está lendo.
+   */
+  function recarregarColecao() {
+    Promise.all([
+      useProfessorsStore().fetch(),
+      useCapturesStore().fetch(),
+    ]).catch(() => {})
   }
 
   let socket = null
@@ -328,6 +359,7 @@ export const useBattleStore = defineStore('battle', () => {
           // `retryAt` só existem nela.
           result: { result, reason, rating, captured, retryAt },
         }
+        if (captured) recarregarColecao()
       },
     )
 

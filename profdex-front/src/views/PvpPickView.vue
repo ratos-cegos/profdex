@@ -5,6 +5,7 @@ import { useBattleStore } from '../stores/battle'
 import { contraBot, rotaDeSaida } from '../stores/battle-resync'
 import { useCapturesStore } from '../stores/captures'
 import { useProfessorsStore } from '../stores/professors'
+import { professoresParaOTime, totalDeExemplares } from '../composables/timeDisponivel'
 import ProfessorFace from '../components/ProfessorFace.vue'
 import TypeBadges from '../components/TypeBadges.vue'
 import StarRating from '../components/StarRating.vue'
@@ -61,14 +62,20 @@ onUnmounted(() => clock && clearInterval(clock))
 // Só professores com pelo menos um exemplar — a lista sai das capturas, não da
 // dex, porque é o exemplar que entra na arena.
 //
-// Os raros possuídos entram junto: fora da contagem da dex eles não estão em
-// `professors`, mas em batalha são exemplares como qualquer outro (tarefa 15,
-// decisão 13). O servidor já os aceita no time; sem eles aqui, o aluno que
-// pegou um raro não tinha como escolhê-lo.
+// As três origens (dex, raros possuídos e o lendário vencido) e o porquê de
+// nenhuma poder faltar estão em `composables/timeDisponivel.js`, que é onde o
+// teste alcança. Em resumo: raro e lendário vivem FORA de `professors` por
+// razões da coleção, e quem só lia a dex deixava o aluno sem poder levar para a
+// arena um exemplar que ele tem na mão e que o servidor aceita.
 const capturados = computed(() =>
-  [...professors.professors, ...professors.rares.owned]
-    .map((p) => ({ ...p, exemplares: captures.byProfessorId(p.id) }))
-    .filter((p) => p.exemplares.length > 0),
+  professoresParaOTime(
+    {
+      dex: professors.professors,
+      raros: professors.rares.owned,
+      lendario: professors.lendarioPossuido,
+    },
+    captures.byProfessorId,
+  ),
 )
 
 const grupos = computed(() => (aberto.value ? captures.groupedByVariant(aberto.value.id) : []))
@@ -79,9 +86,7 @@ const grupos = computed(() => (aberto.value ? captures.groupedByVariant(aberto.v
 // sugere "falta escolher", e o aluno ficava procurando o que pôr ali.
 // Enquanto as listas não chegaram nada tranca: "vazio" ainda não quer dizer
 // "não tem".
-const exemplaresDisponiveis = computed(() =>
-  capturados.value.reduce((total, p) => total + p.exemplares.length, 0),
-)
+const exemplaresDisponiveis = computed(() => totalDeExemplares(capturados.value))
 const slotsDisponiveis = computed(() => {
   if (!exemplaresDisponiveis.value && (captures.loading || professors.loading)) {
     return maxTime.value

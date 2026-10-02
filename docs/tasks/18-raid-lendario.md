@@ -189,6 +189,17 @@ horário, nº de tentativas) — sem a matrícula você teria um nome e mil alun
   o IV total maior — pequeno, mas real. Se desequilibrar, bani-lo da seleção de
   time é **uma linha** em `team.ts`, e dá para virar durante o evento; o
   contrário (soltar depois) não dá.
+  - ⚠️ **A decisão 14 não chegou à tela.** O servidor nunca filtrou lendário
+    (`build-team.ts` aceita qualquer captura do próprio aluno), mas a lista da
+    `PvpPickView` era `professors + rares.owned` — e o lendário não está em
+    nenhuma das duas (a dex o exclui para o gate não ficar circular; raro e
+    lendário são exclusivos). Quem venceu a raid via o exemplar na coleção e
+    **não** conseguia levá-lo para batalha nenhuma. É o mesmo bug que os raros
+    já tiveram (tarefa 15, decisão 13), pela mesma causa. A lista virou
+    `composables/timeDisponivel.js`, com teste, para não haver terceira vez —
+    e `battle.js` passou a reler coleção e exemplares no `battle:end` com
+    `captured`, porque a captura da raid nasce no servidor e nenhuma tela
+    pedia a lista de novo (só um F5 revelava o prêmio).
 - **A raid é inalcançável até alguém fechar a dex.** No dia 1, com ficha de
   papel e cooldown de 10 min por tema na bancada, isso é aproximadamente
   ninguém. É folga para ajustar, não motivo para relaxar o teste.

@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import api from '../services/api'
 import { normalizeKey } from '../data/types'
@@ -82,6 +82,23 @@ export const useProfessorsStore = defineStore('professors', () => {
     return ancora.servidor + (performance.now() - ancora.desde)
   }
 
+  /**
+   * O lendário, em LISTA, e só quando este aluno o venceu — `[]` até lá.
+   *
+   * Depois da raid ele é um exemplar como qualquer outro: entra na busca da
+   * ficha/arena (`findByKey`) e na escolha de time da batalha
+   * (`PvpPickView`), exatamente como os raros possuídos. A forma de lista é o
+   * que deixa os dois lugares o espalharem com `...` ao lado de
+   * `rares.owned`, sem repetir a condição.
+   *
+   * Antes da vitória não há o que listar: o servidor manda `legendary: null`
+   * de propósito (nome e arte só atravessam a fronteira depois da captura), e
+   * a Profdex desenha a silhueta `???` a partir de `unlocked`.
+   */
+  const lendarioPossuido = computed(() =>
+    raid.value.captured && raid.value.legendary ? [raid.value.legendary] : [],
+  )
+
   // Onde a grade da coleção estava quando o aluno abriu a ficha de um professor.
   //
   // Mora aqui, e não no router: o scroll do app não é o da janela (o body tem
@@ -156,11 +173,8 @@ export const useProfessorsStore = defineStore('professors', () => {
     // O LENDÁRIO capturado entra na busca junto com os raros: depois da raid
     // ele é um exemplar como outro qualquer, e a ficha e a arena o resolvem
     // por aqui. Enquanto não capturado ele nem existe na memória do app.
-    const lendario = raid.value.captured && raid.value.legendary
-      ? [raid.value.legendary]
-      : []
     return (
-      [...professors.value, ...rares.value.owned, ...lendario].find(
+      [...professors.value, ...rares.value.owned, ...lendarioPossuido.value].find(
         (p) =>
           String(p.id) === raw ||
           normalizeKey(p.slug) === wanted ||
@@ -181,6 +195,7 @@ export const useProfessorsStore = defineStore('professors', () => {
     professors,
     rares,
     raid,
+    lendarioPossuido,
     fetchRaid,
     agoraDoServidor,
     loading,
