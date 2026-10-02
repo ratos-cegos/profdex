@@ -13,7 +13,7 @@
 // Os quatro do NDE entram escalonados pelo índice — chegam como um grupo, não
 // como um bloco.
 
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
   /** `{ nome, sprites, pixelArt, spriteDepois }` — ver o evento `roteiro`. */
@@ -25,23 +25,48 @@ const props = defineProps({
   transformando: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['fim-da-transformacao'])
+const emit = defineEmits(['fim-da-transformacao', 'entrou'])
 
 /** Duração de cada etapa. Somadas, ~1,4s — um turno de raid não pode esperar. */
 const CRESCER_MS = 820
 const CAIR_MS = 520
+/** A caminhada (`entraAndando`) e o atraso entre os do NDE — iguais ao CSS. */
+const ANDAR_MS = 880
+const ATRASO_MS = 110
 
 const fase = ref('entrando')
 /** Índice da arte exibida: 0 = a de agora, 1 = a do estágio novo. */
 const arte = ref(0)
+/** Sprites cuja imagem não carregou: saem da cena, e sem nenhuma vira a placa. */
+const falhas = ref(new Set())
 let timers = []
 
-const sprites = () => (props.ator?.sprites ?? []).filter(Boolean)
+const sprites = () =>
+  (props.ator?.sprites ?? []).filter((src, i) => src && !falhas.value.has(i))
 
+function falhou(i) {
+  falhas.value = new Set([...falhas.value, i])
+}
+
+/**
+ * Avisa o overlay quando o personagem termina de entrar — é a deixa para a roda
+ * girar. Quem pediu menos movimento não vê a caminhada, então o aviso é na hora.
+ */
+function agendarEntrada() {
+  const reduzido = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+  const quantos = Math.max(1, sprites().length)
+  const ms = reduzido ? 0 : ANDAR_MS + ATRASO_MS * (quantos - 1)
+  agendar(() => emit('entrou'), ms)
+}
+
+onMounted(agendarEntrada)
+
+// Índice da lista ORIGINAL (`ator.sprites`), não da filtrada: uma imagem que
+// falhou sai da cena sem trocar a arte das outras de lugar.
 const spriteAtual = (i) =>
   arte.value === 1 && props.ator?.spriteDepois
     ? props.ator.spriteDepois
-    : sprites()[i]
+    : props.ator?.sprites?.[i]
 
 function agendar(fn, ms) {
   timers.push(setTimeout(fn, ms))
@@ -67,6 +92,8 @@ watch(
     timers = []
     fase.value = 'entrando'
     arte.value = 0
+    falhas.value = new Set()
+    agendarEntrada()
   },
 )
 
@@ -101,16 +128,18 @@ onBeforeUnmount(() => {
     :class="`ator--${fase}`"
     :style="{ '--quantos': sprites().length }"
   >
-    <img
-      v-for="(src, i) in sprites()"
-      :key="i"
-      class="ator__sprite"
-      :class="{ 'ator__sprite--pixel': ator.pixelArt }"
-      :style="{ '--atraso': `${i * 110}ms` }"
-      :src="spriteAtual(i)"
-      :alt="ator.nome"
-      decoding="async"
-    />
+    <template v-for="(src, i) in ator.sprites ?? []" :key="i">
+      <img
+        v-if="src && !falhas.has(i)"
+        class="ator__sprite"
+        :class="{ 'ator__sprite--pixel': ator.pixelArt }"
+        :style="{ '--atraso': `${i * ATRASO_MS}ms` }"
+        :src="spriteAtual(i)"
+        :alt="ator.nome"
+        decoding="async"
+        @error="falhou(i)"
+      />
+    </template>
     <!-- Sem arte, a cena ainda diz QUEM chegou. Professor sem sprite cadastrada
          é dado incompleto, não motivo para o personagem sumir do roteiro. -->
     <span v-if="!sprites().length" class="pixel ator__placa">{{ ator.nome }}</span>

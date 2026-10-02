@@ -6,9 +6,11 @@
  * `raid:start` → seleção de time → lead → turnos até alguém cair → `battle:end`
  * → e, se venceu, a captura do lendário e a linha da fila do prêmio no banco.
  *
- * Ele MEXE em `raid.opens_at` (a hora de abrir a raid), porque com o padrão do
- * evento a raid está fechada e nada começaria. O valor volta ao que estava por
- * qualquer caminho de saída — inclusive quando o smoke falha no meio.
+ * Ele MEXE em `raid.opens_at` (a hora de abrir a raid) e na janela diária
+ * (`raid.daily_open_hour`/`raid.daily_close_hour`, das 18h às 22h), porque com
+ * os padrões do evento a raid está fechada e nada começaria — fora da janela o
+ * smoke falhava em qualquer horário que não fosse noite. Os três valores voltam
+ * ao que estavam por qualquer caminho de saída, inclusive quando ele falha.
  *
  * Uso (na pasta profdex-back, com o backend no ar):
  *   npm run raid:smoke
@@ -36,13 +38,13 @@ const WS =
  * `fail` encerra o processo na hora, então um `finally` no `main` não bastaria:
  * uma falha no turno 3 deixaria a abertura da raid no valor que o smoke
  * escreveu — o lendário liberado para o evento inteiro por causa de um teste.
- * Por isso a saída passa toda por aqui (ver `restaurarAbertura`).
+ * Por isso a saída passa toda por aqui (ver `restaurarAjustes`).
  */
 const encerrar = (codigo) => {
-  void restaurarAbertura()
+  void restaurarAjustes()
     .catch((e) =>
       console.error(
-        `ATENÇÃO: não foi possível restaurar ${CHAVE_ABERTURA}. ` +
+        `ATENÇÃO: não foi possível restaurar ${CHAVES_DA_RAID.join(', ')}. ` +
           `Confira em /admin/configuracoes. (${e.message})`,
       ),
     )
@@ -139,42 +141,54 @@ const status = async (conta) => {
   return res.json();
 };
 
-// ── A trava de horário (`raid.opens_at`) ─────────────────────────────────────
-// O padrão do ajuste é 01/10 às 19h, então num dia qualquer a raid está FECHADA
-// e o smoke não passaria do `raid:start`. Ele abre a porta, roda o fluxo e
-// **devolve o ajuste ao que estava** — deixar a raid aberta por descuido é
-// justamente o acidente que a trava existe para evitar.
+// ── As travas de horário ────────────────────────────────────────────────────
+// Duas travas decidem se a raid aceita entrada:
+//   - `raid.opens_at`: a raid já existe? (padrão 01/10 às 19h);
+//   - a janela diária, `raid.daily_open_hour`/`raid.daily_close_hour`: é hora
+//     de raid agora? (padrão das 18h às 22h, hora do evento).
+// Com os padrões, num horário qualquer a raid está FECHADA e o smoke não passa
+// do `raid:start`. Ele abre as duas, roda o fluxo e **devolve tudo ao que
+// estava** — deixar a raid aberta por descuido é justamente o acidente que as
+// travas existem para evitar.
 const CHAVE_ABERTURA = 'raid.opens_at';
+const CHAVE_ABRE_AS = 'raid.daily_open_hour';
+const CHAVE_FECHA_AS = 'raid.daily_close_hour';
+const CHAVES_DA_RAID = [CHAVE_ABERTURA, CHAVE_ABRE_AS, CHAVE_FECHA_AS];
 
-const lerAbertura = async () => {
+const lerAjuste = async (chave) => {
   const linha = await prisma.appSetting.findUnique({
-    where: { key: CHAVE_ABERTURA },
+    where: { key: chave },
     select: { value: true },
   });
   return linha ? linha.value : null;
 };
 
-const gravarAbertura = (valor) =>
+const gravarAjuste = (chave, valor) =>
   prisma.appSetting.upsert({
-    where: { key: CHAVE_ABERTURA },
+    where: { key: chave },
     update: { value: valor },
-    create: { key: CHAVE_ABERTURA, value: valor },
+    create: { key: chave, value: valor },
   });
 
 /**
- * O que `raid.opens_at` valia antes do smoke, e se ele chegou a mexer.
+ * O que cada ajuste valia antes do smoke, e quais ele chegou a mexer.
  *
  * O par existe porque `null` é ambíguo sozinho: "não havia linha" e "ainda não
  * li" pareceriam iguais, e restaurar no segundo caso APAGARIA a configuração do
  * evento — que é o oposto do que este cuidado todo quer.
  */
-let aberturaOriginal = null;
-let mexeuNaAbertura = false;
+const originais = new Map();
+const mexidos = new Set();
 
-/** Grava e espera o servidor esquecer o valor antigo. */
-const definirAbertura = async (valor) => {
-  await gravarAbertura(valor);
-  mexeuNaAbertura = true;
+/**
+ * Grava um lote de ajustes e espera o servidor esquecer os antigos — uma espera
+ * só por lote, mesmo mexendo em mais de uma chave.
+ */
+const definirAjustes = async (valores) => {
+  for (const [chave, valor] of Object.entries(valores)) {
+    await gravarAjuste(chave, valor);
+    mexidos.add(chave);
+  }
   // O servidor guarda os ajustes num cache de 10s (`SettingsService`) e este
   // script escreve direto no banco, sem passar pela invalidação. Esperar é o
   // preço de não precisar de uma conta admin só para o smoke.
@@ -183,21 +197,24 @@ const definirAbertura = async (valor) => {
 };
 
 /** Sem espera: aqui o script está indo embora, e quem ficar relê do banco. */
-const restaurarAbertura = async () => {
-  if (!mexeuNaAbertura) return;
-  if (aberturaOriginal === null) {
-    await prisma.appSetting
-      .delete({ where: { key: CHAVE_ABERTURA } })
-      // Já não existir é o resultado desejado: não há o que consertar.
-      .catch(() => {});
-  } else {
-    await gravarAbertura(aberturaOriginal);
+const restaurarAjustes = async () => {
+  if (!mexidos.size) return;
+  for (const chave of mexidos) {
+    const original = originais.get(chave) ?? null;
+    if (original === null) {
+      await prisma.appSetting
+        .delete({ where: { key: chave } })
+        // Já não existir é o resultado desejado: não há o que consertar.
+        .catch(() => {});
+    } else {
+      await gravarAjuste(chave, original);
+    }
   }
-  console.log('OK: abertura da raid restaurada');
+  console.log('OK: abertura e janela da raid restauradas');
 };
 
 async function main() {
-  aberturaOriginal = await lerAbertura();
+  for (const chave of CHAVES_DA_RAID) originais.set(chave, await lerAjuste(chave));
 
   const lendario = await prisma.professor.findFirst({
     where: { legendary: true, active: true },
@@ -241,7 +258,7 @@ async function main() {
   // Com a dex vazia, as duas travas valeriam: a resposta tem de ser a do
   // HORÁRIO, que é global. O contrário mandaria quem já fechou a coleção
   // procurar um professor que não falta.
-  await definirAbertura('2026-12-31T19:00:00-03:00');
+  await definirAjustes({ [CHAVE_ABERTURA]: '2026-12-31T19:00:00-03:00' });
   const fechada = await status(conta);
   if (fechada.open) fail('/raid/status disse aberta com a abertura no futuro');
   if (!fechada.opensAtLabel) {
@@ -256,8 +273,16 @@ async function main() {
   }
   ok(`raid:start fora de hora recusado: "${foraDeHora.message}"`);
 
-  // Abre a porta para o resto do smoke. O valor original volta no `finally`.
-  await definirAbertura('2026-01-01T19:00:00-03:00');
+  // Abre a porta para o resto do smoke: a abertura no passado E a janela
+  // diária o dia inteiro (abrir 0, fechar 24 — o interruptor previsto em
+  // `raid-janela.ts`). Sem a janela, fora das 18h–22h a resposta seguinte
+  // seria RAID_FECHADA e o smoke acusaria um bug que não existe. Os valores
+  // originais voltam na saída (`restaurarAjustes`).
+  await definirAjustes({
+    [CHAVE_ABERTURA]: '2026-01-01T19:00:00-03:00',
+    [CHAVE_ABRE_AS]: '0',
+    [CHAVE_FECHA_AS]: '24',
+  });
 
   const recusa = await command(socket, 'raid:start');
   if (recusa.ok) fail('o servidor abriu a raid para quem não fechou a Profdex');
