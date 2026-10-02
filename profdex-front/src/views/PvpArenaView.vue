@@ -6,6 +6,7 @@ import BancoDeReservas from '../components/BancoDeReservas.vue'
 import MoveButton from '../components/MoveButton.vue'
 import ProfessorFace from '../components/ProfessorFace.vue'
 import RoteiroOverlay from '../components/RoteiroOverlay.vue'
+import { roteiroDoOverlay } from '../composables/battleRoteiro'
 import {
   aplicarEvento,
   chaveDoOcupante,
@@ -394,7 +395,9 @@ let fecharRoteiro = null
 
 function mostrarRoteiro(ev) {
   return new Promise((resolve) => {
-    roteiro.value = { linhas: ev.linhas ?? [], roleta: ev.roleta ?? null }
+    // O evento INTEIRO, com o `ator` (Ricardo, NDE, chefe que se transforma):
+    // montado à mão como `{ linhas, roleta }`, a sprite dele se perdia aqui.
+    roteiro.value = roteiroDoOverlay(ev)
     fecharRoteiro = () => {
       roteiro.value = null
       fecharRoteiro = null
@@ -701,7 +704,15 @@ onUnmounted(() => {
       @fim="soltarRoteiroPendente"
     />
 
-    <aside class="dicas-flutuantes" aria-label="Eventos recentes da luta" aria-live="polite">
+    <!-- Escondidas durante o roteiro: elas ficam acima do overlay (z-index 30)
+         e cobriam o Ricardo e a roda num celular pequeno. Nada se perde — tudo
+         continua no histórico do LOG. -->
+    <aside
+      v-show="!roteiro"
+      class="dicas-flutuantes"
+      aria-label="Eventos recentes da luta"
+      aria-live="polite"
+    >
       <article
         v-for="dica in dicas"
         :key="dica.id"
